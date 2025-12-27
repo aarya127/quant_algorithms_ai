@@ -1,0 +1,54 @@
+{
+  "test_number": 3,
+  "timestamp": "2025-11-09T00:45:33.861428",
+  "endpoint": "get_earnings_surprises",
+  "symbol": "NVDA",
+  "date_range": {
+    "from": "2025-10-10",
+    "to": "2025-11-09"
+  },
+  "status": "PASS",
+  "error": null,
+  "response": [
+    {
+      "actual": 1.05,
+      "estimate": 1.0281,
+      "period": "2025-09-30",
+      "quarter": 2,
+      "surprise": 0.0219,
+      "surprisePercent": 2.1301,
+      "symbol": "NVDA",
+      "year": 2026
+    },
+    {
+      "actual": 0.96,
+      "estimate": 0.9521,
+      "period": "2025-06-30",
+      "quarter": 1,
+      "surprise": 0.0079,
+      "surprisePercent": 0.8297,
+      "symbol": "NVDA",
+      "year": 2026
+    },
+    {
+      "actual": 0.89,
+      "estimate": 0.8605,
+      "period": "2025-03-31",
+      "quarter": 4,
+      "surprise": 0.0295,
+      "surprisePercent": 3.4282,
+      "symbol": "NVDA",
+      "year": 2025
+    },
+    {
+      "actual": 0.81,
+      "estimate": 0.7609,
+      "period": "2024-12-31",
+      "quarter": 3,
+      "surprise": 0.0491,
+      "surprisePercent": 6.4529,
+      "symbol": "NVDA",
+      "year": 2025
+    }
+  ]
+}

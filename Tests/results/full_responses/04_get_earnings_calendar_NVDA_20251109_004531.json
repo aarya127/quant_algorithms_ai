@@ -1,0 +1,15 @@
+{
+  "test_number": 4,
+  "timestamp": "2025-11-09T00:45:35.025935",
+  "endpoint": "get_earnings_calendar",
+  "symbol": "NVDA",
+  "date_range": {
+    "from": "2025-10-10",
+    "to": "2025-11-09"
+  },
+  "status": "PASS",
+  "error": null,
+  "response": {
+    "earningsCalendar": []
+  }
+}

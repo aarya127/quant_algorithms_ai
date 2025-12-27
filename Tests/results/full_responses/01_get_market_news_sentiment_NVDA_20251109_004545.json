@@ -1,0 +1,3212 @@
+{
+  "test_number": 1,
+  "timestamp": "2025-11-09T00:45:46.013228",
+  "endpoint": "get_market_news_sentiment",
+  "symbol": "NVDA",
+  "status": "PASS",
+  "error": null,
+  "response": {
+    "items": "50",
+    "sentiment_score_definition": "x <= -0.35: Bearish; -0.35 < x <= -0.15: Somewhat-Bearish; -0.15 < x < 0.15: Neutral; 0.15 <= x < 0.35: Somewhat_Bullish; x >= 0.35: Bullish",
+    "relevance_score_definition": "0 < x <= 1, with a higher score indicating higher relevance.",
+    "feed": [
+      {
+        "title": "Global week ahead: AI wobble casts shadow over 'Davos for geeks'",
+        "url": "https://www.cnbc.com/2025/11/09/global-week-ahead-ai-wobble-casts-shadow-over-davos-for-geeks.html",
+        "time_published": "20251109T035808",
+        "authors": [],
+        "summary": "After a volatile week for AI stocks and the tech sector more broadly, CNBC travels to Web Summit in Lisbon - 'Davos for geeks' - to assess sentiment.",
+        "banner_image": null,
+        "source": "CNBC",
+        "category_within_source": "Top News",
+        "source_domain": "www.cnbc.com",
+        "topics": [
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.160145,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "BABA",
+            "relevance_score": "0.112532",
+            "ticker_sentiment_score": "0.0",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.112532",
+            "ticker_sentiment_score": "0.228566",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.112532",
+            "ticker_sentiment_score": "0.085717",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "QCOM",
+            "relevance_score": "0.112532",
+            "ticker_sentiment_score": "0.228566",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Michael Burry's Bets Against AI Stocks Nvidia and Palantir: What Investors Should Know",
+        "url": "https://www.fool.com/investing/2025/11/08/michael-burry-nvidia-nvda-palantir-pltr-ai-stocks/",
+        "time_published": "20251108T200000",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Beth McKenna"
+        ],
+        "summary": "The tech-heavy Nasdaq Composite index had its worst week since April, which was sparked by the revelation of a well-known hedge fund manager's bearish bets on popular AI stocks Nvidia and Palantir.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F841826%2Fmichael-burry-nvda-stock-pltr-stock-bear-bets-the-big-short-put-options-ai-bubble_large.png&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Life Sciences",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "1.0"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.25"
+          }
+        ],
+        "overall_sentiment_score": -0.060234,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "LULU",
+            "relevance_score": "0.043186",
+            "ticker_sentiment_score": "0.08309",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.583366",
+            "ticker_sentiment_score": "-0.059879",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SLM",
+            "relevance_score": "0.043186",
+            "ticker_sentiment_score": "0.08309",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MOH",
+            "relevance_score": "0.043186",
+            "ticker_sentiment_score": "0.08309",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "BRKR",
+            "relevance_score": "0.043186",
+            "ticker_sentiment_score": "0.08309",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PFE",
+            "relevance_score": "0.043186",
+            "ticker_sentiment_score": "0.08309",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.086245",
+            "ticker_sentiment_score": "0.063523",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Prediction: Nvidia Stock Is Going to Stall Out on Nov. 20",
+        "url": "https://www.fool.com/investing/2025/11/08/prediction-nvidia-will-stall-out-on-nov-20/",
+        "time_published": "20251108T191000",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Adria Cimino"
+        ],
+        "summary": "An upcoming event may not result in gains for Nvidia.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F836509%2Fgettyimages-1276837766_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.99977"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.998287"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.187301,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.882012",
+            "ticker_sentiment_score": "0.319699",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "ON",
+            "relevance_score": "0.059341",
+            "ticker_sentiment_score": "0.022057",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.059341",
+            "ticker_sentiment_score": "-0.059114",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSM",
+            "relevance_score": "0.059341",
+            "ticker_sentiment_score": "0.12102",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "The 'Big Short' Guy Just Bet $1.1 Billion Against AI Giants-And Markets Are Still Absorbing It",
+        "url": "https://decrypt.co/347888/big-short-guy-bet-1-1-billion-against-ai-giants-markets-still-absorbing",
+        "time_published": "20251108T190103",
+        "authors": [
+          "Jose Antonio Lanz"
+        ],
+        "summary": "Renowned hedge fund manager Michael Burry disclosed massive bearish positions on AI darlings after warning of market bubbles. The CEO of Palantir was not pleased.",
+        "banner_image": "https://img.decrypt.co/insecure/rs:fit:3840:0:0:0/plain/https://cdn.decrypt.co/wp-content/uploads/2025/11/MAGS_2025-11-07_18-15-00.png@webp",
+        "source": "Decrypt.co",
+        "category_within_source": "n/a",
+        "source_domain": "decrypt.co",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.977154"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.310843"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": -0.009752,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "CRWV",
+            "relevance_score": "0.073546",
+            "ticker_sentiment_score": "0.061259",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.288044",
+            "ticker_sentiment_score": "0.089492",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "GS",
+            "relevance_score": "0.073546",
+            "ticker_sentiment_score": "-0.075551",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MS",
+            "relevance_score": "0.073546",
+            "ticker_sentiment_score": "-0.075551",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.073546",
+            "ticker_sentiment_score": "0.01843",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Is This Ohio-Based Company Poised for Market Gains in AI/Data Center Infrastructure?",
+        "url": "https://www.fool.com/investing/2025/11/08/is-this-ohio-based-company-poised-for-market-gains/",
+        "time_published": "20251108T185900",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Lee Samaha"
+        ],
+        "summary": "Tariffs and increased costs are masking the earnings potential of this AI/data center stock.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F839773%2Fgettyimages-1998660059.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.986564"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.214378"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.282536,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.066414",
+            "ticker_sentiment_score": "0.100372",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "VRT",
+            "relevance_score": "0.495015",
+            "ticker_sentiment_score": "0.401757",
+            "ticker_sentiment_label": "Bullish"
+          }
+        ]
+      },
+      {
+        "title": "3 Must-Own Stocks for the Driverless Vehicle Revolution",
+        "url": "https://www.fool.com/investing/2025/11/08/3-must-own-stocks-for-the-driverless-vehicle-revol/",
+        "time_published": "20251108T181400",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Daniel Miller"
+        ],
+        "summary": "The transportation and automotive industry are poised to change drastically, but how can investors get in on the opportunity?",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F837394%2Fev-at-home.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.214378"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.293076,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.38588",
+            "ticker_sentiment_score": "0.388107",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "QS",
+            "relevance_score": "0.38588",
+            "ticker_sentiment_score": "0.217281",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "AMBA",
+            "relevance_score": "0.199037",
+            "ticker_sentiment_score": "0.165876",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "UBER",
+            "relevance_score": "0.149966",
+            "ticker_sentiment_score": "0.304799",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Prediction: This Supercharged Growth Stock Will Join Nvidia, Apple, Microsoft, and Alphabet in the $3 Trillion Club Before 2028",
+        "url": "https://www.fool.com/investing/2025/11/08/prediction-supercharged-growth-stock-3-trillion/",
+        "time_published": "20251108T180200",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Danny Vena"
+        ],
+        "summary": "This category-leading semiconductor and infrastructure software specialist is experiencing robust growth due to artificial intelligence (AI). There could be much more to come.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F836683%2Fa-businessperson-standing-near-a-display-with-various-charts-and-graphs_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.214378"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.999606"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.301991,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.051441",
+            "ticker_sentiment_score": "0.050997",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.051441",
+            "ticker_sentiment_score": "0.050997",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AVGO",
+            "relevance_score": "0.598368",
+            "ticker_sentiment_score": "0.327557",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Tariffs Are Hurting DIY Car Mechanics, O'Reilly Auto Parts, AutoZone CEOs Say - O'Reilly Automotive  ( NASDAQ:ORLY ) , AutoZone  ( NYSE:AZO ) ",
+        "url": "https://www.benzinga.com/news/topics/25/11/48739718/tariffs-are-hurting-diy-car-mechanics-oreilly-auto-parts-autozone-ceos-say",
+        "time_published": "20251108T180109",
+        "authors": [
+          "Anthony O'Reilly"
+        ],
+        "summary": "Price increases from import duties and tariffs on car parts are causing DIY auto mechanics to delay some projects, according to the heads of O'Reilly Auto Parts ( NASDAQ:ORLY ) and AutoZone ( NYSE:AZO ) .",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/08/Mechanic-Fixing-A-Car-At-Home--Repair-An.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "News",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.451494"
+          },
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.040285,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.080188",
+            "ticker_sentiment_score": "0.0",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AZO",
+            "relevance_score": "0.159569",
+            "ticker_sentiment_score": "-0.110674",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.080188",
+            "ticker_sentiment_score": "0.0",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "QLD and SPXL Offer Distinct Leverage for Growth Investors",
+        "url": "https://www.fool.com/coverage/etfs/2025/11/08/qld-and-spxl-offer-distinct-leverage-for-growth-investors/",
+        "time_published": "20251108T172105",
+        "authors": [
+          "Jake Lerch",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "SPXL and QLD are both leveraged ETFs, but SPXL targets triple the S&P 500's daily move while QLD seeks double the Nasdaq-100, leading to different sector tilts and risk profiles.Direxion Daily S&P 500 Bull 3X Shares ( NYSEMKT:SPXL ) is built to deliver three times the daily performance of the ...",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F822040%2Fa-room-of-investors-studies-a-chart.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.998947"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.144867,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.11123",
+            "ticker_sentiment_score": "0.046",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.11123",
+            "ticker_sentiment_score": "0.046",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "The Good, The Bad, And The Ugly Of The AI Capex Race - Apple  ( NASDAQ:AAPL ) , Amazon.com  ( NASDAQ:AMZN ) ",
+        "url": "https://www.benzinga.com/markets/tech/25/11/48739649/the-good-the-bad-and-the-ugly-of-the-ai-capex-race",
+        "time_published": "20251108T171621",
+        "authors": [
+          "Stjepan Kalinic"
+        ],
+        "summary": "Silicon Valley is investing heavily in artificial intelligence like never before. The Magnificent Seven-Apple ( NASDAQ:AAPL ) , Microsoft ( NASDAQ:MSFT ) , Alphabet ( NASDAQ:GOOG ) , Amazon ( NASDAQ:AMZN ) , Meta ( NASDAQ:META ) , Nvidia ( NASDAQ:NVDA ) , and Tesla ( NASDAQ:TSLA ) -are expected ...",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/08/AI-Bubble-Bursting-.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "General",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.87644"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": -0.077522,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.054236",
+            "ticker_sentiment_score": "0.114769",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NFLX",
+            "relevance_score": "0.054236",
+            "ticker_sentiment_score": "-0.096007",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "META",
+            "relevance_score": "0.054236",
+            "ticker_sentiment_score": "-0.096007",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.054236",
+            "ticker_sentiment_score": "0.114769",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AAPL",
+            "relevance_score": "0.054236",
+            "ticker_sentiment_score": "0.114769",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.054236",
+            "ticker_sentiment_score": "0.114769",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AMZN",
+            "relevance_score": "0.108222",
+            "ticker_sentiment_score": "0.037889",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Great News for Navitas Investors -- The Data Center Pivot Is Working",
+        "url": "https://www.fool.com/investing/2025/11/08/great-news-for-navitas-investors-the-data-center-p/",
+        "time_published": "20251108T165854",
+        "authors": [
+          "Rick Orford",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "Navitas just became one of Nvidia's most important AI power partners -- and investors may not realize how big this could get.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F838416%2Fgettyimages-2148797906.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.108179"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.123061,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.25168",
+            "ticker_sentiment_score": "-0.132198",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVTS",
+            "relevance_score": "0.25168",
+            "ticker_sentiment_score": "0.132134",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "This Unstoppable Growth Stock Just Gave Investors More Reasons to Buy",
+        "url": "https://www.fool.com/investing/2025/11/08/this-unstoppable-growth-stock-just-gave-investors/",
+        "time_published": "20251108T153000",
+        "authors": [
+          "Prosper Junior Bakiny",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "The stock didn't stay down for too long.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F840561%2Fperson-raising-two-fists-in-the-air_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Life Sciences",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.214378"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.996718"
+          }
+        ],
+        "overall_sentiment_score": 0.209948,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "LLY",
+            "relevance_score": "0.506158",
+            "ticker_sentiment_score": "0.363856",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.083833",
+            "ticker_sentiment_score": "0.037202",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "RXRX",
+            "relevance_score": "0.041975",
+            "ticker_sentiment_score": "0.035435",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "2 Top Quantum Computing Stocks to Watch in November",
+        "url": "https://www.fool.com/investing/2025/11/08/2-top-quantum-computing-stocks-to-watch-in-novembe/",
+        "time_published": "20251108T151500",
+        "authors": [
+          "Will Ebiefung",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "Is this the start of a brand new technology megatrend?",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F841351%2Fgettyimages-1215230330_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.108179"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.286079,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "GOOG",
+            "relevance_score": "0.057907",
+            "ticker_sentiment_score": "0.091124",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.115509",
+            "ticker_sentiment_score": "0.09554",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "RGTI",
+            "relevance_score": "0.283542",
+            "ticker_sentiment_score": "0.230734",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "QBTS",
+            "relevance_score": "0.172507",
+            "ticker_sentiment_score": "0.083529",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "TSLA, PLTR, IREN And More: 5 Stocks That Dominated Investor Buzz This Week - IREN  ( NASDAQ:IREN ) , Advanced Micro Devices  ( NASDAQ:AMD ) ",
+        "url": "https://www.benzinga.com/markets/equities/25/11/48739415/tsla-pltr-iren-and-more-5-stocks-that-dominated-investor-buzz-this-week",
+        "time_published": "20251108T150243",
+        "authors": [
+          "Rishabh Mishra"
+        ],
+        "summary": "Retail investors talked up five hot stocks this week ( Nov. 3-7 ) on X and Reddit's r/WallStreetBets, driven by earnings, retail hype, AI buzz, and corporate news flow.",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/08/Porto--Portugal---October-29--2024---Sil.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "General",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "1.0"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.999606"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Blockchain",
+            "relevance_score": "0.158519"
+          }
+        ],
+        "overall_sentiment_score": 0.155431,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.045918",
+            "ticker_sentiment_score": "0.070414",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MSTR",
+            "relevance_score": "0.045918",
+            "ticker_sentiment_score": "0.181219",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.045918",
+            "ticker_sentiment_score": "0.070414",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.137148",
+            "ticker_sentiment_score": "0.064392",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MS",
+            "relevance_score": "0.045918",
+            "ticker_sentiment_score": "0.07673",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.091684",
+            "ticker_sentiment_score": "0.071691",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.137148",
+            "ticker_sentiment_score": "-0.054591",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "This Stock Is Up Over 90% in 2025 -- And You May Have Never Heard of It",
+        "url": "https://www.fool.com/investing/2025/11/08/this-stock-is-up-over-90-in-2025-and-you-may-have/",
+        "time_published": "20251108T144500",
+        "authors": [
+          "Steven Porrello",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "Nano Nuclear Energy is up about 90% on the year, but the real question is whether it can commercialize its epic ideas.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F833719%2Fatomic-pattern_large.webp&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.108179"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.650727"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.215898,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.056808",
+            "ticker_sentiment_score": "0.160971",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "SMR",
+            "relevance_score": "0.056808",
+            "ticker_sentiment_score": "0.118943",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "OKLO",
+            "relevance_score": "0.169279",
+            "ticker_sentiment_score": "0.168701",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "GS",
+            "relevance_score": "0.056808",
+            "ticker_sentiment_score": "0.04701",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NNE",
+            "relevance_score": "0.169279",
+            "ticker_sentiment_score": "0.246977",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.056808",
+            "ticker_sentiment_score": "0.160971",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "CRYPTO:NANO",
+            "relevance_score": "0.5239",
+            "ticker_sentiment_score": "0.295768",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Better Artificial Intelligence ETF: iShares Semiconductor vs. the Fidelity MSCI Information Technology Index",
+        "url": "https://www.fool.com/coverage/etfs/2025/11/08/better-artificial-intelligence-etf-ishares-semiconductor-vs-the-fidelity-msci-information-technology-index/",
+        "time_published": "20251108T143005",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Robert Izquierdo"
+        ],
+        "summary": "The Fidelity MSCI Information Technology Index ETF ( NYSEMKT:FTEC ) tracks a wide range of U.S. technology stocks for diversified sector coverage, while the iShares Semiconductor ETF ( NASDAQ:SOXX ) targets U.S.-listed semiconductor companies.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F784855%2Fetf-stock-market-investment.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.999998"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.185814,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.178459",
+            "ticker_sentiment_score": "0.186361",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.119532",
+            "ticker_sentiment_score": "0.062578",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.178459",
+            "ticker_sentiment_score": "0.144427",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "XHLD",
+            "relevance_score": "0.059935",
+            "ticker_sentiment_score": "0.1",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AVGO",
+            "relevance_score": "0.059935",
+            "ticker_sentiment_score": "0.168182",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "ON",
+            "relevance_score": "0.059935",
+            "ticker_sentiment_score": "0.165018",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Bulls And Bears: Starbucks, DraftKings, Enovix - And AI Stocks Take A Fall Bulls And Bears: Starbucks, DraftKings, Enovix - And AI Stocks Take A Fall - Apple  ( NASDAQ:AAPL ) , Archer Aviation  ( NYSE:ACHR ) ",
+        "url": "https://www.benzinga.com/markets/market-summary/25/11/48739167/benzinga-bulls-and-bears-starbucks-draftkings-enovix-and-ai-stocks-take-a-fall",
+        "time_published": "20251108T130146",
+        "authors": [
+          "Benzinga Senior Editor"
+        ],
+        "summary": "Benzinga examined the prospects for many investors' favorite stocks over the last week - here's a look at some of our top stories. Wall Street stumbled this week as AI-linked stocks faced heavy selling, led by Nvidia Corp. ( NASDAQ:NVDA ) and Palantir Technologies Inc. ( NYSE:PLTR ) , despite ...",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/08/Bulls-and-Bears-1_0.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Markets",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Technology",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Economy - Monetary",
+            "relevance_score": "0.310843"
+          },
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.989041"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.99737"
+          },
+          {
+            "topic": "Real Estate & Construction",
+            "relevance_score": "0.2"
+          }
+        ],
+        "overall_sentiment_score": 0.060935,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "DKNG",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "0.036732",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "-0.108084",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AAPL",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "BAC",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "0.033027",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "FLUT",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "0.033027",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "ENVX",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "-0.052067",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "IONQ",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.013992",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "IVZ",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.124991",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "RGTI",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.013992",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SOUN",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "-0.051886",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SBUX",
+            "relevance_score": "0.14573",
+            "ticker_sentiment_score": "0.151136",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "QBTS",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.013992",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "JOBY",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "0.0884",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Bulls And Bears: Starbucks, DraftKings, Enovix - And AI Stocks Take A Fall Bulls And Bears: Starbucks, DraftKings, Enovix - And AI Stocks Take A Fall - Apple  ( NASDAQ:AAPL ) , Archer Aviation  ( NYSE:ACHR ) ",
+        "url": "https://www.benzinga.com/markets/market-summary/25/11/48739166/benzinga-bulls-and-bears-starbucks-draftkings-enovix-and-ai-stocks-take-a-fall",
+        "time_published": "20251108T130146",
+        "authors": [
+          "Benzinga Senior Editor"
+        ],
+        "summary": "Benzinga examined the prospects for many investors' favorite stocks over the last week - here's a look at some of our top stories. Wall Street stumbled this week as AI-linked stocks faced heavy selling, led by Nvidia Corp. ( NASDAQ:NVDA ) and Palantir Technologies Inc. ( NYSE:PLTR ) , despite ...",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/08/Bulls-and-Bears-1.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Markets",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Technology",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Economy - Monetary",
+            "relevance_score": "0.310843"
+          },
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.989041"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.2"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.99737"
+          },
+          {
+            "topic": "Real Estate & Construction",
+            "relevance_score": "0.2"
+          }
+        ],
+        "overall_sentiment_score": 0.060935,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "DKNG",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "0.036732",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "-0.108084",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AAPL",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "BAC",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "0.033027",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "FLUT",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "0.033027",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "ENVX",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "-0.052067",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "IONQ",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.013992",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "IVZ",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.124991",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "RGTI",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.013992",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SOUN",
+            "relevance_score": "0.097457",
+            "ticker_sentiment_score": "-0.051886",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SBUX",
+            "relevance_score": "0.14573",
+            "ticker_sentiment_score": "0.151136",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "QBTS",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.013992",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "JOBY",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "0.0884",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.04882",
+            "ticker_sentiment_score": "-0.071",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "TQQQ Offers Broader Tech Exposure Than SOXL",
+        "url": "https://www.fool.com/coverage/etfs/2025/11/08/tqqq-offers-broader-tech-exposure-than-soxl/",
+        "time_published": "20251108T120007",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Katie Brockman"
+        ],
+        "summary": "Both ProShares UltraPro QQQ ( NASDAQ:TQQQ ) and Direxion Daily Semiconductor Bull 3X Shares ( NYSEMKT:SOXL ) deliver daily 3x leveraged exposure: TQQQ to the Nasdaq-100 Index and SOXL to the NYSE Semiconductor Index. This comparison explores which leveraged tech ETF may appeal more depending on ...",
+        "banner_image": "https://cdn.content.foolcdn.com/images/1umn9qeh/production/e4b91c0ec43c1b805f517d590c0258af17edb4ce-1200x785.jpg?w=1200&h=785",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.999763"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.135283,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.065506",
+            "ticker_sentiment_score": "0.025306",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.065506",
+            "ticker_sentiment_score": "0.063066",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.130571",
+            "ticker_sentiment_score": "0.051928",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AVGO",
+            "relevance_score": "0.065506",
+            "ticker_sentiment_score": "0.025306",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "ON",
+            "relevance_score": "0.065506",
+            "ticker_sentiment_score": "-0.027519",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "With the S&P 500 at Historically High Levels, Consider This Alternate Way to Invest in the Index",
+        "url": "https://www.fool.com/investing/2025/11/08/sp-500-at-historically-high-levels-consider/",
+        "time_published": "20251108T114500",
+        "authors": [
+          "Stefon Walters",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "This route allows you to invest in S&P 500 companies without relying too heavily on a select few.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F841103%2Fgetty-s_p-500-index-fund-1_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Economy - Monetary",
+            "relevance_score": "0.158519"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.961735"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.714479"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.107574,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.066414",
+            "ticker_sentiment_score": "0.215742",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.066414",
+            "ticker_sentiment_score": "0.215742",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.066414",
+            "ticker_sentiment_score": "0.215742",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "IVZ",
+            "relevance_score": "0.066414",
+            "ticker_sentiment_score": "-0.16344",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          }
+        ]
+      },
+      {
+        "title": "5 Top Artificial Intelligence Stocks to Buy in November",
+        "url": "https://www.fool.com/investing/2025/11/08/5-top-artificial-intelligence-stocks-to-buy-in-nov/",
+        "time_published": "20251108T113000",
+        "authors": [
+          "Keithen Drury",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "Multiple stocks have plenty of room to run before the end of the year.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F840351%2Finvestor-wathcing-their-stock-rise_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.999701"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.684621"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.185415,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "GOOG",
+            "relevance_score": "0.231884",
+            "ticker_sentiment_score": "0.033263",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "META",
+            "relevance_score": "0.287537",
+            "ticker_sentiment_score": "0.179681",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.444595",
+            "ticker_sentiment_score": "0.177543",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "AVGO",
+            "relevance_score": "0.341699",
+            "ticker_sentiment_score": "0.115817",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSM",
+            "relevance_score": "0.1172",
+            "ticker_sentiment_score": "0.065824",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Prediction: This Will Be Nvidia's Stock Price by 2030",
+        "url": "https://www.fool.com/investing/2025/11/08/prediction-this-will-be-nvidias-stock-price-by-203/",
+        "time_published": "20251108T110600",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Keithen Drury"
+        ],
+        "summary": "The GPU leader's market cap has the potential to surpass $10 trillion.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F840361%2Fnvidia-headquarters-with-grey-nvidia-sign-in-front-with-nvidia-logo_large.png&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.77141"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.266143"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.291881,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.819293",
+            "ticker_sentiment_score": "0.460737",
+            "ticker_sentiment_label": "Bullish"
+          }
+        ]
+      },
+      {
+        "title": "My Advice? Don't Get Distracted By Meta Platforms Stock's Latest Slump",
+        "url": "https://www.fool.com/investing/2025/11/08/buy-dip-meta-platforms-ai-growth-stock/",
+        "time_published": "20251108T103000",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Daniel Foelber"
+        ],
+        "summary": "Meta Platforms is growing rapidly, but its spending is raising red flags.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F841177%2Fa-person-looking-at-their-cell-phone-in-a-concerned-manner_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.77141"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.983783"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.404253,
+        "overall_sentiment_label": "Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.042122",
+            "ticker_sentiment_score": "0.135171",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NFLX",
+            "relevance_score": "0.042122",
+            "ticker_sentiment_score": "0.135171",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "META",
+            "relevance_score": "0.208285",
+            "ticker_sentiment_score": "0.185233",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.042122",
+            "ticker_sentiment_score": "0.135171",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AVGO",
+            "relevance_score": "0.042122",
+            "ticker_sentiment_score": "0.135171",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.042122",
+            "ticker_sentiment_score": "0.135171",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "AI Superstars Nvidia and Palantir Are Teaming Up. Here's Which Stock I'm Buying Now.",
+        "url": "https://www.fool.com/investing/2025/11/08/ai-superstars-nvidia-and-palantir-are-teaming-up-h/",
+        "time_published": "20251108T091500",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Keithen Drury"
+        ],
+        "summary": "Nvidia and Palantir are two of the biggest names in AI investing.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F840360%2Fartificial-intelligence-ai-robot-big-data-bull-market-stock-chart-getty_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.972476"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.998356"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.229693,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.642801",
+            "ticker_sentiment_score": "0.300635",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Nvidia's AI Dominance: Data Center Revenue Poised for 165% Surge by 2027",
+        "url": "https://www.fool.com/investing/2025/11/08/nvidias-ai-dominance-data-center-revenue-poised-fo/",
+        "time_published": "20251108T080000",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Harsh Chauhan"
+        ],
+        "summary": "Nvidia's biggest business can keep growing at a terrific pace over the next couple of years.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F839397%2Fwide-data-center-revenue_tmf_large.png&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "1.0"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.230985,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.668911",
+            "ticker_sentiment_score": "0.389975",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "TSM",
+            "relevance_score": "0.051663",
+            "ticker_sentiment_score": "0.185521",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Nvidia CEO Jensen Huang Hails TSMC Wafer Backing Amid 'Very Strong' Demand For Blackwell Chips After Trump Bars Sales To 'Other People' - NVIDIA  ( NASDAQ:NVDA ) , Micron Technology  ( NASDAQ:MU ) ",
+        "url": "https://www.benzinga.com/markets/tech/25/11/48738722/nvidia-ceo-jensen-huang-hails-tsmc-wafer-backing-amid-very-strong-demand-for-blackwell-chips-after-t",
+        "time_published": "20251108T072513",
+        "authors": [
+          "Ananya Gairola"
+        ],
+        "summary": "Nvidia Corp ( NASDAQ:NVDA ) CEO Jensen Huang praised longtime partner Taiwan Semiconductor Manufacturing Co. ( NYSE:TSM ) on Saturday, for its critical role in supporting the company's surging Blackwell AI chip production. This comes after U.S.",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/08/Jensen-Huang-Nvidias-Founder--President-_0.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Markets",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.108179"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.122491,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "MU",
+            "relevance_score": "0.097062",
+            "ticker_sentiment_score": "-0.050474",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SSNLF",
+            "relevance_score": "0.192694",
+            "ticker_sentiment_score": "-0.006084",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.192694",
+            "ticker_sentiment_score": "0.121491",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSM",
+            "relevance_score": "0.097062",
+            "ticker_sentiment_score": "0.105193",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Nvidia CEO Jensen Huang Pushes Back On Elon Musk's Plan To Build Chip Fab, Says What TSMC Does Is 'Extremely Hard' - NVIDIA  ( NASDAQ:NVDA ) , Intel  ( NASDAQ:INTC ) ",
+        "url": "https://www.benzinga.com/markets/tech/25/11/48738634/nvidia-ceo-jensen-huang-pushes-back-on-elon-musks-plan-to-build-chip-fab-says-what-tsmc-does-is-extr",
+        "time_published": "20251108T054935",
+        "authors": [
+          "Ananya Gairola"
+        ],
+        "summary": "Nvidia Corporation ( NASDAQ:NVDA ) CEO Jensen Huang seems to have cautioned Tesla Inc. ( NASDAQ:TSLA ) boss Elon Musk against underestimating the complexities of semiconductor manufacturing.",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/08/Jensen-Huang-Nvidias-Founder--President-.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Markets",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.161647"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.141896,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "SSNLF",
+            "relevance_score": "0.148731",
+            "ticker_sentiment_score": "0.067984",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.148731",
+            "ticker_sentiment_score": "0.0",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.426225",
+            "ticker_sentiment_score": "0.140861",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "INTC",
+            "relevance_score": "0.148731",
+            "ticker_sentiment_score": "0.067984",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Palantir CEO Alex Karp Blasts Short Sellers Again As Stock Drops 11% This Week, Deems It 'Market Manipulation' - Meta Platforms  ( NASDAQ:META ) , NVIDIA  ( NASDAQ:NVDA ) ",
+        "url": "https://www.benzinga.com/markets/tech/25/11/48738073/palantir-ceo-alex-karp-blasts-short-sellers-again-as-stock-drops-11-this-week-deems-it-market-manipu",
+        "time_published": "20251108T023844",
+        "authors": [
+          "Mohd Haider"
+        ],
+        "summary": "Palantir Technologies Inc. ( NYSE:PLTR ) stock fell more than 11% this week, even as the software company reported better-than-expected quarterly results, prompting CEO Alex Karp to criticize those betting against the stock, calling it \"market manipulation.\" Check out the current price of ...",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/07/Shibuya--Tokyo--Japan---March-5-2022-Ext.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Markets",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.413559"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.857896"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.128157,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "META",
+            "relevance_score": "0.10607",
+            "ticker_sentiment_score": "0.077757",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.210274",
+            "ticker_sentiment_score": "-0.018144",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.10607",
+            "ticker_sentiment_score": "0.077757",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.310843",
+            "ticker_sentiment_score": "0.105876",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Why UiPath Jumped 19% in October",
+        "url": "https://www.fool.com/investing/2025/11/07/why-uipath-jumped-19-in-october/",
+        "time_published": "20251107T233924",
+        "authors": [
+          "Jeremy Bowman",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "Its annual Fusion conference helped give the stock a boost.",
+        "banner_image": "https://media.ycharts.com/charts/77b0e3969ec844b734104c170eff4d1a.png",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.413559"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.714479"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.240272,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "PATH",
+            "relevance_score": "0.897792",
+            "ticker_sentiment_score": "0.48266",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.092927",
+            "ticker_sentiment_score": "0.036407",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SPGI",
+            "relevance_score": "0.092927",
+            "ticker_sentiment_score": "0.176915",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "PEGA",
+            "relevance_score": "0.184598",
+            "ticker_sentiment_score": "0.061017",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "APPN",
+            "relevance_score": "0.184598",
+            "ticker_sentiment_score": "0.061017",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Big Tech Companies Just Delivered Incredible News for Nvidia Investors",
+        "url": "https://www.fool.com/investing/2025/11/07/big-tech-companies-just-delivered-incredible-news/",
+        "time_published": "20251107T220000",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Harsh Chauhan"
+        ],
+        "summary": "The massive spending on AI infrastructure isn't showing any sign of slowing down.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F841099%2Fnvidia-data-center-with-nvidia-units-installed-showing-nvidia-logo_large.png&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.108179"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.818451"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.272091,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.149966",
+            "ticker_sentiment_score": "0.070184",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "GOOG",
+            "relevance_score": "0.100308",
+            "ticker_sentiment_score": "0.127405",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "META",
+            "relevance_score": "0.149966",
+            "ticker_sentiment_score": "0.129445",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.38588",
+            "ticker_sentiment_score": "0.322885",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Lucid Group  ( LCID )  Stock Down As Q3 Revenue Misses, Key Engineer Departs - Lucid Group  ( NASDAQ:LCID ) ",
+        "url": "https://www.benzinga.com/trading-ideas/movers/25/11/48734819/lucid-group-lcid-stock-down-as-q3-revenue-misses-key-engineer-departs",
+        "time_published": "20251107T211158",
+        "authors": [
+          "Henry Khederian"
+        ],
+        "summary": "Lucid Group Inc ( NASDAQ:LCID ) shares continued their slide Friday afternoon, following the company's third-quarter 2025 results released Wednesday, which missed analyst expectations. Here's what investors need to know.",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/07/Lucidc7eca815-c45e-4bda-ae8b-4dd0191a84b.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Trading",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.967645"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.650727"
+          },
+          {
+            "topic": "Real Estate & Construction",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.081969,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "LCID",
+            "relevance_score": "0.626443",
+            "ticker_sentiment_score": "0.073105",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.101154",
+            "ticker_sentiment_score": "0.04612",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Main Street's Job Fears Hit Wall Street As AI Rally Falters: This Week In Markets - Advanced Micro Devices  ( NASDAQ:AMD ) , Robinhood Markets  ( NASDAQ:HOOD ) ",
+        "url": "https://www.benzinga.com/markets/market-summary/25/11/48734727/week-in-review-wall-street-stock-market-palantir-amd-robinhood-nvidia-ai-stocks-bubble-lab",
+        "time_published": "20251107T211025",
+        "authors": [
+          "Piero Cingari"
+        ],
+        "summary": "After a six-month winning streak, investors thought the artificial-intelligence boom was bulletproof. This week proved otherwise as a series of events sent technology and AI-linked stocks into their worst week since April's tariff-driven selloff.",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/07/New-York-Stock-Exchange.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Trading",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.538269"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.310843"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": -0.15968,
+        "overall_sentiment_label": "Somewhat-Bearish",
+        "ticker_sentiment": [
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.188928",
+            "ticker_sentiment_score": "-0.192833",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.095138",
+            "ticker_sentiment_score": "-0.187518",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "ORCL",
+            "relevance_score": "0.095138",
+            "ticker_sentiment_score": "-0.187518",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "HOOD",
+            "relevance_score": "0.095138",
+            "ticker_sentiment_score": "-0.064587",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.095138",
+            "ticker_sentiment_score": "-0.098604",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Why Stocks Will Keep Rising Even While Investors Stay Nervous",
+        "url": "https://www.zacks.com/stock/news/2788096/why-stocks-will-keep-rising-even-while-investors-stay-nervous",
+        "time_published": "20251107T202500",
+        "authors": [
+          "Andrew Rocco"
+        ],
+        "summary": "Despite the government shutdown and AI concerns, stocks remain on track for a strong close to 2025. Andrew Rocco breaks down why the widespread pessimism is overblown and how investors can capitalize on the market's negative sentiment.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/aa/131003.webp",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Economy - Monetary",
+            "relevance_score": "0.158519"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.998962"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.614606"
+          },
+          {
+            "topic": "Energy & Transportation",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.181785,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "CRWV",
+            "relevance_score": "0.02786",
+            "ticker_sentiment_score": "0.150468",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.02786",
+            "ticker_sentiment_score": "0.066873",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "ICE",
+            "relevance_score": "0.055686",
+            "ticker_sentiment_score": "0.166996",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.02786",
+            "ticker_sentiment_score": "0.157576",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "AAL",
+            "relevance_score": "0.055686",
+            "ticker_sentiment_score": "-0.004017",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Thinking Like a Rule Breaker: Timeless Investing Lessons from David Gardner",
+        "url": "https://www.fool.com/investing/2025/11/07/thinking-like-a-rule-breaker-timeless-investing-le/",
+        "time_published": "20251107T192952",
+        "authors": [
+          "Eric Trie",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "Forget \"buy low, sell high.\" David Gardner's Rule Breaker Investing rewrites the old rules with optimism, conviction, and a belief that the biggest winners are built, not discovered, through time.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F841179%2Fgettyimages-184874549.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "1.0"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.366415,
+        "overall_sentiment_label": "Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.032916",
+            "ticker_sentiment_score": "-0.082496",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Why AMD Stock Is Sinking Again Today",
+        "url": "https://www.fool.com/investing/2025/11/07/why-amd-stock-is-sinking-again-today/",
+        "time_published": "20251107T192219",
+        "authors": [
+          "Keith Noonan",
+          "https://www.facebook.com/themotleyfool/"
+        ],
+        "summary": "Despite today's pullback, AMD stock is still up big in 2025. What comes next?",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F841804%2Famd_large.jpg&w=1200&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Economy - Fiscal",
+            "relevance_score": "0.158519"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.503496"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.684621"
+          }
+        ],
+        "overall_sentiment_score": 0.115734,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.654016",
+            "ticker_sentiment_score": "0.071071",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.124809",
+            "ticker_sentiment_score": "0.13228",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Top Founder-Led Companies That Can Be Safer Long-Term Bets",
+        "url": "https://www.zacks.com/stock/news/2788078/top-founder-led-companies-that-can-be-safer-long-term-bets",
+        "time_published": "20251107T182100",
+        "authors": [
+          "Tanuka De"
+        ],
+        "summary": "NVIDIA, Berkshire Hathaway, Palantir and Capital One stand out as founder-run companies with strong vision, innovation and long-term growth drivers.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/22/2547.jpg",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.266143"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.360215"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.316834,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.030178",
+            "ticker_sentiment_score": "0.102908",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NFLX",
+            "relevance_score": "0.030178",
+            "ticker_sentiment_score": "0.127788",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.150029",
+            "ticker_sentiment_score": "0.137362",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TSLA",
+            "relevance_score": "0.030178",
+            "ticker_sentiment_score": "0.127788",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "BRK-A",
+            "relevance_score": "0.09036",
+            "ticker_sentiment_score": "0.093879",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "COF",
+            "relevance_score": "0.09036",
+            "ticker_sentiment_score": "0.105823",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.09036",
+            "ticker_sentiment_score": "0.132951",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "CoreWeave  ( CRWV )  Stock Slides As Investors Look Ahead To Q3 Earnings - CoreWeave  ( NASDAQ:CRWV ) ",
+        "url": "https://www.benzinga.com/trading-ideas/movers/25/11/48729119/coreweave-crwv-stock-slides-as-investors-look-ahead-to-q3-earnings",
+        "time_published": "20251107T182009",
+        "authors": [
+          "Henry Khederian"
+        ],
+        "summary": "Shares of AI cloud specialist CoreWeave Inc ( NASDAQ:CRWV ) are trading lower Friday afternoon, continuing a multi-day slide as investors appear to take profits ahead of the company's upcoming earnings report. Here's what investors need to know. CRWV stock is showing notable weakness.",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/07/Stuttgart--Germany---06-07-2025-Smartpho.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "News",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.98396"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.744043"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.132124,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "CRWV",
+            "relevance_score": "0.487546",
+            "ticker_sentiment_score": "0.099213",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.206685",
+            "ticker_sentiment_score": "0.116863",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "CRWD",
+            "relevance_score": "0.104228",
+            "ticker_sentiment_score": "0.039895",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "DELL at 14.87X P/E is Trading Dirt Cheap: Right Time to Buy the Stock?",
+        "url": "https://www.zacks.com/stock/news/2788068/dell-at-1487x-pe-is-trading-dirt-cheap-right-time-to-buy-the-stock",
+        "time_published": "20251107T180000",
+        "authors": [
+          "Zacks Investment Research"
+        ],
+        "summary": "Dell Technologies' cheap valuation and surging AI server demand highlight its growth momentum and make it a compelling buy opportunity.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/3e/1190.jpg",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.316726"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.928769"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.371916,
+        "overall_sentiment_label": "Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.04794",
+            "ticker_sentiment_score": "0.0",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.190043",
+            "ticker_sentiment_score": "0.184991",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "META",
+            "relevance_score": "0.04794",
+            "ticker_sentiment_score": "0.0",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.236281",
+            "ticker_sentiment_score": "0.248695",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "DELL",
+            "relevance_score": "0.746664",
+            "ticker_sentiment_score": "0.573085",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "SMCI",
+            "relevance_score": "0.190043",
+            "ticker_sentiment_score": "0.104197",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Nvidia, Palantir, AMD Stocks Had A Really Bad Week - NVIDIA  ( NASDAQ:NVDA ) ",
+        "url": "https://www.benzinga.com/markets/tech/25/11/48728399/nvidia-palantir-amd-stocks-had-a-really-bad-week",
+        "time_published": "20251107T175922",
+        "authors": [
+          "Erica Kollmann"
+        ],
+        "summary": "This week was brutal for leading artificial intelligence stocks, with Nvidia Corp. ( NASDAQ:NVDA ) , Palantir Technologies, Inc. ( NASDAQ:PLTR ) , and Advanced Micro Devices, Inc. ( NASDAQ:AMD ) all suffering their steepest declines in months amid growing market chatter about an \"AI bubble.\".",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/07/Economic-Bubble-Burst-And-Stock-Market-S.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Trading",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.161647"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.310843"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": -0.136909,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.323078",
+            "ticker_sentiment_score": "-0.276006",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.421485",
+            "ticker_sentiment_score": "-0.194052",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "PLTR",
+            "relevance_score": "0.110462",
+            "ticker_sentiment_score": "-0.129986",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "VRT vs. APLD: Which Data Center Infrastructure Stock Has More Upside?",
+        "url": "https://www.zacks.com/stock/news/2788066/vrt-vs-apld-which-data-center-infrastructure-stock-has-more-upside",
+        "time_published": "20251107T175500",
+        "authors": [
+          "Zacks Investment Research"
+        ],
+        "summary": "Vertiv's accelerating AI-driven growth, expanding backlog, and strategic deals position it ahead of Applied Digital in data center infrastructure gains.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/charts/e1/130951.jpg?v=200496021",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.161647"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.857896"
+          },
+          {
+            "topic": "Blockchain",
+            "relevance_score": "0.158519"
+          }
+        ],
+        "overall_sentiment_score": 0.307302,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "APLD",
+            "relevance_score": "0.527386",
+            "ticker_sentiment_score": "0.507105",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "CRWV",
+            "relevance_score": "0.131643",
+            "ticker_sentiment_score": "0.123178",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.087985",
+            "ticker_sentiment_score": "0.104239",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "VRT",
+            "relevance_score": "0.560762",
+            "ticker_sentiment_score": "0.510304",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "PSIX",
+            "relevance_score": "0.04406",
+            "ticker_sentiment_score": "0.099094",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Rigetti Pre-Q3 Earnings Analysis: Buy, Sell or Hold the Stock?",
+        "url": "https://www.zacks.com/stock/news/2788047/rigetti-pre-q3-earnings-analysis-buy-sell-or-hold-the-stock",
+        "time_published": "20251107T173900",
+        "authors": [
+          "Harshit Gupta"
+        ],
+        "summary": "RGTI's Q3 results are likely to reflect steady quantum progress but limited near-term revenue growth as public-sector funding uncertainty lingers.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/3f/989.jpg",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.538269"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.999894"
+          },
+          {
+            "topic": "Real Estate & Construction",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.286249,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.030485",
+            "ticker_sentiment_score": "0.113139",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.030485",
+            "ticker_sentiment_score": "0.070324",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "IONQ",
+            "relevance_score": "0.121496",
+            "ticker_sentiment_score": "0.164333",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "RGTI",
+            "relevance_score": "0.181364",
+            "ticker_sentiment_score": "0.093341",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "QBTS",
+            "relevance_score": "0.121496",
+            "ticker_sentiment_score": "0.164333",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "QUCCF",
+            "relevance_score": "0.030485",
+            "ticker_sentiment_score": "0.070324",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "These Are My 2 Favorite AI Stocks to Buy Right Now",
+        "url": "https://www.fool.com/investing/2025/11/07/these-are-my-2-favorite-ai-stocks-to-buy-right-now/",
+        "time_published": "20251107T165200",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Jose Najarro"
+        ],
+        "summary": "The recent market downturn has me keeping an eye on my two favorite AI stocks.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F840365%2Fnvidia-headquarters-outside-with-black-nvidia-sign-with-nvidia-logo.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.360215"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": -0.075759,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "CRWV",
+            "relevance_score": "0.204072",
+            "ticker_sentiment_score": "-0.268586",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "GD",
+            "relevance_score": "0.204072",
+            "ticker_sentiment_score": "0.133037",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.699089",
+            "ticker_sentiment_score": "-0.313843",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          }
+        ]
+      },
+      {
+        "title": "Crucial Updates from AMD, Nvidia, Super Micro, and Other AI Stocks",
+        "url": "https://www.fool.com/investing/2025/11/07/crucial-updates-from-amd-nvidia-super-micro-and-ot/",
+        "time_published": "20251107T165003",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Jose Najarro"
+        ],
+        "summary": "This week was marked by numerous earnings announcements that significantly affected the semiconductor and AI industries.",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F839101%2Fgettyimages-2195012879-1.jpg&w=3840&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.158519"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.360215"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": -0.058587,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.647749",
+            "ticker_sentiment_score": "-0.217724",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.647749",
+            "ticker_sentiment_score": "-0.217724",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          },
+          {
+            "ticker": "GD",
+            "relevance_score": "0.183895",
+            "ticker_sentiment_score": "0.123086",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "QCOM",
+            "relevance_score": "0.183895",
+            "ticker_sentiment_score": "-0.241239",
+            "ticker_sentiment_label": "Somewhat-Bearish"
+          }
+        ]
+      },
+      {
+        "title": "Pre-Markets in Red on AI Valuation Concerns",
+        "url": "https://www.zacks.com/stock/news/2787949/pre-markets-in-red-on-ai-valuation-concerns",
+        "time_published": "20251107T160400",
+        "authors": [
+          "Zacks Equity Research"
+        ],
+        "summary": "Pre-market trading has slid into the red this morning, holding at current levels ( for now ) but another step down over the past five days and off the all-time highs registered in late October.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/78/424.jpg",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Life Sciences",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Economy - Monetary",
+            "relevance_score": "0.310843"
+          },
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.87644"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.890401"
+          },
+          {
+            "topic": "Real Estate & Construction",
+            "relevance_score": "0.25"
+          }
+        ],
+        "overall_sentiment_score": 0.124668,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.061003",
+            "ticker_sentiment_score": "0.016117",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "WEN",
+            "relevance_score": "0.181591",
+            "ticker_sentiment_score": "0.009107",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "CEG",
+            "relevance_score": "0.12165",
+            "ticker_sentiment_score": "0.141439",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "FLR",
+            "relevance_score": "0.12165",
+            "ticker_sentiment_score": "0.120513",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "CGC",
+            "relevance_score": "0.12165",
+            "ticker_sentiment_score": "0.168039",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Nancy Pelosi And Dow Jones Industrial Average Have 7 Stocks In Common: Do You Own Any Of The Top Picks? - SPDR Dow Jones Industrial Average ETF  ( ARCA:DIA ) ",
+        "url": "https://www.benzinga.com/news/politics/25/11/48723168/nancy-pelosi-and-dow-jones-industrial-average-have-7-stocks-in-common-do-you-own-any-of-the-top-pic",
+        "time_published": "20251107T155327",
+        "authors": [
+          "Chris Katje"
+        ],
+        "summary": "Former Speaker of the House Nancy Pelosi ( D-Calif. ) announced in early November that she would not run for re-election in 2026, ending her decades-long tenure in the U.S. House of Representatives.",
+        "banner_image": "https://cdn.benzinga.com/files/images/story/2025/11/07/Nancy-Pelosi-Slams-Trump--Says-US-Looks-.jpeg?width=1200&height=800&fit=crop",
+        "source": "Benzinga",
+        "category_within_source": "Trading",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "IPO",
+            "relevance_score": "0.158519"
+          },
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.999996"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.150988,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.144853",
+            "ticker_sentiment_score": "0.084914",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.19231",
+            "ticker_sentiment_score": "0.161999",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "AAPL",
+            "relevance_score": "0.144853",
+            "ticker_sentiment_score": "0.087522",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AMZN",
+            "relevance_score": "0.048523",
+            "ticker_sentiment_score": "0.033716",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "V",
+            "relevance_score": "0.096866",
+            "ticker_sentiment_score": "0.109897",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "DIS",
+            "relevance_score": "0.048523",
+            "ticker_sentiment_score": "0.089081",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Is It Time to Buy Astera Labs Stock After Its Q3 Earnings Beat?",
+        "url": "https://www.zacks.com/stock/news/2787918/is-it-time-to-buy-astera-labs-stock-after-its-q3-earnings-beat",
+        "time_published": "20251107T153700",
+        "authors": [
+          "Subhasish Mukherjee"
+        ],
+        "summary": "ALAB's record Q3, soaring AI-driven sales and expanding partnerships highlight its strong growth momentum and profit scalability.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/d3/848.jpg",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.365926"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.992549"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.387967,
+        "overall_sentiment_label": "Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.123717",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "ALAB",
+            "relevance_score": "0.657566",
+            "ticker_sentiment_score": "0.557966",
+            "ticker_sentiment_label": "Bullish"
+          },
+          {
+            "ticker": "FROG",
+            "relevance_score": "0.150592",
+            "ticker_sentiment_score": "0.089313",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "DDOG",
+            "relevance_score": "0.150592",
+            "ticker_sentiment_score": "0.089313",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "AMD",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.054563",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MU",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.123717",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "SNPS",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.054563",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "APH",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.054563",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "CDNS",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.054563",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TEAM",
+            "relevance_score": "0.150592",
+            "ticker_sentiment_score": "0.089313",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "TEL",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.054563",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "QUCCF",
+            "relevance_score": "0.03786",
+            "ticker_sentiment_score": "0.054563",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Bear of the Day: IREN Limited  ( IREN ) ",
+        "url": "https://www.zacks.com/commentary/2787904/bear-of-the-day-iren-limited-iren",
+        "time_published": "20251107T153500",
+        "authors": [
+          "Kevin Cook"
+        ],
+        "summary": "Analysts were slashing EPS estimates ahead of this report, but after MSFT deal a trough may be close ...",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/d3/848.jpg",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.94762"
+          },
+          {
+            "topic": "Technology",
+            "relevance_score": "0.5"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.5"
+          }
+        ],
+        "overall_sentiment_score": 0.132765,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "IREN",
+            "relevance_score": "0.751437",
+            "ticker_sentiment_score": "0.148137",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "MSFT",
+            "relevance_score": "0.246999",
+            "ticker_sentiment_score": "0.104834",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.166169",
+            "ticker_sentiment_score": "-0.06886",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "CRYPTO:BTC",
+            "relevance_score": "0.166169",
+            "ticker_sentiment_score": "-0.044523",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "Onto Innovation  ( ONTO )  Q3 2025 Earnings Transcript",
+        "url": "https://www.fool.com/earnings/call-transcripts/2025/11/07/onto-innovation-onto-q3-2025-earnings-transcript/",
+        "time_published": "20251107T153014",
+        "authors": [
+          "https://www.facebook.com/themotleyfool/",
+          "Motley Fool Transcribing"
+        ],
+        "summary": "Image source: The Motley Fool.Thursday, Nov. 6, 2025 at 4:30 p.m. ETNeed a quote from a Motley Fool analyst? Email pr@fool.comContinue reading ...",
+        "banner_image": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fcdn.content.foolcdn.com%2Fimages%2F1umn9qeh%2Fproduction%2Fa2a40ac227551191f40e319646e58c421fd8b8c0-400x427.png%3Fw%3D400%26h%3D427&w=828&op=resize",
+        "source": "Motley Fool",
+        "category_within_source": "n/a",
+        "source_domain": "www.fool.com",
+        "topics": [
+          {
+            "topic": "Life Sciences",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.992549"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.333333"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "1.0"
+          },
+          {
+            "topic": "Finance",
+            "relevance_score": "0.333333"
+          }
+        ],
+        "overall_sentiment_score": 0.276322,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "EVR",
+            "relevance_score": "0.007527",
+            "ticker_sentiment_score": "0.0",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.007527",
+            "ticker_sentiment_score": "0.113646",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "ONTO",
+            "relevance_score": "0.060161",
+            "ticker_sentiment_score": "0.157111",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "FOREX:AMD",
+            "relevance_score": "0.052652",
+            "ticker_sentiment_score": "0.128811",
+            "ticker_sentiment_label": "Neutral"
+          }
+        ]
+      },
+      {
+        "title": "The Jobs Week That Wasn't, Plus More Q3 Earnings",
+        "url": "https://www.zacks.com/stock/news/2787912/the-jobs-week-that-wasnt-plus-more-q3-earnings",
+        "time_published": "20251107T152800",
+        "authors": [
+          "Mark Vickery"
+        ],
+        "summary": "For employment numbers, we can cobble together what we have, and try to construct something that resembles a realistic labor market scenario.",
+        "banner_image": "https://staticx-tuner.zacks.com/images/articles/main/76/126449.webp",
+        "source": "Zacks Commentary",
+        "category_within_source": "n/a",
+        "source_domain": "www.zacks.com",
+        "topics": [
+          {
+            "topic": "Life Sciences",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Economy - Monetary",
+            "relevance_score": "0.310843"
+          },
+          {
+            "topic": "Retail & Wholesale",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.87644"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "0.25"
+          },
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.928139"
+          },
+          {
+            "topic": "Real Estate & Construction",
+            "relevance_score": "0.25"
+          }
+        ],
+        "overall_sentiment_score": 0.115252,
+        "overall_sentiment_label": "Neutral",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.056407",
+            "ticker_sentiment_score": "0.156951",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          },
+          {
+            "ticker": "WEN",
+            "relevance_score": "0.222838",
+            "ticker_sentiment_score": "0.088096",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "CEG",
+            "relevance_score": "0.112532",
+            "ticker_sentiment_score": "0.137092",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "FLR",
+            "relevance_score": "0.112532",
+            "ticker_sentiment_score": "0.116366",
+            "ticker_sentiment_label": "Neutral"
+          },
+          {
+            "ticker": "CGC",
+            "relevance_score": "0.112532",
+            "ticker_sentiment_score": "0.21293",
+            "ticker_sentiment_label": "Somewhat-Bullish"
+          }
+        ]
+      },
+      {
+        "title": "Market Analysis: NVIDIA And Competitors In Semiconductors & Semiconductor Equipment Industry - NVIDIA  ( NASDAQ:NVDA ) ",
+        "url": "https://www.benzinga.com/insights/news/25/11/48720507/market-analysis-nvidia-and-competitors-in-semiconductors-amp-semiconductor-equipment-industry",
+        "time_published": "20251107T150017",
+        "authors": [
+          "Benzinga Insights"
+        ],
+        "summary": "In the ever-evolving and intensely competitive business landscape, conducting a thorough company analysis is of utmost importance for investors and industry followers.",
+        "banner_image": "https://www.benzinga.com/next-assets/images/benzinga-schema-image-default.png",
+        "source": "Benzinga",
+        "category_within_source": "Markets",
+        "source_domain": "www.benzinga.com",
+        "topics": [
+          {
+            "topic": "Earnings",
+            "relevance_score": "0.928769"
+          },
+          {
+            "topic": "Financial Markets",
+            "relevance_score": "0.54554"
+          },
+          {
+            "topic": "Manufacturing",
+            "relevance_score": "1.0"
+          }
+        ],
+        "overall_sentiment_score": 0.312127,
+        "overall_sentiment_label": "Somewhat-Bullish",
+        "ticker_sentiment": [
+          {
+            "ticker": "NVDA",
+            "relevance_score": "0.608634",
+            "ticker_sentiment_score": "0.486644",
+            "ticker_sentiment_label": "Bullish"
+          }
+        ]
+      }
+    ]
+  }
+}
