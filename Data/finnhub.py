@@ -27,6 +27,13 @@ def get_company_profile(symbol):
     profile = finnhub_client.company_profile2(symbol=symbol)
     return profile
 
+def get_stock_quote(symbol):
+    """Get real-time stock quote"""
+    api_key = load_api_key()
+    finnhub_client = finnhub.Client(api_key=api_key)
+    quote = finnhub_client.quote(symbol)
+    return quote
+
 def get_company_news(symbol, from_date, to_date):
     """Get company news for a specific symbol"""
     api_key = load_api_key()

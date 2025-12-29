@@ -69,6 +69,7 @@ body.dark-mode .list-group-item {
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     margin-bottom: 1.5rem;
     overflow: hidden;
+    border: 1px solid #e0e0e0;
 }
 
 .news-card:hover {
@@ -80,12 +81,27 @@ body.dark-mode .list-group-item {
     height: 200px;
     object-fit: cover;
     width: 100%;
+    border-bottom: 1px solid #e0e0e0;
 }
 
 .news-card .card-title {
     font-size: 1.1rem;
     font-weight: 600;
     line-height: 1.4;
+    color: #2c3e50;
+}
+
+.news-card .card-text {
+    color: #6c757d;
+    line-height: 1.6;
+}
+
+.hover-shadow {
+    transition: box-shadow 0.3s ease;
+}
+
+.hover-shadow:hover {
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
 }
 
 .news-badge {

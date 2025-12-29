@@ -18,9 +18,13 @@ from Data.finnhub import (
     get_earnings_surprises,
     get_insider_transactions,
     get_insider_sentiment,
-    get_earnings_calendar
+    get_earnings_calendar,
+    get_company_profile,
+    get_stock_quote
 )
 from Data.alphavantage import AlphaVantage
+from Data.nvidia_llm import get_company_overview_llm
+from Data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data
 from Sentiment.finbert import get_sentiment
 from stock_analyzer import StockAnalyzer
 
@@ -77,11 +81,11 @@ def dashboard_data():
 def stock_details(symbol):
     """Get detailed stock information"""
     try:
-        # Company overview
-        overview = av.get_company_overview(symbol.upper())
+        # Company profile from Finnhub
+        company = get_company_profile(symbol.upper())
         
-        # Current quote
-        quote = av.get_global_quote(symbol.upper())
+        # Current quote from Finnhub (more reliable than Alpha Vantage)
+        quote = get_stock_quote(symbol.upper())
         
         # Recent news
         today = datetime.date.today()
@@ -92,16 +96,46 @@ def stock_details(symbol):
         # Basic financials
         financials = get_basic_financials(symbol.upper())
         
+        # Return immediately without waiting for AI overview (load it separately)
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
-            'overview': overview,
-            'quote': quote,
+            'company': company,  # Finnhub company profile
+            'quote': quote,  # Finnhub real-time quote
             'news': news[:10] if news else [],
             'financials': financials
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/ai-overview/<symbol>')
+def get_ai_overview(symbol):
+    """Get AI-generated company overview (loads separately for speed)"""
+    try:
+        # TEMPORARILY DISABLED: NVIDIA API is too slow/unreliable
+        # Uncomment below to re-enable AI overviews
+        
+        # Get company profile to get the full name
+        company = get_company_profile(symbol.upper())
+        company_name = company.get('name', symbol.upper()) if company else symbol.upper()
+        
+        # Generate AI overview (DISABLED - uncomment to enable)
+        # ai_overview = get_company_overview_llm(company_name, symbol.upper())
+        
+        # Return basic company description instead of AI overview
+        return jsonify({
+            'success': True,
+            'symbol': symbol.upper(),
+            'ai_overview': None,  # Disabled for speed
+            'message': 'AI overview feature temporarily disabled for faster loading. Enable in app.py if needed.'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error generating AI overview for {symbol}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/sentiment/<symbol>')
 def sentiment_analysis(symbol):
@@ -453,5 +487,50 @@ def search_stocks():
         'results': results
     })
 
+@app.route('/api/charts/<symbol>')
+def get_charts(symbol):
+    """Get chart data for a stock
+    
+    Query Parameters:
+    - period: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max (default: 1y)
+    - interval: 1m, 2m, 5m, 15m, 30m, 60m, 1h, 1d, 5d, 1wk, 1mo (default: 1d)
+    """
+    period = request.args.get('period', '1y')
+    interval = request.args.get('interval', '1d')
+    
+    data = get_chart_data(symbol.upper(), period, interval)
+    return jsonify(data)
+
+@app.route('/api/charts/<symbol>/all-timeframes')
+def get_all_timeframes(symbol):
+    """Get chart data for all timeframes"""
+    data = get_multiple_timeframes(symbol.upper())
+    return jsonify(data)
+
+@app.route('/api/charts/compare')
+def compare_charts():
+    """Compare multiple stocks
+    
+    Query Parameters:
+    - symbols: Comma-separated list of symbols (e.g., AAPL,MSFT,GOOGL)
+    - period: Time period (default: 1y)
+    - interval: Data interval (default: 1d)
+    """
+    symbols_param = request.args.get('symbols', '')
+    symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
+    
+    if not symbols:
+        return jsonify({
+            'success': False,
+            'error': 'No symbols provided'
+        })
+    
+    period = request.args.get('period', '1y')
+    interval = request.args.get('interval', '1d')
+    
+    data = get_comparison_data(symbols, period, interval)
+    return jsonify(data)
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+

@@ -3,16 +3,78 @@ let currentStock = null;
 let notifications = [];
 let charts = {};
 let stockDataCache = {}; // Cache for individual stock data
+let currentSection = 'dashboard'; // Track current section
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
+    showSection('dashboard'); // Show dashboard by default
     loadDashboard();
     loadEarningsCalendar();
     setupEventListeners();
+    setupNavigationListeners();
     startNotificationPolling();
     updateMarketStatus();
     loadWatchlistPrices(); // Load prices for all watchlist stocks
 });
+
+// Setup navigation listeners
+function setupNavigationListeners() {
+    document.getElementById('navDashboard').addEventListener('click', function(e) {
+        e.preventDefault();
+        showSection('dashboard');
+        setActiveNav(this);
+    });
+    
+    document.getElementById('navNews').addEventListener('click', function(e) {
+        e.preventDefault();
+        showSection('news');
+        setActiveNav(this);
+    });
+    
+    document.getElementById('navCalendar').addEventListener('click', function(e) {
+        e.preventDefault();
+        showSection('calendar');
+        setActiveNav(this);
+    });
+    
+    document.getElementById('navQuant').addEventListener('click', function(e) {
+        e.preventDefault();
+        showSection('quant');
+        setActiveNav(this);
+    });
+}
+
+// Show specific section
+function showSection(section) {
+    // Hide all sections
+    document.querySelectorAll('.content-section').forEach(sec => {
+        sec.style.display = 'none';
+    });
+    
+    // Show requested section
+    const sectionElement = document.getElementById('section' + section.charAt(0).toUpperCase() + section.slice(1));
+    if (sectionElement) {
+        sectionElement.style.display = 'block';
+        currentSection = section;
+        
+        // Load section-specific data
+        if (section === 'news') {
+            loadMarketNews();
+        } else if (section === 'calendar') {
+            loadEarningsCalendar();
+        } else if (section === 'quant') {
+            loadQuantAnalysis();
+        }
+    }
+}
+
+// Set active navigation item
+function setActiveNav(element) {
+    document.querySelectorAll('.navbar-nav .nav-link').forEach(link => {
+        link.classList.remove('active');
+    });
+    element.classList.add('active');
+}
 
 // Setup event listeners
 function setupEventListeners() {
@@ -27,6 +89,8 @@ function setupEventListeners() {
         item.addEventListener('click', function(e) {
             e.preventDefault();
             const symbol = this.dataset.symbol;
+            showSection('dashboard'); // Always show in dashboard
+            setActiveNav(document.getElementById('navDashboard'));
             loadStockDetails(symbol);
         });
     });
@@ -206,36 +270,100 @@ async function loadStockOverview(symbol) {
         // Update company info
         const companyInfo = document.getElementById('companyInfo');
         if (data.company) {
-            companyInfo.innerHTML = `
-                <div class="company-details">
-                    <p><strong>Name:</strong> ${data.company.name || 'N/A'}</p>
-                    <p><strong>Industry:</strong> ${data.company.finnhubIndustry || 'N/A'}</p>
-                    <p><strong>Market Cap:</strong> $${(data.company.marketCapitalization || 0).toFixed(2)}B</p>
-                    <p><strong>Country:</strong> ${data.company.country || 'N/A'}</p>
-                    ${data.company.weburl ? `<p><a href="${data.company.weburl}" target="_blank">Company Website</a></p>` : ''}
+            let companyHTML = `<div class="company-details">`;
+            
+            // Show loading placeholder for AI overview
+            companyHTML += `
+                <div class="alert alert-light mb-3" id="aiOverviewContainer">
+                    <h6><i class="fas fa-robot"></i> AI-Generated Overview</h6>
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <small class="text-muted ms-2">Generating AI overview...</small>
                 </div>
             `;
+            
+            companyHTML += `
+                <p><strong>Name:</strong> ${data.company.name || 'N/A'}</p>
+                <p><strong>Industry:</strong> ${data.company.finnhubIndustry || 'N/A'}</p>
+                <p><strong>Market Cap:</strong> $${(data.company.marketCapitalization || 0).toFixed(2)}B</p>
+                <p><strong>Country:</strong> ${data.company.country || 'N/A'}</p>
+                ${data.company.weburl ? `<p><a href="${data.company.weburl}" target="_blank">Company Website</a></p>` : ''}
+            </div>`;
+            
+            companyInfo.innerHTML = companyHTML;
+            
+            // Load AI overview in background (non-blocking)
+            loadAIOverview(symbol);
         } else {
             companyInfo.innerHTML = '<p class="text-muted">Company information not available</p>';
         }
         
-        // Update recent news
+        // Update recent news with enhanced visual design
         const newsContainer = document.getElementById('recentNews');
         if (data.news && data.news.length > 0) {
-            newsContainer.innerHTML = '<div class="list-group">';
-            data.news.slice(0, 5).forEach(news => {
-                newsContainer.innerHTML += `
-                    <a href="${news.url}" target="_blank" class="list-group-item list-group-item-action">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h6 class="mb-1">${truncateText(news.headline, 80)}</h6>
-                            <small>${formatDate(news.datetime)}</small>
+            newsContainer.innerHTML = `
+                <div class="mb-3">
+                    <small class="text-muted">
+                        <i class="fas fa-newspaper"></i> Source: Finnhub API (60 calls/min)
+                    </small>
+                </div>
+            `;
+            
+            data.news.slice(0, 5).forEach((news, index) => {
+                const newsCard = document.createElement('div');
+                newsCard.className = 'news-card mb-3 fade-in';
+                newsCard.style.animationDelay = `${index * 0.1}s`;
+                
+                // Extract domain from URL for source display
+                let source = 'Unknown';
+                try {
+                    const urlObj = new URL(news.url);
+                    source = urlObj.hostname.replace('www.', '');
+                } catch (e) {
+                    source = 'Unknown Source';
+                }
+                
+                // Format date
+                const newsDate = formatDate(news.datetime);
+                
+                newsCard.innerHTML = `
+                    <div class="card h-100 shadow-sm hover-shadow">
+                        ${news.image ? `
+                            <img src="${news.image}" class="card-img-top" alt="News thumbnail" 
+                                 style="height: 200px; object-fit: cover;" 
+                                 onerror="this.style.display='none'">
+                        ` : ''}
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="badge bg-primary">
+                                    <i class="fas fa-globe"></i> ${source}
+                                </span>
+                                <small class="text-muted">
+                                    <i class="far fa-clock"></i> ${newsDate}
+                                </small>
+                            </div>
+                            <h6 class="card-title mb-2">${news.headline}</h6>
+                            ${news.summary ? `
+                                <p class="card-text text-muted small mb-3">
+                                    ${truncateText(news.summary, 150)}
+                                </p>
+                            ` : ''}
+                            <a href="${news.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                Read Full Article <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
                         </div>
-                    </a>
+                    </div>
                 `;
+                
+                newsContainer.appendChild(newsCard);
             });
-            newsContainer.innerHTML += '</div>';
         } else {
-            newsContainer.innerHTML = '<p class="text-muted">No recent news available</p>';
+            newsContainer.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> No recent news available
+                </div>
+            `;
         }
         
     } catch (error) {
@@ -245,11 +373,48 @@ async function loadStockOverview(symbol) {
     }
 }
 
+// Load AI overview separately (non-blocking)
+async function loadAIOverview(symbol) {
+    console.log(`🤖 Loading AI overview for ${symbol}...`);
+    
+    try {
+        const response = await fetch(`/api/ai-overview/${symbol}`);
+        const data = await response.json();
+        
+        const container = document.getElementById('aiOverviewContainer');
+        if (!container) return; // User might have navigated away
+        
+        if (data.success && data.ai_overview) {
+            container.className = 'alert alert-info mb-3 fade-in';
+            container.innerHTML = `
+                <h6><i class="fas fa-robot"></i> AI-Generated Overview</h6>
+                <p class="mb-0" style="white-space: pre-wrap;">${data.ai_overview}</p>
+                <small class="text-muted">Powered by NVIDIA Llama 3.1 70B</small>
+            `;
+            console.log(`✓ AI overview loaded for ${symbol}`);
+        } else {
+            // AI overview is disabled - hide the section entirely
+            container.style.display = 'none';
+            console.log(`ℹ️ AI overview disabled for faster loading`);
+        }
+    } catch (error) {
+        console.error(`✗ Error loading AI overview for ${symbol}:`, error);
+        const container = document.getElementById('aiOverviewContainer');
+        if (container) {
+            // Hide on error instead of showing error message
+            container.style.display = 'none';
+        }
+    }
+}
+
 // Handle tab changes with separate API calls
 function handleTabChange(target, symbol) {
     console.log(`\n🔄 TAB CHANGE: ${target} for ${symbol}`);
     
     switch(target) {
+        case '#charts':
+            loadCharts(symbol, currentPeriod, currentInterval);
+            break;
         case '#sentiment':
             loadSentiment(symbol);
             break;
@@ -638,6 +803,73 @@ async function loadEarningsCalendar() {
     }
 }
 
+// Load Market News
+async function loadMarketNews() {
+    const container = document.getElementById('marketNews');
+    container.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+    
+    try {
+        const response = await fetch('/api/dashboard');
+        const data = await response.json();
+        
+        container.innerHTML = '';
+        
+        if (data.trending && data.trending.length > 0) {
+            data.trending.forEach((news, index) => {
+                const newsCard = document.createElement('div');
+                newsCard.className = 'col-md-6 col-lg-4 mb-3 fade-in';
+                newsCard.style.animationDelay = `${index * 0.1}s`;
+                
+                const newsDate = new Date(news.datetime * 1000).toLocaleDateString();
+                const source = news.source || 'Unknown';
+                
+                newsCard.innerHTML = `
+                    <div class="card h-100 shadow-sm hover-shadow news-card">
+                        ${news.image ? `<img src="${news.image}" class="card-img-top" alt="${news.headline}" style="height: 200px; object-fit: cover;">` : ''}
+                        <div class="card-body">
+                            <span class="badge bg-primary mb-2">${source}</span>
+                            <small class="text-muted d-block mb-2">${newsDate}</small>
+                            <h6 class="card-title">${news.headline}</h6>
+                            <p class="card-text text-muted">${truncateText(news.summary, 120)}</p>
+                            <a href="${news.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                Read More <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(newsCard);
+            });
+        } else {
+            container.innerHTML = '<div class="col-12"><p class="text-muted">No market news available</p></div>';
+        }
+        
+        document.getElementById('newsUpdated').textContent = 
+            `Updated: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    } catch (error) {
+        console.error('Error loading market news:', error);
+        container.innerHTML = '<div class="col-12"><div class="alert alert-danger">Failed to load market news</div></div>';
+    }
+}
+
+// Load Quant Analysis
+async function loadQuantAnalysis() {
+    const container = document.getElementById('quantAnalysis');
+    container.innerHTML = `
+        <div class="alert alert-info">
+            <h5><i class="fas fa-chart-line"></i> Quantitative Analysis Tools</h5>
+            <p class="mb-0">Advanced quantitative analysis features coming soon. This section will include:</p>
+            <ul class="mt-2">
+                <li>Technical indicators (RSI, MACD, Moving Averages)</li>
+                <li>Statistical analysis and correlations</li>
+                <li>Portfolio optimization</li>
+                <li>Risk metrics and VaR calculations</li>
+                <li>Backtesting capabilities</li>
+            </ul>
+        </div>
+    `;
+}
+
 // Search functionality
 async function performSearch() {
     const query = document.getElementById('searchInput').value.trim();
@@ -747,3 +979,273 @@ function getProgressBarClass(grade) {
     };
     return classes[grade] || 'bg-secondary';
 }
+
+// ============================================
+// CHARTS FUNCTIONALITY
+// ============================================
+
+let priceChartInstance = null;
+let volumeChartInstance = null;
+let currentPeriod = '1d';
+let currentInterval = '5m';
+
+function setupChartEventListeners() {
+    // Timeframe button listeners
+    document.querySelectorAll('#timeframeButtons button').forEach(button => {
+        button.addEventListener('click', function() {
+            // Update active state
+            document.querySelectorAll('#timeframeButtons button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            this.classList.add('active');
+            
+            // Load chart with new period
+            const period = this.dataset.period;
+            const interval = this.dataset.interval;
+            currentPeriod = period;
+            currentInterval = interval;
+            
+            if (currentStock) {
+                loadCharts(currentStock, period, interval);
+            }
+        });
+    });
+}
+
+function loadCharts(symbol, period = '1d', interval = '5m') {
+    console.log(`📊 Loading charts for ${symbol} (${period}, ${interval})...`);
+    
+    fetch(`/api/charts/${symbol}?period=${period}&interval=${interval}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderPriceChart(data);
+                renderVolumeChart(data);
+                updateChartStats(data);
+                console.log(`✓ Charts loaded: ${data.data_points} data points`);
+            } else {
+                console.error('Failed to load chart data:', data.error);
+                showChartError(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading charts:', error);
+            showChartError('Failed to load chart data');
+        });
+}
+
+function renderPriceChart(data) {
+    const ctx = document.getElementById('priceChart');
+    if (!ctx) return;
+    
+    // Destroy existing chart
+    if (priceChartInstance) {
+        priceChartInstance.destroy();
+    }
+    
+    // Prepare data
+    const labels = data.dates;
+    const prices = data.close;
+    
+    // Determine color based on overall trend
+    const firstPrice = prices[0];
+    const lastPrice = prices[prices.length - 1];
+    const isPositive = lastPrice >= firstPrice;
+    const lineColor = isPositive ? 'rgba(34, 197, 94, 1)' : 'rgba(239, 68, 68, 1)';
+    const backgroundColor = isPositive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+    
+    // Create new chart
+    priceChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: `${data.symbol} Price`,
+                data: prices,
+                borderColor: lineColor,
+                backgroundColor: backgroundColor,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: lineColor,
+                pointHoverBorderColor: '#fff',
+                pointHoverBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    callbacks: {
+                        label: function(context) {
+                            return `Price: $${context.parsed.y.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxTicksLimit: 8,
+                        autoSkip: true
+                    }
+                },
+                y: {
+                    display: true,
+                    position: 'right',
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderVolumeChart(data) {
+    const ctx = document.getElementById('volumeChart');
+    if (!ctx) return;
+    
+    // Destroy existing chart
+    if (volumeChartInstance) {
+        volumeChartInstance.destroy();
+    }
+    
+    // Prepare data
+    const labels = data.dates;
+    const volumes = data.volume;
+    
+    // Create color array based on price movement
+    const colors = data.close.map((price, index) => {
+        if (index === 0) return 'rgba(156, 163, 175, 0.5)';
+        return price >= data.close[index - 1] ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)';
+    });
+    
+    // Create new chart
+    volumeChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Volume',
+                data: volumes,
+                backgroundColor: colors,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    callbacks: {
+                        label: function(context) {
+                            return `Volume: ${formatVolume(context.parsed.y)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: false
+                },
+                y: {
+                    display: true,
+                    position: 'right',
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return formatVolume(value);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateChartStats(data) {
+    const high = Math.max(...data.high);
+    const low = Math.min(...data.low);
+    const avgVolume = data.volume.reduce((a, b) => a + b, 0) / data.volume.length;
+    const firstPrice = data.close[0];
+    const lastPrice = data.close[data.close.length - 1];
+    const change = lastPrice - firstPrice;
+    const changePercent = (change / firstPrice * 100).toFixed(2);
+    
+    document.getElementById('chartHigh').textContent = `$${high.toFixed(2)}`;
+    document.getElementById('chartLow').textContent = `$${low.toFixed(2)}`;
+    document.getElementById('chartAvgVolume').textContent = formatVolume(avgVolume);
+    
+    const changeEl = document.getElementById('chartChange');
+    changeEl.textContent = `${change >= 0 ? '+' : ''}${changePercent}%`;
+    changeEl.className = change >= 0 ? 'text-success' : 'text-danger';
+}
+
+function formatVolume(volume) {
+    if (volume >= 1000000000) {
+        return (volume / 1000000000).toFixed(2) + 'B';
+    } else if (volume >= 1000000) {
+        return (volume / 1000000).toFixed(2) + 'M';
+    } else if (volume >= 1000) {
+        return (volume / 1000).toFixed(2) + 'K';
+    }
+    return volume.toFixed(0);
+}
+
+function showChartError(message) {
+    const priceCanvas = document.getElementById('priceChart');
+    const volumeCanvas = document.getElementById('volumeChart');
+    
+    if (priceCanvas && priceCanvas.parentElement) {
+        priceCanvas.parentElement.innerHTML = `
+            <div class="alert alert-warning" role="alert">
+                <i class="fas fa-exclamation-triangle"></i> ${message}
+            </div>
+        `;
+    }
+    
+    if (volumeCanvas && volumeCanvas.parentElement) {
+        volumeCanvas.style.display = 'none';
+    }
+}
+
+// Initialize chart event listeners when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    setupChartEventListeners();
+});
+
