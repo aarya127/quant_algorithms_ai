@@ -803,53 +803,160 @@ async function loadEarningsCalendar() {
     }
 }
 
-// Load Market News
+// Load Market News with Twitter and Alpaca integration
+let allNewsItems = [];  // Store all news for filtering
+
 async function loadMarketNews() {
     const container = document.getElementById('marketNews');
-    container.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+    const countFilter = document.getElementById('newsCountFilter');
+    const count = countFilter ? countFilter.value : 30;
+    
+    container.innerHTML = '<div class="col-12 text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading news from Twitter, Alpaca, and Finnhub...</p></div>';
     
     try {
-        const response = await fetch('/api/dashboard');
+        // Fetch combined news from all sources
+        const response = await fetch(`/api/news/combined?count=${count}`);
         const data = await response.json();
         
-        container.innerHTML = '';
-        
-        if (data.trending && data.trending.length > 0) {
-            data.trending.forEach((news, index) => {
-                const newsCard = document.createElement('div');
-                newsCard.className = 'col-md-6 col-lg-4 mb-3 fade-in';
-                newsCard.style.animationDelay = `${index * 0.1}s`;
-                
-                const newsDate = new Date(news.datetime * 1000).toLocaleDateString();
-                const source = news.source || 'Unknown';
-                
-                newsCard.innerHTML = `
-                    <div class="card h-100 shadow-sm hover-shadow news-card">
-                        ${news.image ? `<img src="${news.image}" class="card-img-top" alt="${news.headline}" style="height: 200px; object-fit: cover;">` : ''}
-                        <div class="card-body">
-                            <span class="badge bg-primary mb-2">${source}</span>
-                            <small class="text-muted d-block mb-2">${newsDate}</small>
-                            <h6 class="card-title">${news.headline}</h6>
-                            <p class="card-text text-muted">${truncateText(news.summary, 120)}</p>
-                            <a href="${news.url}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                Read More <i class="fas fa-external-link-alt"></i>
-                            </a>
-                        </div>
-                    </div>
-                `;
-                
-                container.appendChild(newsCard);
-            });
+        if (data.success && data.news && data.news.length > 0) {
+            allNewsItems = data.news;  // Store for filtering
+            displayNews(allNewsItems);
         } else {
-            container.innerHTML = '<div class="col-12"><p class="text-muted">No market news available</p></div>';
+            container.innerHTML = '<div class="col-12"><div class="alert alert-warning">No market news available at the moment</div></div>';
         }
         
         document.getElementById('newsUpdated').textContent = 
             `Updated: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
     } catch (error) {
         console.error('Error loading market news:', error);
-        container.innerHTML = '<div class="col-12"><div class="alert alert-danger">Failed to load market news</div></div>';
+        container.innerHTML = '<div class="col-12"><div class="alert alert-danger">Failed to load market news. Please try again.</div></div>';
     }
+}
+
+// Filter news based on current filter selections
+function filterNews() {
+    const sourceFilter = document.getElementById('newsSourceFilter').value;
+    const symbolFilter = document.getElementById('newsSymbolFilter').value.toUpperCase().trim();
+    
+    let filteredNews = allNewsItems;
+    
+    // Filter by source
+    if (sourceFilter !== 'all') {
+        filteredNews = filteredNews.filter(item => {
+            const source = item.source.toLowerCase();
+            if (sourceFilter === 'twitter') return item.type === 'tweet';
+            if (sourceFilter === 'alpaca') return source.includes('alpaca');
+            if (sourceFilter === 'finnhub') return source.includes('finnhub');
+            return true;
+        });
+    }
+    
+    // Filter by symbol
+    if (symbolFilter) {
+        filteredNews = filteredNews.filter(item => {
+            const symbols = item.symbols || [];
+            return symbols.some(s => s.toUpperCase().includes(symbolFilter));
+        });
+    }
+    
+    displayNews(filteredNews);
+}
+
+// Display news items
+function displayNews(newsItems) {
+    const container = document.getElementById('marketNews');
+    container.innerHTML = '';
+    
+    if (newsItems.length === 0) {
+        container.innerHTML = '<div class="col-12"><div class="alert alert-info">No news items match your filters</div></div>';
+        return;
+    }
+    
+    newsItems.forEach((item, index) => {
+        const newsCard = document.createElement('div');
+        newsCard.className = 'col-md-6 col-lg-4 mb-3 fade-in';
+        newsCard.style.animationDelay = `${index * 0.05}s`;
+        
+        const newsDate = new Date(item.created_at).toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        // Different styling for tweets vs articles
+        if (item.type === 'tweet') {
+            const verified = item.author.verified ? '<i class="fas fa-check-circle text-primary ms-1"></i>' : '';
+            const profileImg = item.author.profile_image || 'https://via.placeholder.com/50';
+            
+            newsCard.innerHTML = `
+                <div class="card h-100 shadow-sm hover-shadow news-card border-start border-info border-4">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-2">
+                            <img src="${profileImg}" class="rounded-circle me-2" width="40" height="40" alt="${item.author.name}">
+                            <div class="flex-grow-1">
+                                <span class="badge bg-info mb-1">
+                                    <i class="fab fa-twitter"></i> Twitter
+                                </span>
+                                <div class="fw-bold">${item.author.name}${verified}</div>
+                                <small class="text-muted">@${item.author.username}</small>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mb-2">
+                            <i class="far fa-clock"></i> ${newsDate}
+                        </small>
+                        <p class="card-text">${item.summary}</p>
+                        ${item.symbols && item.symbols.length > 0 ? `
+                            <div class="mb-2">
+                                ${item.symbols.map(s => `<span class="badge bg-secondary me-1">$${s}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-muted small">
+                                <i class="fas fa-heart"></i> ${item.metrics.likes}
+                                <i class="fas fa-retweet ms-2"></i> ${item.metrics.retweets}
+                            </div>
+                            <a href="${item.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                View <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Article (Finnhub or Alpaca)
+            const sourceColor = item.source.includes('Alpaca') ? 'success' : 'primary';
+            const sourceIcon = item.source.includes('Alpaca') ? 'fa-bolt' : 'fa-newspaper';
+            
+            newsCard.innerHTML = `
+                <div class="card h-100 shadow-sm hover-shadow news-card">
+                    <div class="card-body">
+                        <span class="badge bg-${sourceColor} mb-2">
+                            <i class="fas ${sourceIcon}"></i> ${item.source}
+                        </span>
+                        <small class="text-muted d-block mb-2">
+                            <i class="far fa-clock"></i> ${newsDate}
+                        </small>
+                        ${item.author ? `<small class="text-muted d-block mb-2"><i class="fas fa-user"></i> ${item.author}</small>` : ''}
+                        <h6 class="card-title">${item.headline}</h6>
+                        <p class="card-text text-muted">${truncateText(item.summary, 150)}</p>
+                        ${item.symbols && item.symbols.length > 0 ? `
+                            <div class="mb-2">
+                                ${item.symbols.map(s => `<span class="badge bg-secondary me-1">$${s}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        ${item.url ? `
+                            <a href="${item.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                Read More <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        container.appendChild(newsCard);
+    });
 }
 
 // Load Quant Analysis

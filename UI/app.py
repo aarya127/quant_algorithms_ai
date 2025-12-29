@@ -25,11 +25,19 @@ from Data.finnhub import (
 from Data.alphavantage import AlphaVantage
 from Data.nvidia_llm import get_company_overview_llm
 from Data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data
+from Data.twitter_feed import get_market_tweets, get_financial_news_feed
+from Data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
 from Sentiment.finbert import get_sentiment
 from stock_analyzer import StockAnalyzer
 
 app = Flask(__name__)
 av = AlphaVantage()
+
+# Start Alpaca news stream on app startup (will try but fail gracefully if auth issues)
+try:
+    start_news_stream()  # Subscribe to all news
+except Exception as e:
+    print(f"⚠️  Alpaca news stream not started: {e}")
 
 # Configuration
 DEFAULT_STOCKS = ["NVDA", "AAPL", "MSFT", "TSLA", "GOOGL", "AMZN", "META"]
@@ -531,6 +539,151 @@ def compare_charts():
     data = get_comparison_data(symbols, period, interval)
     return jsonify(data)
 
+@app.route('/api/news/twitter')
+def twitter_news():
+    """Get latest market news from Twitter
+    
+    Query Parameters:
+    - symbol: Optional stock symbol to filter tweets (e.g., AAPL)
+    - count: Number of tweets to return (default: 20, max: 100)
+    - type: 'market' for general market news, 'financial' for financial news sources
+    """
+    symbol = request.args.get('symbol', None)
+    count = min(int(request.args.get('count', 20)), 100)
+    news_type = request.args.get('type', 'market')
+    
+    try:
+        if news_type == 'financial':
+            # Get tweets from major financial news accounts
+            tweets = get_financial_news_feed(count=count)
+        else:
+            # Get general market tweets or symbol-specific tweets
+            tweets = get_market_tweets(symbol=symbol, count=count)
+        
+        return jsonify({
+            'success': True,
+            'count': len(tweets),
+            'tweets': tweets,
+            'source': 'twitter'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/news/alpaca')
+def alpaca_news():
+    """Get real-time news from Alpaca stream
+    
+    Query Parameters:
+    - symbol: Optional stock symbol to filter news
+    - count: Number of news items to return (default: 20)
+    """
+    symbol = request.args.get('symbol', None)
+    count = int(request.args.get('count', 20))
+    
+    try:
+        news_items = get_recent_news(count=count, symbol=symbol)
+        
+        return jsonify({
+            'success': True,
+            'count': len(news_items),
+            'news': news_items,
+            'source': 'alpaca'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/news/combined')
+def combined_news():
+    """Get combined news from all sources (Finnhub, Twitter, Alpaca)
+    
+    Query Parameters:
+    - symbol: Optional stock symbol to filter news
+    - count: Number of items per source (default: 10)
+    """
+    symbol = request.args.get('symbol', None)
+    count = int(request.args.get('count', 10))
+    
+    try:
+        all_news = []
+        
+        # Get Finnhub news (if symbol provided)
+        if symbol:
+            today = datetime.date.today()
+            from_date = (today - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+            to_date = today.strftime('%Y-%m-%d')
+            finnhub_news = get_company_news(symbol.upper(), from_date, to_date)
+            
+            # Format Finnhub news
+            for article in finnhub_news[:count]:
+                all_news.append({
+                    'source': 'Finnhub',
+                    'headline': article.get('headline', ''),
+                    'summary': article.get('summary', ''),
+                    'url': article.get('url', ''),
+                    'created_at': datetime.datetime.fromtimestamp(article.get('datetime', 0)).isoformat(),
+                    'symbols': [symbol.upper()],
+                    'type': 'article'
+                })
+        
+        # Get Twitter news
+        try:
+            tweets = get_market_tweets(symbol=symbol, count=count)
+            for tweet in tweets:
+                all_news.append({
+                    'source': 'Twitter',
+                    'headline': f"@{tweet['author']['username']}: {tweet['text'][:100]}...",
+                    'summary': tweet['text'],
+                    'url': tweet['url'],
+                    'created_at': tweet['created_at'],
+                    'symbols': tweet.get('symbols', []),
+                    'author': tweet['author'],
+                    'metrics': tweet['metrics'],
+                    'type': 'tweet'
+                })
+        except Exception as e:
+            print(f"⚠️  Twitter API error: {e}")
+        
+        # Get Alpaca news (if available)
+        try:
+            alpaca_items = get_recent_news(count=count, symbol=symbol)
+            for item in alpaca_items:
+                all_news.append({
+                    'source': item['source'],
+                    'headline': item['headline'],
+                    'summary': item.get('summary', ''),
+                    'url': item.get('url', ''),
+                    'created_at': item['created_at'],
+                    'symbols': item.get('symbols', []),
+                    'author': item.get('author', ''),
+                    'type': 'article'
+                })
+        except Exception as e:
+            print(f"⚠️  Alpaca news not available: {e}")
+        
+        # Sort by created_at (newest first)
+        all_news.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'count': len(all_news),
+            'news': all_news
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    try:
+        app.run(debug=True, port=5000)
+    finally:
+        # Clean up: stop the Alpaca news stream when app closes
+        stop_news_stream()
 
