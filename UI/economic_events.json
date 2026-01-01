@@ -1,0 +1,94 @@
+{
+  "events": [
+    {
+      "date": "2026-01-29",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-03-18",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-05-06",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-06-17",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-07-29",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-09-16",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-11-03",
+      "type": "Election",
+      "description": "U.S. Midterm Elections",
+      "importance": "high"
+    },
+    {
+      "date": "2026-11-04",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-12-16",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-01-15",
+      "type": "Economic Data",
+      "description": "CPI Report - Consumer Price Index",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-02-13",
+      "type": "Economic Data",
+      "description": "CPI Report - Consumer Price Index",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-03-12",
+      "type": "Economic Data",
+      "description": "CPI Report - Consumer Price Index",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-01-10",
+      "type": "Economic Data",
+      "description": "Jobs Report - Non-Farm Payrolls",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-02-06",
+      "type": "Economic Data",
+      "description": "Jobs Report - Non-Farm Payrolls",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-03-06",
+      "type": "Economic Data",
+      "description": "Jobs Report - Non-Farm Payrolls",
+      "importance": "medium"
+    }
+  ]
+}

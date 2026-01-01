@@ -256,9 +256,12 @@ async function loadStockOverview(symbol) {
             data: data
         };
         
+        // Get currency symbol
+        const currencySymbol = data.currency === 'CAD' ? 'C$' : '$';
+        
         // Update price display
         if (data.quote) {
-            document.getElementById('stockPrice').textContent = `$${data.quote.c.toFixed(2)}`;
+            document.getElementById('stockPrice').textContent = `${currencySymbol}${data.quote.c.toFixed(2)}`;
             const change = data.quote.d;
             const changePercent = data.quote.dp;
             const changeClass = change >= 0 ? 'bg-success' : 'bg-danger';
@@ -283,13 +286,62 @@ async function loadStockOverview(symbol) {
                 </div>
             `;
             
-            companyHTML += `
-                <p><strong>Name:</strong> ${data.company.name || 'N/A'}</p>
-                <p><strong>Industry:</strong> ${data.company.finnhubIndustry || 'N/A'}</p>
-                <p><strong>Market Cap:</strong> $${(data.company.marketCapitalization || 0).toFixed(2)}B</p>
-                <p><strong>Country:</strong> ${data.company.country || 'N/A'}</p>
-                ${data.company.weburl ? `<p><a href="${data.company.weburl}" target="_blank">Company Website</a></p>` : ''}
-            </div>`;
+            // Business Description
+            if (data.company.longBusinessSummary) {
+                companyHTML += `
+                    <div class="alert alert-info mb-3">
+                        <h6><i class="fas fa-building"></i> About ${data.company.name}</h6>
+                        <p class="mb-0 small">${data.company.longBusinessSummary}</p>
+                    </div>
+                `;
+            }
+            
+            // Company Overview Section
+            companyHTML += `<h6 class="mt-3 mb-2"><i class="fas fa-info-circle"></i> Company Overview</h6>`;
+            companyHTML += `<div class="row">`;
+            
+            // Left column
+            companyHTML += `<div class="col-md-6">`;
+            companyHTML += `<p class="mb-2"><strong>Sector:</strong> ${data.company.sector || 'N/A'}</p>`;
+            companyHTML += `<p class="mb-2"><strong>Industry:</strong> ${data.company.finnhubIndustry || 'N/A'}</p>`;
+            companyHTML += `<p class="mb-2"><strong>Exchange:</strong> ${data.company.exchange || 'N/A'}</p>`;
+            companyHTML += `<p class="mb-2"><strong>Currency:</strong> ${data.currency || 'USD'}</p>`;
+            if (data.company.city || data.company.state) {
+                companyHTML += `<p class="mb-2"><strong>Location:</strong> ${data.company.city || ''}${data.company.city && data.company.state ? ', ' : ''}${data.company.state || ''}, ${data.company.country_full || data.company.country || 'N/A'}</p>`;
+            }
+            if (data.company.fullTimeEmployees && data.company.fullTimeEmployees > 0) {
+                companyHTML += `<p class="mb-2"><strong>Employees:</strong> ${data.company.fullTimeEmployees.toLocaleString()}</p>`;
+            }
+            companyHTML += `</div>`;
+            
+            // Right column
+            companyHTML += `<div class="col-md-6">`;
+            companyHTML += `<p class="mb-2"><strong>Market Cap:</strong> ${currencySymbol}${((data.company.marketCapitalization || 0) / 1e9).toFixed(2)}B</p>`;
+            if (data.company.fiftyTwoWeekHigh && data.company.fiftyTwoWeekLow) {
+                companyHTML += `<p class="mb-2"><strong>52-Week Range:</strong> ${currencySymbol}${data.company.fiftyTwoWeekLow.toFixed(2)} - ${currencySymbol}${data.company.fiftyTwoWeekHigh.toFixed(2)}</p>`;
+            }
+            if (data.company.dividendYield && data.company.dividendYield > 0) {
+                companyHTML += `<p class="mb-2"><strong>Dividend Yield:</strong> ${(data.company.dividendYield * 100).toFixed(2)}%</p>`;
+            }
+            if (data.company.trailingPE && data.company.trailingPE > 0) {
+                companyHTML += `<p class="mb-2"><strong>P/E Ratio:</strong> ${data.company.trailingPE.toFixed(2)}</p>`;
+            }
+            if (data.company.priceToBook && data.company.priceToBook > 0) {
+                companyHTML += `<p class="mb-2"><strong>Price/Book:</strong> ${data.company.priceToBook.toFixed(2)}</p>`;
+            }
+            if (data.company.beta && data.company.beta > 0) {
+                companyHTML += `<p class="mb-2"><strong>Beta:</strong> ${data.company.beta.toFixed(2)}</p>`;
+            }
+            companyHTML += `</div>`;
+            
+            companyHTML += `</div>`; // Close row
+            
+            // Website link
+            if (data.company.weburl) {
+                companyHTML += `<p class="mt-3"><a href="${data.company.weburl}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-external-link-alt"></i> Company Website</a></p>`;
+            }
+            
+            companyHTML += `</div>`;
             
             companyInfo.innerHTML = companyHTML;
             
@@ -302,10 +354,16 @@ async function loadStockOverview(symbol) {
         // Update recent news with enhanced visual design
         const newsContainer = document.getElementById('recentNews');
         if (data.news && data.news.length > 0) {
+            console.log(`📰 Loading ${data.news.length} news articles for ${symbol}`);
+            console.log(`First headline: ${data.news[0].headline}`);
+            
             newsContainer.innerHTML = `
                 <div class="mb-3">
-                    <small class="text-muted">
-                        <i class="fas fa-newspaper"></i> Source: Finnhub API (60 calls/min)
+                    <span class="badge bg-primary">
+                        <i class="fas fa-newspaper"></i> ${symbol} Specific News (${data.news.length} articles)
+                    </span>
+                    <small class="text-muted ms-2">
+                        Source: Finnhub API
                     </small>
                 </div>
             `;
@@ -416,7 +474,8 @@ function handleTabChange(target, symbol) {
             loadCharts(symbol, currentPeriod, currentInterval);
             break;
         case '#sentiment':
-            loadSentiment(symbol);
+            // Don't auto-load sentiment - user must click button
+            setupSentimentButton(symbol);
             break;
         case '#scenarios':
             loadScenarios(symbol, '1M');
@@ -427,6 +486,29 @@ function handleTabChange(target, symbol) {
         case '#recommendations':
             loadRecommendations(symbol);
             break;
+    }
+}
+
+// Setup sentiment button to load on demand
+function setupSentimentButton(symbol) {
+    const button = document.getElementById('analyzeSentimentBtn');
+    const container = document.getElementById('sentimentAnalysis');
+    
+    if (button) {
+        // Remove any existing listeners
+        const newButton = button.cloneNode(true);
+        button.parentNode.replaceChild(newButton, button);
+        
+        // Add click handler
+        newButton.addEventListener('click', async function() {
+            newButton.disabled = true;
+            newButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+            
+            await loadSentiment(symbol);
+            
+            newButton.disabled = false;
+            newButton.innerHTML = '<i class="fas fa-brain"></i> Refresh Analysis';
+        });
     }
 }
 

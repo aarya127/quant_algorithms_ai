@@ -8,6 +8,7 @@ import sys
 import os
 import datetime
 import json
+import yfinance as yf
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -33,14 +34,26 @@ from stock_analyzer import StockAnalyzer
 app = Flask(__name__)
 av = AlphaVantage()
 
-# Start Alpaca news stream on app startup (will try but fail gracefully if auth issues)
-try:
-    start_news_stream()  # Subscribe to all news
-except Exception as e:
-    print(f"⚠️  Alpaca news stream not started: {e}")
+# Alpaca news stream disabled - authentication issues and limited value
+# If you want to re-enable, uncomment below and verify credentials
+# try:
+#     start_news_stream()  # Subscribe to all news
+# except Exception as e:
+#     print(f"⚠️  Alpaca news stream not started: {e}")
 
 # Configuration
-DEFAULT_STOCKS = ["NVDA", "AAPL", "MSFT", "TSLA", "GOOGL", "AMZN", "META"]
+DEFAULT_STOCKS = ["NVDA", "TD", "ACDVF", "MSFT", "ENB", "RCI", "CVE", "HUBS", "MU", "CNSWF", "AMD"]
+
+# Map US tickers to TSX equivalents for Canadian stocks (to get CAD prices)
+CANADIAN_STOCKS_MAP = {
+    'TD': 'TD.TO',
+    'ACDVF': 'AC.TO',  # Air Canada
+    'ENB': 'ENB.TO',
+    'RCI': 'RCI-B.TO',  # Rogers Class B
+    'CVE': 'CVE.TO',
+    'CNSWF': 'CSU.TO'  # Constellation Software
+}
+
 TIMEFRAMES = {
     '1W': {'days': 7, 'label': '1 Week'},
     '1M': {'days': 30, 'label': '1 Month'},
@@ -48,6 +61,14 @@ TIMEFRAMES = {
     '6M': {'days': 180, 'label': '6 Months'},
     '1Y': {'days': 365, 'label': '1 Year'},
 }
+
+def get_ticker_for_charts(symbol):
+    """Get the appropriate ticker symbol for charts (TSX for Canadian stocks)"""
+    return CANADIAN_STOCKS_MAP.get(symbol, symbol)
+
+def is_canadian_stock(symbol):
+    """Check if a stock is Canadian"""
+    return symbol in CANADIAN_STOCKS_MAP
 
 @app.route('/')
 def index():
@@ -89,27 +110,141 @@ def dashboard_data():
 def stock_details(symbol):
     """Get detailed stock information"""
     try:
-        # Company profile from Finnhub
-        company = get_company_profile(symbol.upper())
+        symbol_upper = symbol.upper()
         
-        # Current quote from Finnhub (more reliable than Alpha Vantage)
-        quote = get_stock_quote(symbol.upper())
+        # For Canadian stocks, get quote from yfinance (in CAD) instead of Finnhub (in USD)
+        if is_canadian_stock(symbol_upper):
+            tsx_symbol = get_ticker_for_charts(symbol_upper)
+            stock = yf.Ticker(tsx_symbol)
+            info = stock.info
+            hist = stock.history(period='5d')
+            
+            # Build comprehensive company profile from yfinance
+            company = {
+                'name': info.get('longName', info.get('shortName', symbol_upper)),
+                'ticker': symbol_upper,
+                'country': 'CA',
+                'currency': 'CAD',
+                'exchange': info.get('exchange', 'TSX'),
+                'ipo': info.get('ipoDate', ''),
+                'marketCapitalization': info.get('marketCap', 0),
+                'shareOutstanding': info.get('sharesOutstanding', 0),
+                'logo': info.get('logo_url', ''),
+                'phone': info.get('phone', ''),
+                'weburl': info.get('website', ''),
+                'finnhubIndustry': info.get('industry', ''),
+                # Enhanced fields
+                'sector': info.get('sector', ''),
+                'city': info.get('city', ''),
+                'state': info.get('state', ''),
+                'country_full': info.get('country', 'Canada'),
+                'fullTimeEmployees': info.get('fullTimeEmployees', 0),
+                'longBusinessSummary': info.get('longBusinessSummary', ''),
+                'fiftyTwoWeekHigh': info.get('fiftyTwoWeekHigh', 0),
+                'fiftyTwoWeekLow': info.get('fiftyTwoWeekLow', 0),
+                'dividendYield': info.get('dividendYield', 0),
+                'trailingPE': info.get('trailingPE', 0),
+                'forwardPE': info.get('forwardPE', 0),
+                'priceToBook': info.get('priceToBook', 0),
+                'beta': info.get('beta', 0)
+            }
+            
+            # Build quote from yfinance
+            if not hist.empty:
+                latest = hist.iloc[-1]
+                prev = hist.iloc[-2] if len(hist) > 1 else latest
+                quote = {
+                    'c': round(latest['Close'], 2),  # current price
+                    'h': round(latest['High'], 2),   # high
+                    'l': round(latest['Low'], 2),    # low
+                    'o': round(latest['Open'], 2),   # open
+                    'pc': round(prev['Close'], 2),   # previous close
+                    'd': round(latest['Close'] - prev['Close'], 2),  # change
+                    'dp': round(((latest['Close'] - prev['Close']) / prev['Close'] * 100), 2)  # percent change
+                }
+            else:
+                quote = {}
+        else:
+            # Company profile from Finnhub for US stocks
+            company = get_company_profile(symbol_upper)
+            
+            # Enhance with yfinance data for business summary and additional metrics
+            try:
+                stock = yf.Ticker(symbol_upper)
+                info = stock.info
+                # Add business summary and other details to Finnhub data
+                company['longBusinessSummary'] = info.get('longBusinessSummary', '')
+                company['sector'] = info.get('sector', company.get('finnhubIndustry', ''))
+                company['fullTimeEmployees'] = info.get('fullTimeEmployees', 0)
+                company['city'] = info.get('city', '')
+                company['state'] = info.get('state', '')
+                company['country_full'] = info.get('country', '')
+                company['fiftyTwoWeekHigh'] = info.get('fiftyTwoWeekHigh', 0)
+                company['fiftyTwoWeekLow'] = info.get('fiftyTwoWeekLow', 0)
+                company['dividendYield'] = info.get('dividendYield', 0)
+                company['trailingPE'] = info.get('trailingPE', 0)
+                company['forwardPE'] = info.get('forwardPE', 0)
+                company['priceToBook'] = info.get('priceToBook', 0)
+                company['beta'] = info.get('beta', 0)
+            except Exception as e:
+                print(f"Could not enhance Finnhub data with yfinance for {symbol_upper}: {e}")
+            
+            # Current quote from Finnhub
+            quote = get_stock_quote(symbol_upper)
         
-        # Recent news
+        # Recent news - try Finnhub first, fallback to yfinance
         today = datetime.date.today()
         from_date = (today - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
         to_date = today.strftime('%Y-%m-%d')
-        news = get_company_news(symbol.upper(), from_date, to_date)
+        news = get_company_news(symbol_upper, from_date, to_date)
+        
+        # If Finnhub returns no news, try yfinance
+        if not news or len(news) == 0:
+            try:
+                # For Canadian stocks, use TSX symbol for news
+                news_symbol = get_ticker_for_charts(symbol_upper) if is_canadian_stock(symbol_upper) else symbol_upper
+                stock = yf.Ticker(news_symbol)
+                yf_news = stock.news
+                if yf_news:
+                    # Convert yfinance format to Finnhub-like format
+                    news = []
+                    for item in yf_news[:10]:
+                        content = item.get('content', {})
+                        provider = content.get('provider', {})
+                        canonical_url = content.get('canonicalUrl', {})
+                        
+                        # Parse the pubDate to unix timestamp
+                        pub_date = content.get('pubDate', '')
+                        timestamp = 0
+                        if pub_date:
+                            try:
+                                from dateutil import parser
+                                dt = parser.parse(pub_date)
+                                timestamp = int(dt.timestamp())
+                            except:
+                                timestamp = 0
+                        
+                        news.append({
+                            'headline': content.get('title', 'N/A'),
+                            'summary': content.get('summary', '')[:300] if content.get('summary') else 'No summary available',
+                            'url': canonical_url.get('url', ''),
+                            'datetime': timestamp,
+                            'source': provider.get('displayName', 'Yahoo Finance')
+                        })
+            except Exception as e:
+                print(f"yfinance news fallback error for {symbol}: {e}")
         
         # Basic financials
-        financials = get_basic_financials(symbol.upper())
+        financials = get_basic_financials(symbol_upper)
         
         # Return immediately without waiting for AI overview (load it separately)
         return jsonify({
             'success': True,
-            'symbol': symbol.upper(),
-            'company': company,  # Finnhub company profile
-            'quote': quote,  # Finnhub real-time quote
+            'symbol': symbol_upper,
+            'is_canadian': is_canadian_stock(symbol_upper),
+            'currency': 'CAD' if is_canadian_stock(symbol_upper) else 'USD',
+            'company': company,
+            'quote': quote,
             'news': news[:10] if news else [],
             'financials': financials
         })
@@ -392,31 +527,90 @@ def recommendations(symbol):
 
 @app.route('/api/calendar')
 def earnings_calendar():
-    """Get earnings calendar"""
+    """Get comprehensive calendar with earnings, dividends, and macro events"""
     try:
         today = datetime.date.today()
-        from_date = today.strftime('%Y-%m-%d')
-        to_date = (today + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
+        from_date = today
+        to_date = today + datetime.timedelta(days=90)  # Next 3 months
         
         events = []
+        
+        # 1. Get earnings and dividend dates from yfinance for watchlist stocks
         for symbol in DEFAULT_STOCKS:
             try:
-                earnings = get_earnings_surprises(symbol)
-                if earnings and len(earnings) > 0:
-                    latest = earnings[0]
-                    events.append({
-                        'symbol': symbol,
-                        'date': latest.get('period', ''),
-                        'type': 'Earnings',
-                        'estimate': latest.get('estimate', 0),
-                        'actual': latest.get('actual', None)
-                    })
-            except:
+                # Determine correct ticker symbol
+                ticker_symbol = get_ticker_for_charts(symbol) if is_canadian_stock(symbol) else symbol
+                stock = yf.Ticker(ticker_symbol)
+                info = stock.info
+                
+                # Earnings date
+                earnings_dates = info.get('earningsDate', [])
+                if earnings_dates:
+                    # yfinance returns timestamps
+                    for ts in earnings_dates:
+                        if ts:
+                            try:
+                                earnings_date = datetime.datetime.fromtimestamp(ts).date()
+                                if from_date <= earnings_date <= to_date:
+                                    events.append({
+                                        'symbol': symbol,
+                                        'date': earnings_date.strftime('%Y-%m-%d'),
+                                        'type': 'Earnings',
+                                        'description': f'{symbol} Earnings Report',
+                                        'importance': 'high'
+                                    })
+                            except:
+                                pass
+                
+                # Dividend ex-date
+                ex_dividend_date = info.get('exDividendDate')
+                if ex_dividend_date:
+                    try:
+                        div_date = datetime.datetime.fromtimestamp(ex_dividend_date).date()
+                        if from_date <= div_date <= to_date:
+                            dividend_rate = info.get('dividendRate', 0)
+                            events.append({
+                                'symbol': symbol,
+                                'date': div_date.strftime('%Y-%m-%d'),
+                                'type': 'Dividend',
+                                'description': f'{symbol} Ex-Dividend Date (${dividend_rate:.2f}/share)',
+                                'importance': 'medium'
+                            })
+                    except:
+                        pass
+                        
+            except Exception as e:
+                print(f"Error getting calendar data for {symbol}: {e}")
                 continue
+        
+        # 2. Load macro economic events from JSON file
+        try:
+            economic_events_path = os.path.join(os.path.dirname(__file__), 'economic_events.json')
+            with open(economic_events_path, 'r') as f:
+                economic_data = json.load(f)
+                for event in economic_data.get('events', []):
+                    event_date = datetime.datetime.strptime(event['date'], '%Y-%m-%d').date()
+                    if from_date <= event_date <= to_date:
+                        events.append({
+                            'symbol': None,
+                            'date': event['date'],
+                            'type': event['type'],
+                            'description': event['description'],
+                            'importance': event['importance']
+                        })
+        except Exception as e:
+            print(f"Error loading economic events: {e}")
+        
+        # Sort events by date
+        events.sort(key=lambda x: x['date'])
         
         return jsonify({
             'success': True,
-            'events': events
+            'events': events,
+            'date_range': {
+                'from': from_date.strftime('%Y-%m-%d'),
+                'to': to_date.strftime('%Y-%m-%d')
+            }
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -506,13 +700,26 @@ def get_charts(symbol):
     period = request.args.get('period', '1y')
     interval = request.args.get('interval', '1d')
     
-    data = get_chart_data(symbol.upper(), period, interval)
+    symbol_upper = symbol.upper()
+    # Use TSX symbol for Canadian stocks to get CAD prices
+    chart_symbol = get_ticker_for_charts(symbol_upper)
+    
+    data = get_chart_data(chart_symbol, period, interval)
+    # Keep the original symbol in response
+    data['display_symbol'] = symbol_upper
+    data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
     return jsonify(data)
 
 @app.route('/api/charts/<symbol>/all-timeframes')
 def get_all_timeframes(symbol):
     """Get chart data for all timeframes"""
-    data = get_multiple_timeframes(symbol.upper())
+    symbol_upper = symbol.upper()
+    # Use TSX symbol for Canadian stocks to get CAD prices
+    chart_symbol = get_ticker_for_charts(symbol_upper)
+    
+    data = get_multiple_timeframes(chart_symbol)
+    data['display_symbol'] = symbol_upper
+    data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
     return jsonify(data)
 
 @app.route('/api/charts/compare')

@@ -235,7 +235,17 @@
                                 <!-- Sentiment Tab -->
                                 <div class="tab-pane fade" id="sentiment">
                                     <h5>AI Sentiment Analysis</h5>
-                                    <div id="sentimentAnalysis">Loading...</div>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i> 
+                                        <strong>Note:</strong> Sentiment analysis uses Alpha Vantage API (limited to 25 requests/day). 
+                                        Click the button below to analyze.
+                                    </div>
+                                    <button id="analyzeSentimentBtn" class="btn btn-primary mb-3">
+                                        <i class="fas fa-brain"></i> Analyze Sentiment
+                                    </button>
+                                    <div id="sentimentAnalysis">
+                                        <p class="text-muted">Click "Analyze Sentiment" to get comprehensive sentiment analysis from multiple sources.</p>
+                                    </div>
                                 </div>
 
                                 <!-- Scenarios Tab -->
