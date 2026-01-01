@@ -531,7 +531,7 @@ def earnings_calendar():
     try:
         today = datetime.date.today()
         from_date = today
-        to_date = today + datetime.timedelta(days=90)  # Next 3 months
+        to_date = datetime.date(2026, 12, 31)  # Full year 2026
         
         events = []
         
@@ -541,43 +541,57 @@ def earnings_calendar():
                 # Determine correct ticker symbol
                 ticker_symbol = get_ticker_for_charts(symbol) if is_canadian_stock(symbol) else symbol
                 stock = yf.Ticker(ticker_symbol)
-                info = stock.info
                 
-                # Earnings date
-                earnings_dates = info.get('earningsDate', [])
-                if earnings_dates:
-                    # yfinance returns timestamps
-                    for ts in earnings_dates:
-                        if ts:
-                            try:
-                                earnings_date = datetime.datetime.fromtimestamp(ts).date()
+                # Get calendar which includes earnings and dividend dates
+                calendar = stock.calendar
+                
+                if calendar:
+                    # Earnings date
+                    earnings_dates = calendar.get('Earnings Date', [])
+                    if earnings_dates:
+                        # Handle both list and single date
+                        if not isinstance(earnings_dates, list):
+                            earnings_dates = [earnings_dates]
+                        
+                        for earnings_date in earnings_dates:
+                            if earnings_date and isinstance(earnings_date, datetime.date):
                                 if from_date <= earnings_date <= to_date:
+                                    # Get earnings estimates
+                                    earnings_avg = calendar.get('Earnings Average', 0)
+                                    earnings_low = calendar.get('Earnings Low', 0)
+                                    earnings_high = calendar.get('Earnings High', 0)
+                                    
+                                    estimate_text = ''
+                                    if earnings_avg:
+                                        estimate_text = f' (Est: ${earnings_avg:.2f}, Range: ${earnings_low:.2f}-${earnings_high:.2f})'
+                                    
                                     events.append({
                                         'symbol': symbol,
                                         'date': earnings_date.strftime('%Y-%m-%d'),
                                         'type': 'Earnings',
-                                        'description': f'{symbol} Earnings Report',
+                                        'description': f'{symbol} Earnings Report{estimate_text}',
                                         'importance': 'high'
                                     })
-                            except:
-                                pass
-                
-                # Dividend ex-date
-                ex_dividend_date = info.get('exDividendDate')
-                if ex_dividend_date:
-                    try:
-                        div_date = datetime.datetime.fromtimestamp(ex_dividend_date).date()
-                        if from_date <= div_date <= to_date:
-                            dividend_rate = info.get('dividendRate', 0)
+                    
+                    # Dividend ex-date
+                    ex_dividend_date = calendar.get('Ex-Dividend Date')
+                    if ex_dividend_date and isinstance(ex_dividend_date, datetime.date):
+                        if from_date <= ex_dividend_date <= to_date:
+                            # Get dividend info
+                            dividend_date = calendar.get('Dividend Date')
+                            info = stock.info
+                            dividend_rate = info.get('dividendRate', info.get('lastDividendValue', 0))
+                            
+                            div_text = f'${dividend_rate:.2f}/share' if dividend_rate else ''
+                            pay_text = f' (Pay: {dividend_date.strftime("%Y-%m-%d")})' if dividend_date else ''
+                            
                             events.append({
                                 'symbol': symbol,
-                                'date': div_date.strftime('%Y-%m-%d'),
+                                'date': ex_dividend_date.strftime('%Y-%m-%d'),
                                 'type': 'Dividend',
-                                'description': f'{symbol} Ex-Dividend Date (${dividend_rate:.2f}/share)',
+                                'description': f'{symbol} Ex-Dividend Date {div_text}{pay_text}',
                                 'importance': 'medium'
                             })
-                    except:
-                        pass
                         
             except Exception as e:
                 print(f"Error getting calendar data for {symbol}: {e}")

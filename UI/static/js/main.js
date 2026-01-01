@@ -853,7 +853,7 @@ function createRecommendationCard(timeframe, rec) {
     `;
 }
 
-// Load earnings calendar
+// Load comprehensive calendar (earnings, dividends, macro events)
 async function loadEarningsCalendar() {
     const container = document.getElementById('earningsCalendar');
     
@@ -861,27 +861,194 @@ async function loadEarningsCalendar() {
         const response = await fetch('/api/calendar');
         const data = await response.json();
         
-        if (data.earnings && data.earnings.length > 0) {
-            container.innerHTML = `
-                <div class="calendar-grid">
-                    ${data.earnings.map(event => `
-                        <div class="calendar-item">
-                            <div class="calendar-date">
-                                <i class="far fa-calendar"></i> ${event.date}
+        if (data.events && data.events.length > 0) {
+            // Group events by month and date
+            const eventsByMonth = {};
+            data.events.forEach(event => {
+                const dateObj = new Date(event.date + 'T00:00:00');
+                const monthKey = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+                
+                if (!eventsByMonth[monthKey]) {
+                    eventsByMonth[monthKey] = {};
+                }
+                
+                if (!eventsByMonth[monthKey][event.date]) {
+                    eventsByMonth[monthKey][event.date] = [];
+                }
+                
+                eventsByMonth[monthKey][event.date].push(event);
+            });
+            
+            // Get sorted months
+            const sortedMonths = Object.keys(eventsByMonth).sort((a, b) => {
+                return new Date(a) - new Date(b);
+            });
+            
+            // Count total events by type
+            const eventCounts = {
+                'Earnings': 0,
+                'Dividend': 0,
+                'FOMC Meeting': 0,
+                'Economic Data': 0,
+                'Election': 0,
+                'Holiday': 0
+            };
+            
+            data.events.forEach(event => {
+                if (eventCounts[event.type] !== undefined) {
+                    eventCounts[event.type]++;
+                }
+            });
+            
+            let calendarHTML = `
+                <div class="mb-4">
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <div class="alert alert-primary">
+                                <h5 class="mb-3"><i class="fas fa-calendar-alt"></i> 2026 Financial Calendar</h5>
+                                <p class="mb-2">Tracking ${data.events.length} important dates for your watchlist</p>
+                                <div class="d-flex flex-wrap gap-3 mt-3">
+                                    <span class="badge bg-primary"><i class="fas fa-chart-line"></i> ${eventCounts['Earnings']} Earnings</span>
+                                    <span class="badge bg-success"><i class="fas fa-dollar-sign"></i> ${eventCounts['Dividend']} Dividends</span>
+                                    <span class="badge bg-danger"><i class="fas fa-university"></i> ${eventCounts['FOMC Meeting']} FOMC</span>
+                                    <span class="badge bg-info"><i class="fas fa-chart-bar"></i> ${eventCounts['Economic Data']} Economic Data</span>
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-vote-yea"></i> ${eventCounts['Election']} Elections</span>
+                                    <span class="badge bg-secondary"><i class="fas fa-calendar-times"></i> ${eventCounts['Holiday']} Holidays</span>
+                                </div>
                             </div>
-                            <h6 class="mt-2">${event.symbol}</h6>
-                            <div class="calendar-company">${event.company || 'N/A'}</div>
-                            ${event.epsEstimate ? `<small class="text-muted">Est. EPS: $${event.epsEstimate}</small>` : ''}
                         </div>
-                    `).join('')}
+                    </div>
+                    
+                    <!-- Filter Controls -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label"><i class="fas fa-filter"></i> Filter by Type:</label>
+                            <select class="form-select" id="calendarTypeFilter" onchange="filterCalendarEvents()">
+                                <option value="all">All Events</option>
+                                <option value="Earnings">Earnings Reports</option>
+                                <option value="Dividend">Dividends</option>
+                                <option value="FOMC Meeting">FOMC Meetings</option>
+                                <option value="Economic Data">Economic Data</option>
+                                <option value="Election">Elections</option>
+                                <option value="Holiday">Holidays</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><i class="fas fa-fire"></i> Filter by Importance:</label>
+                            <select class="form-select" id="calendarImportanceFilter" onchange="filterCalendarEvents()">
+                                <option value="all">All Levels</option>
+                                <option value="high">High Priority Only</option>
+                                <option value="medium">Medium & High</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
+                <div class="calendar-list" id="calendarEventsList">
             `;
+            
+            // Store events globally for filtering
+            window.allCalendarEvents = data.events;
+            
+            sortedMonths.forEach(monthKey => {
+                const dates = Object.keys(eventsByMonth[monthKey]).sort();
+                
+                calendarHTML += `
+                    <div class="calendar-month-section mb-4">
+                        <h4 class="calendar-month-header">
+                            <i class="fas fa-calendar"></i> ${monthKey}
+                            <span class="badge bg-secondary ms-2">${Object.values(eventsByMonth[monthKey]).flat().length} events</span>
+                        </h4>
+                `;
+                
+                dates.forEach(date => {
+                    const dateObj = new Date(date + 'T00:00:00');
+                    const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                        weekday: 'short', 
+                        month: 'short', 
+                        day: 'numeric' 
+                    });
+                    
+                    // Check if date is today
+                    const today = new Date();
+                    const isToday = dateObj.getDate() === today.getDate() && 
+                                   dateObj.getMonth() === today.getMonth() && 
+                                   dateObj.getFullYear() === today.getFullYear();
+                    
+                    calendarHTML += `
+                        <div class="calendar-date-group mb-3 ${isToday ? 'today-highlight' : ''}" data-date="${date}">
+                            <h6 class="calendar-date-header ${isToday ? 'text-primary fw-bold' : ''}">
+                                <i class="far fa-calendar"></i> ${formattedDate}
+                                ${isToday ? '<span class="badge bg-primary ms-2">TODAY</span>' : ''}
+                            </h6>
+                            <div class="list-group">
+                    `;
+                    
+                    eventsByMonth[monthKey][date].forEach(event => {
+                        let badgeClass = 'secondary';
+                        let icon = 'fa-info-circle';
+                        
+                        if (event.type === 'Earnings') {
+                            badgeClass = 'primary';
+                            icon = 'fa-chart-line';
+                        } else if (event.type === 'Dividend') {
+                            badgeClass = 'success';
+                            icon = 'fa-dollar-sign';
+                        } else if (event.type === 'FOMC Meeting') {
+                            badgeClass = 'danger';
+                            icon = 'fa-university';
+                        } else if (event.type === 'Election') {
+                            badgeClass = 'warning text-dark';
+                            icon = 'fa-vote-yea';
+                        } else if (event.type === 'Economic Data') {
+                            badgeClass = 'info';
+                            icon = 'fa-chart-bar';
+                        } else if (event.type === 'Holiday') {
+                            badgeClass = 'secondary';
+                            icon = 'fa-calendar-times';
+                        }
+                        
+                        const importanceIcon = event.importance === 'high' ? '🔥' : 
+                                              event.importance === 'medium' ? '⚡' : '📌';
+                        
+                        calendarHTML += `
+                            <div class="list-group-item calendar-event-item" data-type="${event.type}" data-importance="${event.importance}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="mb-1">
+                                            <span class="badge bg-${badgeClass} me-2">
+                                                <i class="fas ${icon}"></i> ${event.type}
+                                            </span>
+                                            ${event.symbol ? `<span class="badge bg-dark me-2">${event.symbol}</span>` : ''}
+                                            <span class="importance-badge">${importanceIcon}</span>
+                                        </div>
+                                        <div class="event-description">
+                                            ${event.description}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    calendarHTML += `
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                calendarHTML += `
+                    </div>
+                `;
+            });
+            
+            calendarHTML += '</div>';
+            container.innerHTML = calendarHTML;
         } else {
-            container.innerHTML = '<p class="text-muted">No upcoming earnings events</p>';
+            container.innerHTML = '<p class="text-muted">No upcoming events</p>';
         }
     } catch (error) {
         console.error('Error loading calendar:', error);
-        container.innerHTML = '<div class="alert alert-danger">Failed to load earnings calendar</div>';
+        container.innerHTML = '<div class="alert alert-danger">Failed to load calendar</div>';
     }
 }
 
@@ -1315,6 +1482,50 @@ function renderPriceChart(data) {
                 }
             }
         }
+    });
+}
+
+// Filter calendar events
+function filterCalendarEvents() {
+    const typeFilter = document.getElementById('calendarTypeFilter').value;
+    const importanceFilter = document.getElementById('calendarImportanceFilter').value;
+    
+    // Get all event items
+    const eventItems = document.querySelectorAll('.calendar-event-item');
+    const dateGroups = document.querySelectorAll('.calendar-date-group');
+    const monthSections = document.querySelectorAll('.calendar-month-section');
+    
+    eventItems.forEach(item => {
+        const itemType = item.getAttribute('data-type');
+        const itemImportance = item.getAttribute('data-importance');
+        
+        let showItem = true;
+        
+        // Filter by type
+        if (typeFilter !== 'all' && itemType !== typeFilter) {
+            showItem = false;
+        }
+        
+        // Filter by importance
+        if (importanceFilter === 'high' && itemImportance !== 'high') {
+            showItem = false;
+        } else if (importanceFilter === 'medium' && itemImportance === 'low') {
+            showItem = false;
+        }
+        
+        item.style.display = showItem ? '' : 'none';
+    });
+    
+    // Hide empty date groups
+    dateGroups.forEach(group => {
+        const visibleEvents = group.querySelectorAll('.calendar-event-item:not([style*="display: none"])');
+        group.style.display = visibleEvents.length > 0 ? '' : 'none';
+    });
+    
+    // Hide empty month sections
+    monthSections.forEach(section => {
+        const visibleGroups = section.querySelectorAll('.calendar-date-group:not([style*="display: none"])');
+        section.style.display = visibleGroups.length > 0 ? '' : 'none';
     });
 }
 

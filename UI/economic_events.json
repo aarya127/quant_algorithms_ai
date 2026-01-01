@@ -1,9 +1,87 @@
 {
   "events": [
     {
+      "date": "2026-01-01",
+      "type": "Holiday",
+      "description": "New Year's Day - Markets Closed",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-01-09",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-01-13",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-01-14",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-01-19",
+      "type": "Holiday",
+      "description": "Martin Luther King Jr. Day - Markets Closed",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-01-28",
+      "type": "Economic Data",
+      "description": "GDP (Gross Domestic Product) Q4 Advance Estimate",
+      "importance": "high"
+    },
+    {
       "date": "2026-01-29",
       "type": "FOMC Meeting",
       "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-02-06",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-02-13",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-02-16",
+      "type": "Holiday",
+      "description": "Presidents' Day - Markets Closed",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-02-18",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-02-26",
+      "type": "Economic Data",
+      "description": "GDP Q4 Second Estimate",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-03-06",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-03-13",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
       "importance": "high"
     },
     {
@@ -13,9 +91,87 @@
       "importance": "high"
     },
     {
+      "date": "2026-03-26",
+      "type": "Economic Data",
+      "description": "GDP Q4 Final Estimate",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-04-03",
+      "type": "Holiday",
+      "description": "Good Friday - Markets Closed",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-04-03",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-04-14",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-04-15",
+      "type": "Economic Data",
+      "description": "Tax Day - Filing Deadline",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-04-15",
+      "type": "Economic Data",
+      "description": "Retail Sales Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-04-29",
+      "type": "Economic Data",
+      "description": "GDP Q1 Advance Estimate",
+      "importance": "high"
+    },
+    {
+      "date": "2026-05-01",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
       "date": "2026-05-06",
       "type": "FOMC Meeting",
       "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "importance": "high"
+    },
+    {
+      "date": "2026-05-12",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-05-25",
+      "type": "Holiday",
+      "description": "Memorial Day - Markets Closed",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-05-28",
+      "type": "Economic Data",
+      "description": "GDP Q1 Second Estimate",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-06-05",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-06-11",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
       "importance": "high"
     },
     {
@@ -25,10 +181,70 @@
       "importance": "high"
     },
     {
+      "date": "2026-06-25",
+      "type": "Economic Data",
+      "description": "GDP Q1 Final Estimate",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-07-03",
+      "type": "Holiday",
+      "description": "Independence Day (Observed) - Markets Closed",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-07-02",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-07-14",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
       "date": "2026-07-29",
       "type": "FOMC Meeting",
       "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
       "importance": "high"
+    },
+    {
+      "date": "2026-07-30",
+      "type": "Economic Data",
+      "description": "GDP Q2 Advance Estimate",
+      "importance": "high"
+    },
+    {
+      "date": "2026-08-07",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-08-13",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-08-27",
+      "type": "Economic Data",
+      "description": "GDP Q2 Second Estimate",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-09-04",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-09-07",
+      "type": "Holiday",
+      "description": "Labor Day - Markets Closed",
+      "importance": "medium"
     },
     {
       "date": "2026-09-16",
@@ -37,9 +253,39 @@
       "importance": "high"
     },
     {
+      "date": "2026-09-16",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-09-24",
+      "type": "Economic Data",
+      "description": "GDP Q2 Final Estimate",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-10-02",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-10-15",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-10-29",
+      "type": "Economic Data",
+      "description": "GDP Q3 Advance Estimate",
+      "importance": "high"
+    },
+    {
       "date": "2026-11-03",
       "type": "Election",
-      "description": "U.S. Midterm Elections",
+      "description": "U.S. Midterm Elections - Congressional & Gubernatorial",
       "importance": "high"
     },
     {
@@ -49,45 +295,57 @@
       "importance": "high"
     },
     {
+      "date": "2026-11-06",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-11-13",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-11-26",
+      "type": "Holiday",
+      "description": "Thanksgiving Day - Markets Closed",
+      "importance": "medium"
+    },
+    {
+      "date": "2026-11-27",
+      "type": "Holiday",
+      "description": "Black Friday - Early Market Close (1pm ET)",
+      "importance": "low"
+    },
+    {
+      "date": "2026-12-04",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report",
+      "importance": "high"
+    },
+    {
+      "date": "2026-12-11",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
       "date": "2026-12-16",
       "type": "FOMC Meeting",
       "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
       "importance": "high"
     },
     {
-      "date": "2026-01-15",
+      "date": "2026-12-22",
       "type": "Economic Data",
-      "description": "CPI Report - Consumer Price Index",
+      "description": "GDP Q3 Final Estimate",
       "importance": "medium"
     },
     {
-      "date": "2026-02-13",
-      "type": "Economic Data",
-      "description": "CPI Report - Consumer Price Index",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-03-12",
-      "type": "Economic Data",
-      "description": "CPI Report - Consumer Price Index",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-01-10",
-      "type": "Economic Data",
-      "description": "Jobs Report - Non-Farm Payrolls",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-02-06",
-      "type": "Economic Data",
-      "description": "Jobs Report - Non-Farm Payrolls",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-03-06",
-      "type": "Economic Data",
-      "description": "Jobs Report - Non-Farm Payrolls",
+      "date": "2026-12-25",
+      "type": "Holiday",
+      "description": "Christmas Day - Markets Closed",
       "importance": "medium"
     }
   ]
