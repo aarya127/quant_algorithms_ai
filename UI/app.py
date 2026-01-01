@@ -75,6 +75,90 @@ def index():
     """Main dashboard"""
     return render_template('index.html', default_stocks=DEFAULT_STOCKS)
 
+@app.route('/api/search/<query>')
+def search_stocks(query):
+    """Search for stocks by symbol or company name - Fast version with minimal API calls"""
+    try:
+        query = query.upper().strip()
+        results = []
+        
+        # Use yfinance's fast search functionality
+        # This uses Yahoo's search API which is much faster than fetching individual tickers
+        try:
+            import yfinance.utils as yf_utils
+            
+            # Search for tickers matching the query
+            search_results = yf.Ticker(query).get_fast_info()
+            
+            # For the primary symbol, get basic info
+            stock = yf.Ticker(query)
+            
+            # Use fast_info instead of info to avoid slow API calls
+            fast_info = stock.fast_info
+            
+            if fast_info:
+                # Get additional info only for the exact match (much faster)
+                info = stock.info
+                if info and info.get('symbol'):
+                    exchange = info.get('exchange', '')
+                    # Filter for major exchanges
+                    if exchange in ['NYQ', 'NMS', 'NAS', 'NYSE', 'NASDAQ', 'TOR', 'TSX', 'TSE', 'NEO', 'CNQ'] or not exchange:
+                        results.append({
+                            'symbol': info.get('symbol', query),
+                            'name': info.get('longName', info.get('shortName', query)),
+                            'exchange': exchange or 'Unknown',
+                            'type': info.get('quoteType', 'EQUITY'),
+                            'currency': info.get('currency', 'USD'),
+                            'sector': info.get('sector', ''),
+                            'industry': info.get('industry', '')
+                        })
+        except:
+            # Fallback: just try the exact symbol with minimal info
+            try:
+                stock = yf.Ticker(query)
+                info = stock.info
+                
+                if info and info.get('symbol'):
+                    results.append({
+                        'symbol': info.get('symbol', query),
+                        'name': info.get('longName', info.get('shortName', query)),
+                        'exchange': info.get('exchange', 'Unknown'),
+                        'type': info.get('quoteType', 'EQUITY'),
+                        'currency': info.get('currency', 'USD'),
+                        'sector': info.get('sector', ''),
+                        'industry': info.get('industry', '')
+                    })
+            except:
+                pass
+        
+        # Only try TSX variant if no results and query doesn't already have a suffix
+        if not results and '.' not in query:
+            try:
+                tsx_symbol = f"{query}.TO"
+                stock = yf.Ticker(tsx_symbol)
+                info = stock.info
+                
+                if info and info.get('symbol'):
+                    results.append({
+                        'symbol': info.get('symbol', tsx_symbol),
+                        'name': info.get('longName', info.get('shortName', tsx_symbol)),
+                        'exchange': info.get('exchange', 'TSX'),
+                        'type': info.get('quoteType', 'EQUITY'),
+                        'currency': info.get('currency', 'CAD'),
+                        'sector': info.get('sector', ''),
+                        'industry': info.get('industry', '')
+                    })
+            except:
+                pass
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'query': query
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'results': []})
+
 @app.route('/api/dashboard')
 def dashboard_data():
     """Get dashboard overview data"""
@@ -681,27 +765,6 @@ def get_recommendations(symbol):
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/search')
-def search_stocks():
-    """Search for stocks"""
-    query = request.args.get('q', '').upper()
-    
-    # Simple search - in production, you'd use a proper stock search API
-    results = []
-    all_stocks = DEFAULT_STOCKS + ['AC.TO', 'TD.TO', 'ENB.TO']
-    
-    for symbol in all_stocks:
-        if query in symbol:
-            results.append({
-                'symbol': symbol,
-                'name': symbol  # In production, get actual company name
-            })
-    
-    return jsonify({
-        'success': True,
-        'results': results
-    })
 
 @app.route('/api/charts/<symbol>')
 def get_charts(symbol):

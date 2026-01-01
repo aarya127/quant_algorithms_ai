@@ -4,9 +4,11 @@ let notifications = [];
 let charts = {};
 let stockDataCache = {}; // Cache for individual stock data
 let currentSection = 'dashboard'; // Track current section
+let userWatchlist = []; // User's custom watchlist
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
+    loadUserWatchlist(); // Load saved watchlist from localStorage
     showSection('dashboard'); // Show dashboard by default
     loadDashboard();
     loadEarningsCalendar();
@@ -78,10 +80,25 @@ function setActiveNav(element) {
 
 // Setup event listeners
 function setupEventListeners() {
-    // Search form
-    document.getElementById('searchForm').addEventListener('submit', function(e) {
+    // Search form with live results
+    const searchInput = document.getElementById('searchInput');
+    const searchForm = document.getElementById('searchForm');
+    
+    searchInput.addEventListener('input', debounce(function() {
+        const query = searchInput.value.trim();
+        if (query.length >= 1) {
+            performSearch(query);
+        } else {
+            hideSearchResults();
+        }
+    }, 300));
+    
+    searchForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        performSearch();
+        const query = searchInput.value.trim();
+        if (query) {
+            performSearch(query);
+        }
     });
     
     // Watchlist items
@@ -1648,4 +1665,265 @@ function showChartError(message) {
 document.addEventListener('DOMContentLoaded', function() {
     setupChartEventListeners();
 });
+
+// ============ SEARCH & WATCHLIST MANAGEMENT ============
+
+// Debounce function for search input
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Perform stock search
+async function performSearch(query) {
+    if (!query || query.length < 1) return;
+    
+    try {
+        const response = await fetch(`/api/search/${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        if (data.success && data.results.length > 0) {
+            displaySearchResults(data.results);
+        } else {
+            displaySearchResults([]);
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        displaySearchResults([]);
+    }
+}
+
+// Display search results
+function displaySearchResults(results) {
+    // Create or get search results container
+    let resultsContainer = document.getElementById('searchResults');
+    
+    if (!resultsContainer) {
+        resultsContainer = document.createElement('div');
+        resultsContainer.id = 'searchResults';
+        resultsContainer.className = 'search-results-dropdown';
+        document.getElementById('searchForm').appendChild(resultsContainer);
+    }
+    
+    if (results.length === 0) {
+        resultsContainer.innerHTML = `
+            <div class="search-result-item">
+                <i class="fas fa-info-circle text-muted"></i>
+                <span class="ms-2">No stocks found</span>
+            </div>
+        `;
+        resultsContainer.style.display = 'block';
+        return;
+    }
+    
+    resultsContainer.innerHTML = results.map(stock => `
+        <div class="search-result-item" data-symbol="${stock.symbol}">
+            <div class="d-flex justify-content-between align-items-center w-100">
+                <div>
+                    <strong>${stock.symbol}</strong>
+                    <div class="small text-muted">${stock.name}</div>
+                    <div class="small">
+                        <span class="badge bg-secondary">${stock.exchange}</span>
+                        ${stock.sector ? `<span class="badge bg-info ms-1">${stock.sector}</span>` : ''}
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-primary view-stock-btn" data-symbol="${stock.symbol}">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success add-to-watchlist-btn" data-symbol="${stock.symbol}" data-name="${stock.name}">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    resultsContainer.style.display = 'block';
+    
+    // Add event listeners to buttons
+    resultsContainer.querySelectorAll('.view-stock-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const symbol = this.dataset.symbol;
+            hideSearchResults();
+            showSection('dashboard');
+            setActiveNav(document.getElementById('navDashboard'));
+            loadStockDetails(symbol);
+        });
+    });
+    
+    resultsContainer.querySelectorAll('.add-to-watchlist-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const symbol = this.dataset.symbol;
+            const name = this.dataset.name;
+            addToWatchlist(symbol, name);
+        });
+    });
+}
+
+// Hide search results
+function hideSearchResults() {
+    const resultsContainer = document.getElementById('searchResults');
+    if (resultsContainer) {
+        resultsContainer.style.display = 'none';
+    }
+}
+
+// Close search results when clicking outside
+document.addEventListener('click', function(e) {
+    const searchForm = document.getElementById('searchForm');
+    const resultsContainer = document.getElementById('searchResults');
+    
+    if (resultsContainer && !searchForm.contains(e.target)) {
+        hideSearchResults();
+    }
+});
+
+// Load user watchlist from localStorage
+function loadUserWatchlist() {
+    const saved = localStorage.getItem('userWatchlist');
+    if (saved) {
+        try {
+            userWatchlist = JSON.parse(saved);
+            renderWatchlist();
+        } catch (e) {
+            console.error('Error loading watchlist:', e);
+            userWatchlist = [];
+        }
+    }
+}
+
+// Save watchlist to localStorage
+function saveUserWatchlist() {
+    localStorage.setItem('userWatchlist', JSON.stringify(userWatchlist));
+}
+
+// Add stock to watchlist
+function addToWatchlist(symbol, name) {
+    // Check if already in watchlist
+    if (userWatchlist.find(item => item.symbol === symbol)) {
+        alert(`${symbol} is already in your watchlist`);
+        return;
+    }
+    
+    userWatchlist.push({
+        symbol: symbol,
+        name: name,
+        addedAt: new Date().toISOString()
+    });
+    
+    saveUserWatchlist();
+    renderWatchlist();
+    
+    // Show success message
+    showNotification(`Added ${symbol} to watchlist`, 'success');
+    
+    // Load price for new stock
+    loadWatchlistPrices();
+}
+
+// Remove stock from watchlist
+function removeFromWatchlist(symbol) {
+    userWatchlist = userWatchlist.filter(item => item.symbol !== symbol);
+    saveUserWatchlist();
+    renderWatchlist();
+    showNotification(`Removed ${symbol} from watchlist`, 'info');
+}
+
+// Render watchlist
+function renderWatchlist() {
+    const watchlistContainer = document.getElementById('watchlist');
+    
+    // Get default stocks from page
+    const defaultStocks = Array.from(watchlistContainer.querySelectorAll('.stock-item'))
+        .map(item => item.dataset.symbol);
+    
+    // Clear and rebuild
+    watchlistContainer.innerHTML = '';
+    
+    // Add default stocks
+    defaultStocks.forEach(symbol => {
+        addWatchlistItem(watchlistContainer, symbol, false);
+    });
+    
+    // Add user's custom stocks
+    userWatchlist.forEach(stock => {
+        addWatchlistItem(watchlistContainer, stock.symbol, true, stock.name);
+    });
+    
+    // Reload prices
+    loadWatchlistPrices();
+}
+
+// Add watchlist item to DOM
+function addWatchlistItem(container, symbol, isCustom, name) {
+    const item = document.createElement('a');
+    item.href = '#';
+    item.className = 'list-group-item list-group-item-action stock-item';
+    item.dataset.symbol = symbol;
+    
+    item.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="flex-grow-1">
+                <strong>${symbol}</strong>
+                ${name ? `<div class="small text-muted">${name.substring(0, 25)}${name.length > 25 ? '...' : ''}</div>` : ''}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary">...</span>
+                ${isCustom ? `<button class="btn btn-sm btn-link text-danger p-0 remove-from-watchlist" data-symbol="${symbol}" title="Remove"><i class="fas fa-times"></i></button>` : ''}
+            </div>
+        </div>
+    `;
+    
+    // Click to view
+    item.addEventListener('click', function(e) {
+        if (!e.target.closest('.remove-from-watchlist')) {
+            e.preventDefault();
+            showSection('dashboard');
+            setActiveNav(document.getElementById('navDashboard'));
+            loadStockDetails(symbol);
+        }
+    });
+    
+    // Remove button
+    if (isCustom) {
+        const removeBtn = item.querySelector('.remove-from-watchlist');
+        removeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (confirm(`Remove ${symbol} from watchlist?`)) {
+                removeFromWatchlist(symbol);
+            }
+        });
+    }
+    
+    container.appendChild(item);
+}
+
+// Show notification
+function showNotification(message, type = 'info') {
+    // Create toast notification
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type} position-fixed`;
+    toast.style.cssText = 'top: 80px; right: 20px; z-index: 9999; min-width: 250px;';
+    toast.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : 'info-circle'}"></i>
+        ${message}
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
 
