@@ -1,5 +1,5 @@
 """
-Stock Predictor Web Application
+Invest.ai Web Application
 Comprehensive UI for stock analysis and predictions
 """
 
@@ -896,42 +896,59 @@ def combined_news():
     try:
         all_news = []
         
-        # Get Finnhub news (if symbol provided)
+        # Get Finnhub news for popular symbols even if no symbol specified
+        symbols_to_check = []
         if symbol:
-            today = datetime.date.today()
-            from_date = (today - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
-            to_date = today.strftime('%Y-%m-%d')
-            finnhub_news = get_company_news(symbol.upper(), from_date, to_date)
-            
-            # Format Finnhub news
-            for article in finnhub_news[:count]:
-                all_news.append({
-                    'source': 'Finnhub',
-                    'headline': article.get('headline', ''),
-                    'summary': article.get('summary', ''),
-                    'url': article.get('url', ''),
-                    'created_at': datetime.datetime.fromtimestamp(article.get('datetime', 0)).isoformat(),
-                    'symbols': [symbol.upper()],
-                    'type': 'article'
-                })
+            symbols_to_check = [symbol.upper()]
+        else:
+            # Fetch news for popular stocks when no specific symbol
+            symbols_to_check = ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'GOOGL'][:2]  # Limit to 2 to respect API limits
+        
+        for sym in symbols_to_check:
+            try:
+                today = datetime.date.today()
+                from_date = (today - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+                to_date = today.strftime('%Y-%m-%d')
+                finnhub_news = get_company_news(sym, from_date, to_date)
+                
+                # Format Finnhub news (limit per symbol)
+                items_per_symbol = count // len(symbols_to_check) if len(symbols_to_check) > 1 else count
+                for article in finnhub_news[:items_per_symbol]:
+                    all_news.append({
+                        'source': 'Finnhub',
+                        'headline': article.get('headline', ''),
+                        'summary': article.get('summary', ''),
+                        'url': article.get('url', ''),
+                        'created_at': datetime.datetime.fromtimestamp(article.get('datetime', 0)).isoformat(),
+                        'symbols': [sym],
+                        'type': 'article'
+                    })
+            except Exception as e:
+                print(f"⚠️  Error fetching Finnhub news for {sym}: {e}")
         
         # Get Twitter news
+        twitter_error = None
         try:
             tweets = get_market_tweets(symbol=symbol, count=count)
-            for tweet in tweets:
-                all_news.append({
-                    'source': 'Twitter',
-                    'headline': f"@{tweet['author']['username']}: {tweet['text'][:100]}...",
-                    'summary': tweet['text'],
-                    'url': tweet['url'],
-                    'created_at': tweet['created_at'],
-                    'symbols': tweet.get('symbols', []),
-                    'author': tweet['author'],
-                    'metrics': tweet['metrics'],
-                    'type': 'tweet'
-                })
+            if tweets and len(tweets) > 0:
+                for tweet in tweets:
+                    all_news.append({
+                        'source': 'Twitter',
+                        'headline': f"@{tweet['author']['username']}: {tweet['text'][:100]}...",
+                        'summary': tweet['text'],
+                        'url': tweet['url'],
+                        'created_at': tweet['created_at'],
+                        'symbols': tweet.get('symbols', []),
+                        'author': tweet['author'],
+                        'metrics': tweet['metrics'],
+                        'type': 'tweet'
+                    })
+            else:
+                twitter_error = "Twitter API rate limit reached or no data available"
+                print(f"⚠️  {twitter_error}")
         except Exception as e:
-            print(f"⚠️  Twitter API error: {e}")
+            twitter_error = f"Twitter API unavailable: {str(e)}"
+            print(f"⚠️  {twitter_error}")
         
         # Get Alpaca news (if available)
         try:
@@ -953,11 +970,17 @@ def combined_news():
         # Sort by created_at (newest first)
         all_news.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         
-        return jsonify({
+        response = {
             'success': True,
             'count': len(all_news),
             'news': all_news
-        })
+        }
+        
+        # Add warning if Twitter API failed
+        if twitter_error:
+            response['warning'] = twitter_error
+        
+        return jsonify(response)
     except Exception as e:
         return jsonify({
             'success': False,

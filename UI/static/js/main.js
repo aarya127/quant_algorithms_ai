@@ -1086,6 +1086,21 @@ async function loadMarketNews() {
         
         if (data.success && data.news && data.news.length > 0) {
             allNewsItems = data.news;  // Store for filtering
+            
+            // Show warning if Twitter API failed
+            if (data.warning) {
+                const warningDiv = document.createElement('div');
+                warningDiv.className = 'col-12 mb-3';
+                warningDiv.innerHTML = `
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                        <i class="fas fa-exclamation-triangle"></i> <strong>Twitter/X API Notice:</strong> ${data.warning}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                `;
+                container.innerHTML = '';
+                container.appendChild(warningDiv);
+            }
+            
             displayNews(allNewsItems);
         } else {
             container.innerHTML = '<div class="col-12"><div class="alert alert-warning">No market news available at the moment</div></div>';

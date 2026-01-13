@@ -17,6 +17,28 @@ API_KEY = "47a9sg2P51QWZ5dyTPKtrt5bw"
 API_SECRET = "JxTLFVGQ5dFcuUFZMpwGNPP9iHwZRLBbRUdpcrNnxw8klPjpGW"
 BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAFJd5gEAAAAAHDlDO2S7ydz3eJ6oMxxkHtYAAsI%3DDF5b4CUyYTslNFqLj83BFaPBEES9coi5NczEXoMXvS9EKhDJi7"
 
+# Market-influencing accounts to follow (reduces API calls significantly)
+INFLUENTIAL_ACCOUNTS = [
+    "realDonaldTrump", # Former President - major market influence
+    "elonmusk",      # Tesla/SpaceX CEO - major market mover
+    "CathieDWood",   # ARK Invest CEO
+    "jimcramer",     # CNBC Mad Money
+    "carl_c_icahn",  # Activist investor
+    "BillAckman",    # Pershing Square Capital
+    "michaeljburry", # The Big Short investor
+    "chamath",       # Social Capital founder
+    "raydalio",      # Bridgewater Associates founder
+    "WarrenBuffett", # Berkshire Hathaway CEO
+    "elonmusk",      # Tesla/SpaceX CEO
+    "BarryRitholtz", # Ritholtz Wealth Management
+    "ScottWapnerCNBC", # CNBC Fast Money host
+    "StanleyDruckenmiller", # Duquesne Family Office
+    "howardmarks",   # Oaktree Capital co-founder
+    "DavidEinhorn",  # Greenlight Capital
+    "KirklandLake",  # Activist investor
+    "StephenCushing", # Infrastructure investor
+]
+
 # Financial news accounts to follow
 FINANCIAL_ACCOUNTS = [
     "WSJ",           # Wall Street Journal
@@ -46,7 +68,8 @@ def get_twitter_client():
 
 def get_market_tweets(symbol: str = None, count: int = 20) -> List[Dict]:
     """
-    Fetch latest market-related tweets
+    Fetch latest tweets from influential market figures and financial news accounts only
+    (Optimized to reduce API calls by focusing on high-impact accounts)
     
     Args:
         symbol: Optional stock symbol to filter tweets
@@ -60,13 +83,15 @@ def get_market_tweets(symbol: str = None, count: int = 20) -> List[Dict]:
         return []
     
     try:
-        # Build search query
+        # Build targeted query focusing on influential accounts only
+        accounts_query = " OR ".join([f"from:{acc}" for acc in INFLUENTIAL_ACCOUNTS + FINANCIAL_ACCOUNTS])
+        
         if symbol:
-            # Search for tweets mentioning the stock symbol
-            query = f"${symbol} OR #{symbol} -is:retweet lang:en"
+            # Search for tweets from influential accounts mentioning the stock symbol
+            query = f"({accounts_query}) (${symbol} OR #{symbol}) -is:retweet lang:en"
         else:
-            # Get general market news
-            query = "(stocks OR market OR trading OR investing OR NYSE OR NASDAQ) -is:retweet lang:en"
+            # Get tweets from influential accounts about markets
+            query = f"({accounts_query}) (stocks OR market OR trading OR Fed OR earnings) -is:retweet lang:en"
         
         # Fetch tweets
         tweets = client.search_recent_tweets(
