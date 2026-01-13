@@ -477,7 +477,7 @@ SOFTWARE.
 
 ## 📧 Contact
 
-**Aarya Sinha**
+**Aarya Shah**
 - GitHub: [@aarya127](https://github.com/aarya127)
 - Repository: [quant_algorithms_ai](https://github.com/aarya127/quant_algorithms_ai)
 
