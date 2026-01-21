@@ -7,7 +7,23 @@ import requests
 import os
 
 # NVIDIA API Configuration
-NVIDIA_API_KEY = "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"
+def _get_nvidia_api_key():
+    """Read NVIDIA API key from keys.txt file"""
+    try:
+        keys_path = os.path.join(os.path.dirname(__file__), '..', 'keys.txt')
+        with open(keys_path, 'r') as f:
+            lines = f.readlines()
+            for i, line in enumerate(lines):
+                if 'nvidia llms' in line.lower():
+                    # Get the next non-empty line
+                    if i + 1 < len(lines):
+                        return lines[i + 1].strip()
+        return None
+    except Exception as e:
+        print(f"Error reading NVIDIA API key: {e}")
+        return None
+
+NVIDIA_API_KEY = _get_nvidia_api_key()
 INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 
@@ -22,6 +38,9 @@ def get_company_overview_llm(company_name: str, symbol: str) -> str:
     Returns:
         String containing LLM-generated company overview
     """
+    
+    if not NVIDIA_API_KEY:
+        return "❌ NVIDIA API key not found in keys.txt. Please add it under '# nvidia llms' section."
     
     headers = {
         "Authorization": f"Bearer {NVIDIA_API_KEY}",
