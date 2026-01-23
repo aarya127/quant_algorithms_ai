@@ -60,61 +60,157 @@ A critical constraint is the \textbf{Feller condition}:
 2\kappa\theta \geq \sigma^2
 \end{equation}
 
-This ensures variance remains strictly positive (never goes negative), which is essential for mathematical consistency and realistic modeling.
+This mathematical condition ensures that variance remains strictly positive and never reaches zero (or goes negative), which would be nonsensical in a financial context. The Feller condition states that the strength of mean reversion (measured by $2\kappa\theta$) must dominate the randomness in variance (measured by $\sigma^2$). 
+
+When this condition holds, the variance process has sufficient ``pull'' toward its mean $\theta$ to prevent the Brownian motion from driving it to zero. In practical terms:
+\begin{itemize}
+    \item If $2\kappa\theta > \sigma^2$: Variance strictly positive for all time (mathematically guaranteed)
+    \item If $2\kappa\theta = \sigma^2$: Variance can reach zero but doesn't become negative
+    \item If $2\kappa\theta < \sigma^2$: Variance can become negative (invalid, violates model assumptions)
+\end{itemize}
+
+Violation of the Feller condition doesn't immediately break numerical simulations, but it creates theoretical inconsistencies and can lead to pathological behavior in extreme scenarios. Most calibrations to real market data satisfy this condition comfortably.
 
 \section{What It Models}
 
 \subsection{Stochastic Volatility}
 
-Unlike Black-Scholes (constant volatility), Heston captures the empirical observation that volatility changes randomly over time. Periods of market calm alternate with periods of high turbulence.
+Unlike Black-Scholes which assumes constant volatility (a single number for all time), Heston captures the empirical observation that volatility changes randomly over time following its own stochastic process. In real markets, we observe periods of market calm (low volatility) that can suddenly transition to periods of high turbulence (high volatility), such as during financial crises or major news events. 
+
+The Heston model doesn't just allow volatility to change deterministically—it makes volatility itself a random variable with its own source of uncertainty. This second source of randomness (in addition to price randomness) is what makes it a ``two-factor'' model and fundamentally different from Black-Scholes.
 
 \subsection{Volatility Clustering}
 
-The mean-reverting variance process (CIR) naturally produces \textbf{volatility clustering} -- the tendency for high-volatility periods to cluster together, and likewise for low-volatility periods. This matches real market behavior.
+The mean-reverting variance process (CIR) naturally produces \textbf{volatility clustering}—the well-documented phenomenon where high-volatility periods tend to cluster together, and likewise for low-volatility periods. This was famously noted by Mandelbrot: ``large changes tend to be followed by large changes...and small changes tend to be followed by small changes.''
+
+The mean reversion parameter $\kappa$ controls how long volatility tends to stay elevated or depressed before reverting to its long-term mean. A lower $\kappa$ means slower mean reversion and more persistent volatility clustering, while higher $\kappa$ means volatility quickly returns to normal after shocks. This clustering behavior is visible in realized volatility time series of virtually all financial assets and is a key feature that Black-Scholes cannot capture.
 
 \subsection{Leverage Effect (Asymmetric Volatility)}
 
-The correlation parameter $\rho$ (typically $-0.5$ to $-0.8$) captures the \textbf{leverage effect}: when stock prices fall, volatility tends to rise. This asymmetry is crucial for modeling equity markets and produces realistic volatility smiles.
+The correlation parameter $\rho$ (typically $-0.5$ to $-0.8$ for equity markets) captures the \textbf{leverage effect}: when stock prices fall, volatility tends to rise, and when prices rise, volatility tends to fall. This creates an asymmetric response.
+
+The economic intuition comes from two sources:
+\begin{itemize}
+    \item \textbf{Financial leverage}: When stock prices fall, the debt-to-equity ratio of the firm increases (fixed debt, lower equity value), making the stock riskier and more volatile
+    \item \textbf{Volatility feedback}: Bad news simultaneously lowers prices and increases uncertainty about future outcomes
+\end{itemize}
+
+This negative correlation is crucial for modeling equity derivatives correctly. It produces the characteristic ``skew'' in implied volatility surfaces where out-of-the-money puts (downside protection) are more expensive than Black-Scholes would predict, while out-of-the-money calls are cheaper. The Heston model's ability to generate this skew endogenously (without manual adjustment) is one of its most valuable features.
 
 \subsection{Volatility Smile/Skew}
 
-The Heston model produces the characteristic \textbf{volatility smile} and \textbf{skew} observed in options markets -- out-of-the-money puts are more expensive than Black-Scholes predicts, while deep out-of-the-money calls are cheaper.
+The Heston model produces the characteristic \textbf{volatility smile} and \textbf{skew} observed in options markets—patterns that Black-Scholes fundamentally cannot generate. In the Black-Scholes world, all options on the same underlying with the same maturity should have the same implied volatility. In reality, implied volatility varies with strike price, creating a ``smile'' or ``skew'' shape.
+
+For equity markets, Heston naturally produces:
+\begin{itemize}
+    \item Higher implied volatility for out-of-the-money puts (lower strikes) — traders pay premium for downside protection
+    \item Lower implied volatility at-the-money — the baseline volatility level
+    \item Lower implied volatility for out-of-the-money calls (higher strikes) — less demand for extreme upside bets
+\end{itemize}
+
+This ``smirk'' or ``skew'' pattern reflects market participants' asymmetric fear of downside versus upside moves. The Heston model generates this naturally through the leverage effect ($\rho < 0$) and stochastic volatility, without requiring ad-hoc adjustments to volatility for different strikes.
 
 \subsection{Semi-Closed Form Solutions}
 
-One of Heston's key advantages is that European option prices can be computed via \textbf{Fourier inversion} and the characteristic function:
+One of Heston's key practical advantages is that European option prices can be computed via \textbf{Fourier inversion} and characteristic functions, avoiding computationally expensive Monte Carlo simulation. The call option price is given by:
 
 \begin{equation}
 C(S_0, v_0, K, T) = S_0 P_1 - K e^{-rT} P_2
 \end{equation}
 
-where $P_1$ and $P_2$ are probabilities computed using characteristic functions, providing fast and accurate pricing without Monte Carlo simulation.
+where $P_1$ and $P_2$ are risk-neutral probabilities computed using the characteristic function of the log-stock price. This characteristic function has a known closed form in the Heston model, making pricing extremely fast.
+
+The computation involves numerical integration (typically Gauss-Legendre quadrature), but this is orders of magnitude faster than Monte Carlo methods and produces highly accurate prices in milliseconds. This efficiency is crucial for:
+\begin{itemize}
+    \item Real-time pricing of large portfolios
+    \item Calibration to market data (requiring thousands of price evaluations)
+    \item Risk management systems that need to reprice under multiple scenarios
+    \item High-frequency trading applications
+\end{itemize}
+
+The semi-closed form solution strikes an ideal balance: more realistic than Black-Scholes, yet far faster than pure simulation methods.
 
 \section{What It Ignores}
 
+Despite its sophistication, the Heston model makes several simplifying assumptions that may not hold in extreme market conditions or for all asset classes.
+
 \subsection{Jumps in Asset Prices}
 
-The Heston model assumes continuous price paths. It doesn't capture sudden \textbf{discrete jumps} (like earnings announcements, geopolitical shocks, or market crashes). Extensions like Bates model add jump components.
+The Heston model assumes \textbf{continuous price paths}—prices can only change smoothly over infinitesimally small time intervals. It doesn't capture sudden \textbf{discrete jumps} such as:
+\begin{itemize}
+    \item Overnight gaps from earnings announcements (stock suddenly opens 10\% higher/lower)
+    \item Geopolitical shocks (Brexit vote, 9/11, COVID-19 announcement)
+    \item Flash crashes or sudden liquidity events
+    \item Central bank surprise rate decisions
+\end{itemize}
+
+These discontinuous moves are important for pricing short-dated options and out-of-the-money options where jump risk is significant. Extensions like the \textbf{Bates model} (1996) add a jump component to both price and variance processes, improving the fit to short-term options markets where jump fears are priced in.
 
 \subsection{Time-Varying Parameters}
 
-All parameters ($\kappa, \theta, \sigma, \rho$) are assumed constant over time. In reality, market dynamics evolve -- mean reversion strength and long-term volatility levels change with market regimes.
+All five Heston parameters ($\kappa, \theta, \sigma, \rho, v_0$) are assumed \textbf{constant over time}. In reality:
+\begin{itemize}
+    \item Mean reversion speed $\kappa$ may change during crises (volatility becomes more persistent)
+    \item Long-term mean $\theta$ shifts with market regimes (low-vol regime vs. high-vol regime)
+    \item Correlation $\rho$ can vary (leverage effect stronger during bear markets)
+    \item Vol-of-vol $\sigma$ may increase during periods of uncertainty
+\end{itemize}
+
+This assumption of time-homogeneity simplifies calibration but can lead to poor out-of-sample performance when market dynamics shift. Practitioners often recalibrate frequently (daily or weekly) to adapt to changing conditions, but this introduces model risk and calibration instability.
 
 \subsection{Multiple Volatility Factors}
 
-Heston uses a single stochastic volatility factor. Empirical research suggests multiple volatility components (short-term vs. long-term) may be needed for accurate modeling, especially for long-dated options.
+Heston uses a \textbf{single stochastic volatility factor}. Empirical research suggests that volatility has multiple timescales:
+\begin{itemize}
+    \item \textbf{Short-term component}: High-frequency volatility spikes that mean-revert quickly (days to weeks)
+    \item \textbf{Long-term component}: Persistent volatility shifts that last months to years (regime changes)
+\end{itemize}
+
+A single-factor model cannot simultaneously capture both fast mean reversion for short-dated options and slow mean reversion for long-dated options. The \textbf{Double Heston model} addresses this by using two independent variance processes with different mean reversion speeds, improving the fit across the entire maturity spectrum but doubling the number of parameters.
 
 \subsection{Interest Rate Risk}
 
-The model assumes a constant risk-free rate. For long-dated derivatives or in volatile rate environments, stochastic interest rates (hybrid models) may be necessary.
+The model assumes a \textbf{constant risk-free rate} $r$. For short-dated equity derivatives, this is often acceptable since interest rate changes have minimal impact. However, for:
+\begin{itemize}
+    \item Long-dated options (5+ years)
+    \item Interest rate derivatives (swaptions, caps, floors)
+    \item Currency derivatives where rates differ across currencies
+    \item Markets with volatile interest rate environments
+\end{itemize}
+
+Constant rates become unrealistic. Hybrid models like \textbf{Heston-Hull-White} combine stochastic volatility for the underlying with stochastic interest rates, at the cost of significantly increased complexity.
 
 \subsection{Microstructure Effects}
 
-Transaction costs, bid-ask spreads, liquidity constraints, and market impact are ignored. The model assumes frictionless markets with continuous trading.
+The model assumes \textbf{frictionless markets} with:
+\begin{itemize}
+    \item Zero transaction costs
+    \item No bid-ask spreads
+    \item Infinite liquidity (can trade any size without market impact)
+    \item Continuous trading (no market closures or gaps)
+    \item No margin requirements or funding costs
+\end{itemize}
+
+In practice, these frictions matter, especially for:
+\begin{itemize}
+    \item High-frequency delta hedging strategies (transaction costs accumulate)
+    \item Large institutional positions (market impact and liquidity risk)
+    \item Illiquid derivatives (wide bid-ask spreads)
+    \item Overnight risk and weekend/holiday gaps
+\end{itemize}
+
+Incorporating realistic trading costs and liquidity constraints typically requires numerical methods or simulation-based approaches beyond the Heston framework.
 
 \subsection{Non-Normal Return Distributions}
 
-While better than Black-Scholes, the model still doesn't fully capture extreme tail events (fat tails, extreme kurtosis) observed during market crises.
+While Heston improves upon Black-Scholes by incorporating stochastic volatility, it still produces return distributions that are conditionally normal (given the volatility path). It doesn't fully capture:
+\begin{itemize}
+    \item \textbf{Fat tails}: Extreme events occur more frequently than normal distributions predict
+    \item \textbf{Extreme kurtosis}: ``Black swan'' events with probabilities far exceeding Gaussian assumptions
+    \item \textbf{Higher-order moments}: Skewness and kurtosis that vary systematically with market conditions
+\end{itemize}
+
+During the 2008 financial crisis, even sophisticated stochastic volatility models underestimated tail risk. Models incorporating jumps (Bates), time-varying jump intensity (SVCJ), or rough volatility better capture these extreme events, though at the cost of analytical tractability.
 
 \section{Why People Use It}
 
