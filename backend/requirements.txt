@@ -1,0 +1,9 @@
+Flask==3.0.0
+pandas==2.1.4
+yfinance==1.0
+transformers==4.36.2
+torch>=2.2.0
+finnhub-python==2.4.19
+requests==2.31.0
+tweepy==4.16.0
+websockets==15.0.1
