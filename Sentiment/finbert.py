@@ -6,7 +6,7 @@ import os
 
 # Add parent directory to path to import finnhub functions
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from Data.finnhub import get_company_news, get_basic_financials, get_earnings_surprises
+from data.finnhub import get_company_news, get_basic_financials, get_earnings_surprises
 
 # Initialize FinBERT
 print("Loading FinBERT model...")

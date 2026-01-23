@@ -5,6 +5,7 @@ Uses yfinance to fetch historical price data for charting
 
 import yfinance as yf
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 
 
@@ -143,6 +144,140 @@ def get_comparison_data(symbols: list, period: str = "1y", interval: str = "1d")
         
     except Exception as e:
         print(f"❌ Error fetching comparison data: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def calculate_sma(data: pd.Series, period: int) -> pd.Series:
+    """Calculate Simple Moving Average"""
+    return data.rolling(window=period).mean()
+
+
+def calculate_ema(data: pd.Series, period: int) -> pd.Series:
+    """Calculate Exponential Moving Average"""
+    return data.ewm(span=period, adjust=False).mean()
+
+
+def calculate_rsi(data: pd.Series, period: int = 14) -> pd.Series:
+    """Calculate Relative Strength Index"""
+    delta = data.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+
+def calculate_macd(data: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+    """Calculate MACD (Moving Average Convergence Divergence)"""
+    ema_fast = calculate_ema(data, fast)
+    ema_slow = calculate_ema(data, slow)
+    macd_line = ema_fast - ema_slow
+    signal_line = calculate_ema(macd_line, signal)
+    histogram = macd_line - signal_line
+    
+    return {
+        'macd': macd_line,
+        'signal': signal_line,
+        'histogram': histogram
+    }
+
+
+def calculate_bollinger_bands(data: pd.Series, period: int = 20, std_dev: int = 2) -> dict:
+    """Calculate Bollinger Bands"""
+    sma = calculate_sma(data, period)
+    std = data.rolling(window=period).std()
+    upper_band = sma + (std * std_dev)
+    lower_band = sma - (std * std_dev)
+    
+    return {
+        'middle': sma,
+        'upper': upper_band,
+        'lower': lower_band
+    }
+
+
+def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1d") -> dict:
+    """
+    Get chart data with technical indicators
+    
+    Args:
+        symbol: Stock ticker symbol
+        period: Time period
+        interval: Data interval
+    
+    Returns:
+        Dictionary with price data and technical indicators
+    """
+    
+    try:
+        print(f"📊 Fetching technical indicators for {symbol}...")
+        
+        # Get base chart data
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period=period, interval=interval)
+        
+        if hist.empty:
+            return {
+                "success": False,
+                "error": "No data available"
+            }
+        
+        close_prices = hist['Close']
+        dates = hist.index.strftime('%Y-%m-%d %H:%M:%S').tolist()
+        
+        # Calculate indicators
+        sma_20 = calculate_sma(close_prices, 20)
+        sma_50 = calculate_sma(close_prices, 50)
+        sma_200 = calculate_sma(close_prices, 200)
+        ema_12 = calculate_ema(close_prices, 12)
+        ema_26 = calculate_ema(close_prices, 26)
+        rsi = calculate_rsi(close_prices, 14)
+        macd_data = calculate_macd(close_prices)
+        bollinger = calculate_bollinger_bands(close_prices, 20, 2)
+        
+        result = {
+            "success": True,
+            "symbol": symbol,
+            "period": period,
+            "interval": interval,
+            "dates": dates,
+            "price": {
+                "open": hist['Open'].round(2).tolist(),
+                "high": hist['High'].round(2).tolist(),
+                "low": hist['Low'].round(2).tolist(),
+                "close": hist['Close'].round(2).tolist(),
+                "volume": hist['Volume'].astype(int).tolist()
+            },
+            "indicators": {
+                "sma_20": [None if pd.isna(x) else round(x, 2) for x in sma_20],
+                "sma_50": [None if pd.isna(x) else round(x, 2) for x in sma_50],
+                "sma_200": [None if pd.isna(x) else round(x, 2) for x in sma_200],
+                "ema_12": [None if pd.isna(x) else round(x, 2) for x in ema_12],
+                "ema_26": [None if pd.isna(x) else round(x, 2) for x in ema_26],
+                "rsi": [None if pd.isna(x) else round(x, 2) for x in rsi],
+                "macd": {
+                    "macd": [None if pd.isna(x) else round(x, 2) for x in macd_data['macd']],
+                    "signal": [None if pd.isna(x) else round(x, 2) for x in macd_data['signal']],
+                    "histogram": [None if pd.isna(x) else round(x, 2) for x in macd_data['histogram']]
+                },
+                "bollinger": {
+                    "upper": [None if pd.isna(x) else round(x, 2) for x in bollinger['upper']],
+                    "middle": [None if pd.isna(x) else round(x, 2) for x in bollinger['middle']],
+                    "lower": [None if pd.isna(x) else round(x, 2) for x in bollinger['lower']]
+                }
+            },
+            "data_points": len(dates)
+        }
+        
+        print(f"✓ Calculated technical indicators for {symbol}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error calculating technical indicators for {symbol}: {str(e)}")
         return {
             "success": False,
             "error": str(e)

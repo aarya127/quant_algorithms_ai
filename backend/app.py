@@ -13,7 +13,7 @@ import yfinance as yf
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from Data.finnhub import (
+from data.finnhub import (
     get_company_news,
     get_basic_financials,
     get_earnings_surprises,
@@ -23,13 +23,13 @@ from Data.finnhub import (
     get_company_profile,
     get_stock_quote
 )
-from Data.alphavantage import AlphaVantage
-from Data.nvidia_llm import get_company_overview_llm
-from Data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data
-from Data.twitter_feed import get_market_tweets, get_financial_news_feed
-from Data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
-from Data.company_statistics import get_company_statistics, format_statistics_for_display
-from Sentiment.finbert import get_sentiment
+from data.alphavantage import AlphaVantage
+from data.nvidia_llm import get_company_overview_llm
+from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data, get_technical_indicators
+from data.twitter_feed import get_market_tweets, get_financial_news_feed
+from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
+from data.company_statistics import get_company_statistics, format_statistics_for_display
+from sentiment.finbert import get_sentiment
 from stock_analyzer import StockAnalyzer
 
 app = Flask(__name__)
@@ -849,6 +849,27 @@ def compare_charts():
     interval = request.args.get('interval', '1d')
     
     data = get_comparison_data(symbols, period, interval)
+    return jsonify(data)
+
+@app.route('/api/charts/<symbol>/indicators')
+def get_indicators(symbol):
+    """Get chart data with technical indicators (RSI, MACD, Bollinger Bands, Moving Averages)
+    
+    Query Parameters:
+    - period: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max (default: 1y)
+    - interval: 1m, 2m, 5m, 15m, 30m, 60m, 1h, 1d, 5d, 1wk, 1mo (default: 1d)
+    """
+    period = request.args.get('period', '1y')
+    interval = request.args.get('interval', '1d')
+    
+    symbol_upper = symbol.upper()
+    # Use TSX symbol for Canadian stocks to get CAD prices
+    chart_symbol = get_ticker_for_charts(symbol_upper)
+    
+    data = get_technical_indicators(chart_symbol, period, interval)
+    # Keep the original symbol in response
+    data['display_symbol'] = symbol_upper
+    data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
     return jsonify(data)
 
 @app.route('/api/news/twitter')

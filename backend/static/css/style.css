@@ -63,6 +63,20 @@ body.dark-mode .list-group-item {
     transform: translateX(5px);
 }
 
+.stock-item .remove-from-watchlist {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    text-decoration: none !important;
+}
+
+.stock-item:hover .remove-from-watchlist {
+    opacity: 1;
+}
+
+.remove-from-watchlist:hover {
+    transform: scale(1.2);
+}
+
 /* News Cards */
 .news-card {
     border-radius: 12px;
