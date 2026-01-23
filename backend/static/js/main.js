@@ -1377,6 +1377,8 @@ function getProgressBarClass(grade) {
 
 let priceChartInstance = null;
 let volumeChartInstance = null;
+let rsiChartInstance = null;
+let macdChartInstance = null;
 let currentPeriod = '1d';
 let currentInterval = '5m';
 
@@ -1406,6 +1408,7 @@ function setupChartEventListeners() {
 function loadCharts(symbol, period = '1d', interval = '5m') {
     console.log(`📊 Loading charts for ${symbol} (${period}, ${interval})...`);
     
+    // Load basic price chart
     fetch(`/api/charts/${symbol}?period=${period}&interval=${interval}`)
         .then(response => response.json())
         .then(data => {
@@ -1422,6 +1425,26 @@ function loadCharts(symbol, period = '1d', interval = '5m') {
         .catch(error => {
             console.error('Error loading charts:', error);
             showChartError('Failed to load chart data');
+        });
+    
+    // Load technical indicators
+    fetch(`/api/charts/${symbol}/indicators?period=${period}&interval=${interval}`)
+        .then(response => response.json())
+        .then(data => {
+            console.log('📊 Technical indicators response:', data);
+            if (data.success && data.indicators) {
+                console.log('✓ RSI data points:', data.indicators.rsi ? data.indicators.rsi.length : 0);
+                console.log('✓ MACD data points:', data.indicators.macd ? data.indicators.macd.macd.length : 0);
+                renderRSIChart(data);
+                renderMACDChart(data);
+                renderPriceChartWithIndicators(data);
+                console.log(`✓ Technical indicators loaded`);
+            } else {
+                console.warn('⚠️ No technical indicators data:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading technical indicators:', error);
         });
 }
 
@@ -1812,12 +1835,27 @@ function loadUserWatchlist() {
     if (saved) {
         try {
             userWatchlist = JSON.parse(saved);
-            renderWatchlist();
         } catch (e) {
             console.error('Error loading watchlist:', e);
             userWatchlist = [];
         }
     }
+    
+    // If watchlist is empty, initialize with default stocks
+    if (userWatchlist.length === 0) {
+        const watchlistContainer = document.getElementById('watchlist');
+        const defaultStocks = Array.from(watchlistContainer.querySelectorAll('.stock-item'))
+            .map(item => item.dataset.symbol);
+        
+        userWatchlist = defaultStocks.map(symbol => ({
+            symbol: symbol,
+            name: '',
+            addedAt: new Date().toISOString()
+        }));
+        saveUserWatchlist();
+    }
+    
+    renderWatchlist();
 }
 
 // Save watchlist to localStorage
@@ -1861,21 +1899,12 @@ function removeFromWatchlist(symbol) {
 function renderWatchlist() {
     const watchlistContainer = document.getElementById('watchlist');
     
-    // Get default stocks from page
-    const defaultStocks = Array.from(watchlistContainer.querySelectorAll('.stock-item'))
-        .map(item => item.dataset.symbol);
-    
     // Clear and rebuild
     watchlistContainer.innerHTML = '';
     
-    // Add default stocks
-    defaultStocks.forEach(symbol => {
-        addWatchlistItem(watchlistContainer, symbol, false);
-    });
-    
-    // Add user's custom stocks
+    // Add all stocks from userWatchlist (which now includes default + custom)
     userWatchlist.forEach(stock => {
-        addWatchlistItem(watchlistContainer, stock.symbol, true, stock.name);
+        addWatchlistItem(watchlistContainer, stock.symbol, stock.name);
     });
     
     // Reload prices
@@ -1883,7 +1912,7 @@ function renderWatchlist() {
 }
 
 // Add watchlist item to DOM
-function addWatchlistItem(container, symbol, isCustom, name) {
+function addWatchlistItem(container, symbol, name) {
     const item = document.createElement('a');
     item.href = '#';
     item.className = 'list-group-item list-group-item-action stock-item';
@@ -1897,7 +1926,9 @@ function addWatchlistItem(container, symbol, isCustom, name) {
             </div>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-primary">...</span>
-                ${isCustom ? `<button class="btn btn-sm btn-link text-danger p-0 remove-from-watchlist" data-symbol="${symbol}" title="Remove"><i class="fas fa-times"></i></button>` : ''}
+                <button class="btn btn-sm btn-link text-danger p-0 remove-from-watchlist" data-symbol="${symbol}" title="Remove from watchlist" style="font-size: 0.9rem;">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
         </div>
     `;
@@ -1913,16 +1944,14 @@ function addWatchlistItem(container, symbol, isCustom, name) {
     });
     
     // Remove button
-    if (isCustom) {
-        const removeBtn = item.querySelector('.remove-from-watchlist');
-        removeBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (confirm(`Remove ${symbol} from watchlist?`)) {
-                removeFromWatchlist(symbol);
-            }
-        });
-    }
+    const removeBtn = item.querySelector('.remove-from-watchlist');
+    removeBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (confirm(`Remove ${symbol} from watchlist?`)) {
+            removeFromWatchlist(symbol);
+        }
+    });
     
     container.appendChild(item);
 }
@@ -2183,5 +2212,387 @@ function formatStatRow(label, value) {
         return `<tr><td class="text-muted">${label}</td><td class="text-end text-muted">—</td></tr>`;
     }
     return `<tr><td>${label}</td><td class="text-end"><strong>${value}</strong></td></tr>`;
+}
+
+// Render RSI Chart
+function renderRSIChart(data) {
+    console.log('🎨 renderRSIChart called with data:', data);
+    const ctx = document.getElementById('rsiChart');
+    console.log('📊 RSI canvas element:', ctx);
+    if (!ctx || !data.indicators || !data.indicators.rsi) {
+        console.warn('⚠️ Cannot render RSI chart:', {
+            hasCanvas: !!ctx,
+            hasIndicators: !!data.indicators,
+            hasRSI: !!(data.indicators && data.indicators.rsi)
+        });
+        return;
+    }
+    
+    // Destroy existing chart
+    if (rsiChartInstance) {
+        rsiChartInstance.destroy();
+    }
+    
+    const labels = data.dates;
+    const rsiData = data.indicators.rsi;
+    
+    // Filter out null/NaN values and count valid data points
+    const validCount = rsiData.filter(x => x !== null && x !== undefined && !isNaN(x)).length;
+    console.log(`📊 RSI valid data points: ${validCount} / ${rsiData.length}`);
+    
+    // Skip rendering if too many NaN values
+    if (validCount < 5) {
+        console.warn('⚠️ Insufficient RSI data points for rendering');
+        if (ctx.parentElement) {
+            ctx.parentElement.innerHTML = '<p class="text-muted small">Insufficient data for RSI calculation. Try a longer time period.</p>';
+        }
+        return;
+    }
+    
+    // Create horizontal line datasets for overbought/oversold levels
+    const overboughtLine = new Array(labels.length).fill(70);
+    const oversoldLine = new Array(labels.length).fill(30);
+    
+    rsiChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'RSI',
+                    data: rsiData,
+                    borderColor: 'rgba(139, 92, 246, 1)',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 0,
+                    order: 1
+                },
+                {
+                    label: 'Overbought (70)',
+                    data: overboughtLine,
+                    borderColor: 'rgba(239, 68, 68, 0.5)',
+                    borderWidth: 1,
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    order: 2
+                },
+                {
+                    label: 'Oversold (30)',
+                    data: oversoldLine,
+                    borderColor: 'rgba(34, 197, 94, 0.5)',
+                    borderWidth: 1,
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    order: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 10,
+                        font: {
+                            size: 11
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            if (context.datasetIndex === 0) {
+                                return `RSI: ${context.parsed.y.toFixed(2)}`;
+                            }
+                            return context.dataset.label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxTicksLimit: 8
+                    }
+                },
+                y: {
+                    display: true,
+                    position: 'right',
+                    min: 0,
+                    max: 100,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render MACD Chart
+function renderMACDChart(data) {
+    console.log('🎨 renderMACDChart called with data:', data);
+    const ctx = document.getElementById('macdChart');
+    console.log('📊 MACD canvas element:', ctx);
+    if (!ctx || !data.indicators || !data.indicators.macd) {
+        console.warn('⚠️ Cannot render MACD chart:', {
+            hasCanvas: !!ctx,
+            hasIndicators: !!data.indicators,
+            hasMACD: !!(data.indicators && data.indicators.macd)
+        });
+        return;
+    }
+    
+    // Destroy existing chart
+    if (macdChartInstance) {
+        macdChartInstance.destroy();
+    }
+    
+    const labels = data.dates;
+    const macdData = data.indicators.macd;
+    
+    // Filter out null/NaN values and count valid data points
+    const validCount = macdData.macd.filter(x => x !== null && x !== undefined && !isNaN(x)).length;
+    console.log(`📊 MACD valid data points: ${validCount} / ${macdData.macd.length}`);
+    
+    // Skip rendering if too many NaN values
+    if (validCount < 10) {
+        console.warn('⚠️ Insufficient MACD data points for rendering');
+        const parent = ctx.closest('.card-body');
+        if (parent) {
+            parent.innerHTML = '<p class="text-muted small text-center py-3">Insufficient data for MACD calculation. Try a longer time period (1M, 3M, or 1Y).</p>';
+        }
+        return;
+    }
+    
+    macdChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'MACD',
+                    data: macdData.macd,
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.1,
+                    pointRadius: 0,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Signal',
+                    data: macdData.signal,
+                    borderColor: 'rgba(239, 68, 68, 1)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.1,
+                    pointRadius: 0,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Histogram',
+                    data: macdData.histogram,
+                    backgroundColor: macdData.histogram.map(v => v >= 0 ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'),
+                    borderWidth: 0,
+                    type: 'bar',
+                    yAxisID: 'y'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxTicksLimit: 8
+                    }
+                },
+                y: {
+                    display: true,
+                    position: 'right',
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Enhanced price chart with moving averages and Bollinger Bands
+function renderPriceChartWithIndicators(data) {
+    const ctx = document.getElementById('priceChart');
+    if (!ctx || !data.indicators) return;
+    
+    // Destroy existing chart
+    if (priceChartInstance) {
+        priceChartInstance.destroy();
+    }
+    
+    const labels = data.dates;
+    const prices = data.price.close;
+    const firstPrice = prices[0];
+    const lastPrice = prices[prices.length - 1];
+    const isPositive = lastPrice >= firstPrice;
+    
+    const datasets = [
+        {
+            label: `${data.symbol} Price`,
+            data: prices,
+            borderColor: isPositive ? 'rgba(34, 197, 94, 1)' : 'rgba(239, 68, 68, 1)',
+            backgroundColor: isPositive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            borderWidth: 2,
+            fill: false,
+            tension: 0.1,
+            pointRadius: 0,
+            order: 1
+        }
+    ];
+    
+    // Add moving averages
+    if (data.indicators.sma_20) {
+        datasets.push({
+            label: 'SMA 20',
+            data: data.indicators.sma_20,
+            borderColor: 'rgba(59, 130, 246, 1)',
+            borderWidth: 1,
+            fill: false,
+            tension: 0.1,
+            pointRadius: 0,
+            borderDash: [5, 5],
+            order: 2
+        });
+    }
+    
+    if (data.indicators.sma_50) {
+        datasets.push({
+            label: 'SMA 50',
+            data: data.indicators.sma_50,
+            borderColor: 'rgba(168, 85, 247, 1)',
+            borderWidth: 1,
+            fill: false,
+            tension: 0.1,
+            pointRadius: 0,
+            borderDash: [5, 5],
+            order: 2
+        });
+    }
+    
+    // Add Bollinger Bands
+    if (data.indicators.bollinger) {
+        datasets.push({
+            label: 'BB Upper',
+            data: data.indicators.bollinger.upper,
+            borderColor: 'rgba(156, 163, 175, 0.5)',
+            borderWidth: 1,
+            fill: false,
+            tension: 0.1,
+            pointRadius: 0,
+            order: 3
+        });
+        
+        datasets.push({
+            label: 'BB Lower',
+            data: data.indicators.bollinger.lower,
+            borderColor: 'rgba(156, 163, 175, 0.5)',
+            borderWidth: 1,
+            fill: '-1',
+            backgroundColor: 'rgba(156, 163, 175, 0.1)',
+            tension: 0.1,
+            pointRadius: 0,
+            order: 3
+        });
+    }
+    
+    priceChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxTicksLimit: 8
+                    }
+                },
+                y: {
+                    display: true,
+                    position: 'right',
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
