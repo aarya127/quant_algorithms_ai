@@ -3,12 +3,15 @@ Invest.ai Web Application
 Comprehensive UI for stock analysis and predictions
 """
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 import sys
 import os
 import datetime
 import json
 import yfinance as yf
+import subprocess
+import tempfile
+from pathlib import Path
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -1035,6 +1038,123 @@ def combined_news():
             'success': False,
             'error': str(e)
         })
+
+@app.route('/api/research/<paper_name>')
+def get_research_paper(paper_name):
+    """
+    Dynamically compile LaTeX to PDF and serve it.
+    This saves space by not storing PDFs and always serves the latest version.
+    """
+    try:
+        # Map paper names to their .tex file paths
+        paper_map = {
+            'heston': '../quant_research/stochastic_volatility/heston_model/theory.tex',
+            'sabr': '../quant_research/stochastic_volatility/sabr_model/theory.tex',
+        }
+        
+        if paper_name not in paper_map:
+            return jsonify({
+                'success': False,
+                'error': 'Research paper not found'
+            }), 404
+        
+        # Get the absolute path to the .tex file
+        tex_file = os.path.join(os.path.dirname(__file__), paper_map[paper_name])
+        tex_dir = os.path.dirname(tex_file)
+        tex_filename = os.path.basename(tex_file)
+        
+        if not os.path.exists(tex_file):
+            return jsonify({
+                'success': False,
+                'error': 'LaTeX source file not found'
+            }), 404
+        
+        # Create a temporary directory for compilation
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Copy the .tex file to temp directory
+            import shutil
+            temp_tex = os.path.join(tmpdir, tex_filename)
+            shutil.copy(tex_file, temp_tex)
+            
+            # Compile LaTeX to PDF using pdflatex
+            # Run twice to resolve references
+            for _ in range(2):
+                result = subprocess.run(
+                    ['pdflatex', '-interaction=nonstopmode', '-output-directory', tmpdir, temp_tex],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+            
+            # Check if PDF was generated
+            pdf_filename = tex_filename.replace('.tex', '.pdf')
+            pdf_path = os.path.join(tmpdir, pdf_filename)
+            
+            if not os.path.exists(pdf_path):
+                return jsonify({
+                    'success': False,
+                    'error': 'PDF compilation failed',
+                    'log': result.stderr
+                }), 500
+            
+            # Read the PDF and return it
+            return send_file(
+                pdf_path,
+                mimetype='application/pdf',
+                as_attachment=False,
+                download_name=f'{paper_name}_model.pdf'
+            )
+    
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'success': False,
+            'error': 'LaTeX compilation timed out'
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error generating PDF: {str(e)}'
+        }), 500
+
+@app.route('/api/research/<paper_name>/markdown')
+def get_research_markdown(paper_name):
+    """
+    Serve markdown research papers directly
+    """
+    try:
+        # Map paper names to their markdown file paths
+        markdown_map = {
+            'advanced_trading': '../quant_research/advanced_trading/theory.md',
+        }
+        
+        if paper_name not in markdown_map:
+            return jsonify({
+                'success': False,
+                'error': 'Research paper not found'
+            }), 404
+        
+        # Get the absolute path to the markdown file
+        md_file = os.path.join(os.path.dirname(__file__), markdown_map[paper_name])
+        
+        if not os.path.exists(md_file):
+            return jsonify({
+                'success': False,
+                'error': 'Markdown file not found'
+            }), 404
+        
+        with open(md_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        return jsonify({
+            'success': True,
+            'content': content
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
     try:

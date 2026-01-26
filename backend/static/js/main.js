@@ -8,6 +8,14 @@ let userWatchlist = []; // User's custom watchlist
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize AOS (Animate On Scroll)
+    AOS.init({
+        duration: 800,
+        easing: 'ease-in-out',
+        once: true,
+        offset: 100
+    });
+    
     loadUserWatchlist(); // Load saved watchlist from localStorage
     showSection('dashboard'); // Show dashboard by default
     loadDashboard();
@@ -1245,20 +1253,308 @@ function displayNews(newsItems) {
 
 // Load Quant Analysis
 async function loadQuantAnalysis() {
-    const container = document.getElementById('quantAnalysis');
-    container.innerHTML = `
-        <div class="alert alert-info">
-            <h5><i class="fas fa-chart-line"></i> Quantitative Analysis Tools</h5>
-            <p class="mb-0">Advanced quantitative analysis features coming soon. This section will include:</p>
-            <ul class="mt-2">
-                <li>Technical indicators (RSI, MACD, Moving Averages)</li>
-                <li>Statistical analysis and correlations</li>
-                <li>Portfolio optimization</li>
-                <li>Risk metrics and VaR calculations</li>
-                <li>Backtesting capabilities</li>
-            </ul>
+    // Refresh AOS animations when switching to quant section
+    setTimeout(() => {
+        AOS.refresh();
+    }, 100);
+}
+
+// View Research Paper
+function viewResearch(type) {
+    // Show loading indicator
+    const loadingModal = document.createElement('div');
+    loadingModal.className = 'modal fade';
+    loadingModal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center p-5">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5>Compiling LaTeX document...</h5>
+                    <p class="text-muted">This may take a few seconds</p>
+                </div>
+            </div>
         </div>
     `;
+    document.body.appendChild(loadingModal);
+    const bsLoadingModal = new bootstrap.Modal(loadingModal);
+    bsLoadingModal.show();
+    
+    if (type === 'advanced_trading') {
+        // Handle markdown files
+        fetch(`/api/research/${type}/markdown`)
+            .then(response => response.json())
+            .then(data => {
+                bsLoadingModal.hide();
+                loadingModal.remove();
+                
+                if (data.success) {
+                    showMarkdownModal('Advanced Trading Theory', data.content);
+                } else {
+                    alert('Failed to load research paper: ' + data.error);
+                }
+            })
+            .catch(error => {
+                bsLoadingModal.hide();
+                loadingModal.remove();
+                console.error('Error loading markdown:', error);
+                alert('Failed to load research paper');
+            });
+    } else {
+        // Handle LaTeX PDFs - dynamically compile and open
+        fetch(`/api/research/${type}`)
+            .then(response => {
+                bsLoadingModal.hide();
+                loadingModal.remove();
+                
+                if (response.ok) {
+                    return response.blob();
+                } else {
+                    throw new Error('Failed to compile PDF');
+                }
+            })
+            .then(blob => {
+                // Create a URL for the blob and open it in a new tab
+                const url = window.URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                // Clean up the URL after a short delay
+                setTimeout(() => window.URL.revokeObjectURL(url), 100);
+            })
+            .catch(error => {
+                console.error('Error compiling LaTeX:', error);
+                alert('Failed to generate PDF. Please try again.');
+            });
+    }
+}
+
+// Show markdown in modal
+function showMarkdownModal(title, markdown) {
+    // Create a simple modal to display markdown
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">${title}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <pre style="white-space: pre-wrap; font-family: Georgia, serif; line-height: 1.6;">${markdown}</pre>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', function() {
+        modal.remove();
+    });
+}
+
+// Download Research Paper
+function downloadResearch(type) {
+    // Show loading indicator
+    const loadingModal = document.createElement('div');
+    loadingModal.className = 'modal fade';
+    loadingModal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center p-5">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5>Compiling LaTeX document...</h5>
+                    <p class="text-muted">Preparing your download</p>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(loadingModal);
+    const bsLoadingModal = new bootstrap.Modal(loadingModal);
+    bsLoadingModal.show();
+    
+    // Generate and download the PDF
+    fetch(`/api/research/${type}`)
+        .then(response => {
+            bsLoadingModal.hide();
+            loadingModal.remove();
+            
+            if (response.ok) {
+                return response.blob();
+            } else {
+                throw new Error('Failed to compile PDF');
+            }
+        })
+        .then(blob => {
+            // Create a download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${type}_model.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+            console.error('Error downloading PDF:', error);
+            alert('Failed to generate PDF for download. Please try again.');
+        });
+}
+
+// Create New Algorithm
+function createNewAlgorithm() {
+    alert('Algorithm builder coming soon! This will allow you to create custom trading algorithms.');
+}
+
+// Run Backtest
+function runBacktest() {
+    const strategy = document.getElementById('backtestStrategy').value;
+    const asset = document.getElementById('backtestAsset').value;
+    const startDate = document.getElementById('backtestStartDate').value;
+    const endDate = document.getElementById('backtestEndDate').value;
+    
+    if (!strategy || strategy === 'Select a strategy...') {
+        alert('Please select a strategy');
+        return;
+    }
+    
+    if (!asset) {
+        alert('Please enter an asset symbol');
+        return;
+    }
+    
+    if (!startDate || !endDate) {
+        alert('Please select start and end dates');
+        return;
+    }
+    
+    // Show loading state
+    const resultsDiv = document.getElementById('backtestResults');
+    resultsDiv.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Running backtest...</p>';
+    
+    // Simulate backtest (replace with actual API call)
+    setTimeout(() => {
+        const mockResults = {
+            totalReturn: (Math.random() * 40 - 10).toFixed(2),
+            sharpeRatio: (Math.random() * 2 + 0.5).toFixed(2),
+            maxDrawdown: (Math.random() * 30 + 5).toFixed(2),
+            winRate: (Math.random() * 30 + 40).toFixed(2),
+            trades: Math.floor(Math.random() * 100 + 50)
+        };
+        
+        resultsDiv.innerHTML = `
+            <div class="metric-item">
+                <strong>Total Return:</strong>
+                <span class="${mockResults.totalReturn > 0 ? 'text-success' : 'text-danger'}">
+                    ${mockResults.totalReturn}%
+                </span>
+            </div>
+            <div class="metric-item">
+                <strong>Sharpe Ratio:</strong>
+                <span>${mockResults.sharpeRatio}</span>
+            </div>
+            <div class="metric-item">
+                <strong>Max Drawdown:</strong>
+                <span class="text-danger">-${mockResults.maxDrawdown}%</span>
+            </div>
+            <div class="metric-item">
+                <strong>Win Rate:</strong>
+                <span>${mockResults.winRate}%</span>
+            </div>
+            <div class="metric-item">
+                <strong>Total Trades:</strong>
+                <span>${mockResults.trades}</span>
+            </div>
+        `;
+        
+        // Show chart
+        document.getElementById('backtestChart').style.display = 'block';
+        createBacktestChart();
+    }, 2000);
+}
+
+// Create Backtest Chart
+function createBacktestChart() {
+    const ctx = document.getElementById('backtestChartCanvas');
+    
+    if (charts.backtest) {
+        charts.backtest.destroy();
+    }
+    
+    // Generate mock equity curve data
+    const labels = [];
+    const data = [];
+    let value = 10000;
+    
+    for (let i = 0; i < 100; i++) {
+        labels.push(`Day ${i + 1}`);
+        value += (Math.random() - 0.48) * 200;
+        data.push(value);
+    }
+    
+    charts.backtest = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Portfolio Value',
+                data: data,
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Equity Curve',
+                    font: { size: 16, weight: 'bold' }
+                },
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(0);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Explore Model
+function exploreModel(modelType) {
+    let message = '';
+    
+    switch(modelType) {
+        case 'ml':
+            message = 'Machine Learning models for price prediction are coming soon! This will include LSTM networks, Random Forest, and XGBoost implementations.';
+            break;
+        case 'stochastic':
+            message = 'Explore our research papers on Heston and SABR models in the Research Library tab!';
+            break;
+        case 'statistical':
+            message = 'Statistical models including ARIMA, GARCH, and VAR are in development.';
+            break;
+    }
+    
+    alert(message);
 }
 
 // Search functionality
