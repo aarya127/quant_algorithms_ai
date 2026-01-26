@@ -6,6 +6,7 @@
     <title>Invest.ai - AI-Powered Analysis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -396,13 +397,327 @@
 
                 <!-- Quant Section -->
                 <section id="sectionQuant" class="content-section" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h2><i class="fas fa-chart-bar"></i> Quantitative Analysis</h2>
+                    <!-- Hero Header with Animated Background -->
+                    <div class="quant-hero mb-4">
+                        <div class="quant-hero-content">
+                            <h1 class="quant-title">
+                                <i class="fas fa-brain"></i> Quantitative Research Hub
+                            </h1>
+                            <p class="quant-subtitle">Advanced algorithms, models, and research papers</p>
+                        </div>
+                        <div class="quant-hero-bg">
+                            <div class="particle"></div>
+                            <div class="particle"></div>
+                            <div class="particle"></div>
+                            <div class="particle"></div>
+                            <div class="particle"></div>
+                        </div>
                     </div>
-                    <div class="card">
-                        <div class="card-body">
-                            <div id="quantAnalysis">
-                                <p class="text-muted">Quantitative analysis tools coming soon...</p>
+
+                    <!-- Quick Stats Cards -->
+                    <div class="row mb-4 quant-stats">
+                        <div class="col-md-3">
+                            <div class="stat-card" data-aos="fade-up" data-aos-delay="0">
+                                <div class="stat-icon">
+                                    <i class="fas fa-book-open"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3 id="researchCount">2</h3>
+                                    <p>Research Papers</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card" data-aos="fade-up" data-aos-delay="100">
+                                <div class="stat-icon">
+                                    <i class="fas fa-code"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3 id="algoCount">0</h3>
+                                    <p>Algorithms</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card" data-aos="fade-up" data-aos-delay="200">
+                                <div class="stat-icon">
+                                    <i class="fas fa-chart-line"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3 id="backtestCount">0</h3>
+                                    <p>Backtests</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-card" data-aos="fade-up" data-aos-delay="300">
+                                <div class="stat-icon">
+                                    <i class="fas fa-flask"></i>
+                                </div>
+                                <div class="stat-content">
+                                    <h3 id="modelCount">2</h3>
+                                    <p>Models</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Navigation Tabs -->
+                    <ul class="nav nav-pills quant-nav mb-4" id="quantTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="research-tab" data-bs-toggle="pill" 
+                                    data-bs-target="#research" type="button" role="tab">
+                                <i class="fas fa-graduation-cap"></i> Research Library
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="algorithms-tab" data-bs-toggle="pill" 
+                                    data-bs-target="#algorithms" type="button" role="tab">
+                                <i class="fas fa-robot"></i> Algorithms
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="backtesting-tab" data-bs-toggle="pill" 
+                                    data-bs-target="#backtesting" type="button" role="tab">
+                                <i class="fas fa-history"></i> Backtesting
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="models-tab" data-bs-toggle="pill" 
+                                    data-bs-target="#models" type="button" role="tab">
+                                <i class="fas fa-project-diagram"></i> Models
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="quantTabContent">
+                        <!-- Research Library Tab -->
+                        <div class="tab-pane fade show active" id="research" role="tabpanel">
+                            <div class="row">
+                                <!-- Stochastic Volatility Section -->
+                                <div class="col-12 mb-4">
+                                    <div class="research-category">
+                                        <h3 class="category-title">
+                                            <i class="fas fa-wave-square"></i> Stochastic Volatility Models
+                                        </h3>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="research-card" data-aos="flip-left">
+                                                    <div class="research-card-header">
+                                                        <i class="fas fa-file-pdf"></i>
+                                                        <span class="badge bg-primary">PDF Available</span>
+                                                    </div>
+                                                    <h4>Heston Model: Theory and Applications</h4>
+                                                    <p class="research-description">
+                                                        Comprehensive analysis of the Heston stochastic volatility model 
+                                                        for option pricing, including mathematical foundations, calibration 
+                                                        techniques, and practical implementations.
+                                                    </p>
+                                                    <div class="research-tags">
+                                                        <span class="tag">Volatility</span>
+                                                        <span class="tag">Options</span>
+                                                        <span class="tag">Derivatives</span>
+                                                    </div>
+                                                    <div class="research-actions">
+                                                        <button class="btn btn-primary btn-sm" onclick="viewResearch('heston')">
+                                                            <i class="fas fa-eye"></i> View PDF
+                                                        </button>
+                                                        <button class="btn btn-outline-primary btn-sm" onclick="downloadResearch('heston')">
+                                                            <i class="fas fa-download"></i> Download
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="research-card" data-aos="flip-left" data-aos-delay="100">
+                                                    <div class="research-card-header">
+                                                        <i class="fas fa-file-pdf"></i>
+                                                        <span class="badge bg-primary">PDF Available</span>
+                                                    </div>
+                                                    <h4>SABR Model: Theory and Applications</h4>
+                                                    <p class="research-description">
+                                                        In-depth exploration of the SABR model for interest rate derivatives, 
+                                                        covering the CEV backbone, volatility smile modeling, and market applications.
+                                                    </p>
+                                                    <div class="research-tags">
+                                                        <span class="tag">Interest Rates</span>
+                                                        <span class="tag">Volatility Smile</span>
+                                                        <span class="tag">Fixed Income</span>
+                                                    </div>
+                                                    <div class="research-actions">
+                                                        <button class="btn btn-primary btn-sm" onclick="viewResearch('sabr')">
+                                                            <i class="fas fa-eye"></i> View PDF
+                                                        </button>
+                                                        <button class="btn btn-outline-primary btn-sm" onclick="downloadResearch('sabr')">
+                                                            <i class="fas fa-download"></i> Download
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Advanced Trading Section -->
+                                <div class="col-12 mb-4">
+                                    <div class="research-category">
+                                        <h3 class="category-title">
+                                            <i class="fas fa-chart-area"></i> Advanced Trading Strategies
+                                        </h3>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="research-card" data-aos="flip-left" data-aos-delay="200">
+                                                    <div class="research-card-header">
+                                                        <i class="fas fa-file-alt"></i>
+                                                        <span class="badge bg-success">Markdown</span>
+                                                    </div>
+                                                    <h4>Advanced Trading Theory</h4>
+                                                    <p class="research-description">
+                                                        Modern portfolio theory, risk management frameworks, and 
+                                                        quantitative trading strategies for systematic trading.
+                                                    </p>
+                                                    <div class="research-tags">
+                                                        <span class="tag">Portfolio Theory</span>
+                                                        <span class="tag">Risk Management</span>
+                                                        <span class="tag">Trading</span>
+                                                    </div>
+                                                    <div class="research-actions">
+                                                        <button class="btn btn-primary btn-sm" onclick="viewResearch('advanced_trading')">
+                                                            <i class="fas fa-eye"></i> View
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Algorithms Tab -->
+                        <div class="tab-pane fade" id="algorithms" role="tabpanel">
+                            <div class="empty-state">
+                                <i class="fas fa-robot"></i>
+                                <h3>Trading Algorithms</h3>
+                                <p>Build and test your own algorithmic trading strategies</p>
+                                <button class="btn btn-primary" onclick="createNewAlgorithm()">
+                                    <i class="fas fa-plus"></i> Create New Algorithm
+                                </button>
+                            </div>
+                            <div id="algorithmsList" class="row mt-4"></div>
+                        </div>
+
+                        <!-- Backtesting Tab -->
+                        <div class="tab-pane fade" id="backtesting" role="tabpanel">
+                            <div class="backtest-container">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <div class="backtest-card">
+                                            <h4><i class="fas fa-flask"></i> Strategy Backtester</h4>
+                                            <p class="text-muted">Test your trading strategies against historical data</p>
+                                            
+                                            <div class="backtest-form">
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">Strategy</label>
+                                                        <select class="form-select" id="backtestStrategy">
+                                                            <option>Select a strategy...</option>
+                                                            <option>Mean Reversion</option>
+                                                            <option>Momentum</option>
+                                                            <option>Pairs Trading</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">Asset</label>
+                                                        <input type="text" class="form-control" id="backtestAsset" placeholder="e.g., AAPL">
+                                                    </div>
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">Start Date</label>
+                                                        <input type="date" class="form-control" id="backtestStartDate">
+                                                    </div>
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">End Date</label>
+                                                        <input type="date" class="form-control" id="backtestEndDate">
+                                                    </div>
+                                                    <div class="col-md-12">
+                                                        <button class="btn btn-primary" onclick="runBacktest()">
+                                                            <i class="fas fa-play"></i> Run Backtest
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="backtest-info">
+                                            <h5>Performance Metrics</h5>
+                                            <div id="backtestResults">
+                                                <p class="text-muted">Run a backtest to see results</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="backtestChart" class="mt-4" style="display: none;">
+                                    <canvas id="backtestChartCanvas"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Models Tab -->
+                        <div class="tab-pane fade" id="models" role="tabpanel">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="model-card" data-aos="zoom-in">
+                                        <div class="model-icon">
+                                            <i class="fas fa-brain"></i>
+                                        </div>
+                                        <h4>Machine Learning Models</h4>
+                                        <p>Neural networks and ensemble methods for price prediction</p>
+                                        <ul class="model-features">
+                                            <li><i class="fas fa-check"></i> LSTM Networks</li>
+                                            <li><i class="fas fa-check"></i> Random Forest</li>
+                                            <li><i class="fas fa-check"></i> XGBoost</li>
+                                        </ul>
+                                        <button class="btn btn-primary btn-sm" onclick="exploreModel('ml')">
+                                            Explore
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="model-card" data-aos="zoom-in" data-aos-delay="100">
+                                        <div class="model-icon">
+                                            <i class="fas fa-wave-square"></i>
+                                        </div>
+                                        <h4>Stochastic Models</h4>
+                                        <p>Volatility modeling and option pricing frameworks</p>
+                                        <ul class="model-features">
+                                            <li><i class="fas fa-check"></i> Heston Model</li>
+                                            <li><i class="fas fa-check"></i> SABR Model</li>
+                                            <li><i class="fas fa-check"></i> Jump Diffusion</li>
+                                        </ul>
+                                        <button class="btn btn-primary btn-sm" onclick="exploreModel('stochastic')">
+                                            Explore
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="model-card" data-aos="zoom-in" data-aos-delay="200">
+                                        <div class="model-icon">
+                                            <i class="fas fa-chart-line"></i>
+                                        </div>
+                                        <h4>Statistical Models</h4>
+                                        <p>Time series analysis and econometric models</p>
+                                        <ul class="model-features">
+                                            <li><i class="fas fa-check"></i> ARIMA</li>
+                                            <li><i class="fas fa-check"></i> GARCH</li>
+                                            <li><i class="fas fa-check"></i> VAR Models</li>
+                                        </ul>
+                                        <button class="btn btn-primary btn-sm" onclick="exploreModel('statistical')">
+                                            Explore
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -428,6 +743,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
