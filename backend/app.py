@@ -1050,6 +1050,8 @@ def get_research_paper(paper_name):
         paper_map = {
             'heston': '../quant_research/stochastic_volatility/heston_model/theory.tex',
             'sabr': '../quant_research/stochastic_volatility/sabr_model/theory.tex',
+            'state_space': '../quant_research/state_space_models/theory.tex',
+            'market_microstructure': '../quant_research/market_microstructure/theory.tex',
         }
         
         if paper_name not in paper_map:
