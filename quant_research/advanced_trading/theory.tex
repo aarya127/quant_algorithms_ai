@@ -1,0 +1,616 @@
+\documentclass[11pt,letterpaper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+% Document info
+\title{\textbf{Advanced Trading Strategies: Theory and Practice}}
+\author{Quantitative Research}
+\date{February 4, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+Advanced trading strategies combine quantitative analysis, risk management, and market microstructure insights to generate consistent returns. This document covers modern portfolio theory, factor investing, algorithmic trading, statistical arbitrage, and systematic strategies that form the foundation of quantitative finance.
+
+\section{Modern Portfolio Theory}
+
+\subsection{Mean-Variance Optimization}
+
+Harry Markowitz's framework (1952) revolutionized portfolio construction by formalizing the trade-off between risk and return:
+
+\begin{equation}
+\max_w \quad w^T \mu - \frac{\lambda}{2} w^T \Sigma w
+\end{equation}
+
+subject to:
+\begin{align}
+w^T \mathbf{1} &= 1 \quad \text{(fully invested)} \\
+w &\geq 0 \quad \text{(no short sales, optional)}
+\end{align}
+
+where:
+\begin{itemize}
+    \item $w$ = portfolio weights
+    \item $\mu$ = expected returns vector
+    \item $\Sigma$ = covariance matrix
+    \item $\lambda$ = risk aversion parameter
+\end{itemize}
+
+\textbf{Optimal Portfolio:}
+
+The unconstrained solution is:
+\begin{equation}
+w^* = \frac{1}{\lambda} \Sigma^{-1} \mu
+\end{equation}
+
+\textbf{Efficient Frontier:}
+
+The set of portfolios with maximum return for each risk level:
+\begin{equation}
+\mu_p(w) = w^T \mu, \quad \sigma_p^2(w) = w^T \Sigma w
+\end{equation}
+
+\subsection{Limitations and Extensions}
+
+\textbf{Challenges:}
+
+\begin{itemize}
+    \item \textbf{Estimation error}: $\mu$ and $\Sigma$ are estimated from data, introducing error
+    \item \textbf{Instability}: Small changes in inputs lead to large changes in weights
+    \item \textbf{Concentration}: Optimal portfolios often extremely concentrated
+    \item \textbf{Transaction costs}: Frequent rebalancing costly in practice
+\end{itemize}
+
+\textbf{Robust Optimization:}
+
+Incorporate estimation uncertainty:
+\begin{equation}
+\max_w \min_{\mu \in \mathcal{U}} \quad w^T \mu - \frac{\lambda}{2} w^T \Sigma w
+\end{equation}
+
+where $\mathcal{U}$ is an uncertainty set around the estimated mean.
+
+\textbf{Shrinkage Estimators:}
+
+Improve covariance estimation by shrinking toward structured models:
+\begin{equation}
+\hat{\Sigma} = \alpha \Sigma_{\text{sample}} + (1 - \alpha) \Sigma_{\text{target}}
+\end{equation}
+
+Common targets: diagonal matrix, constant correlation, factor model.
+
+\section{Factor Investing}
+
+\subsection{Factor Models}
+
+Factor models decompose returns into systematic factors and idiosyncratic risk:
+
+\begin{equation}
+r_i = \alpha_i + \sum_{j=1}^{K} \beta_{ij} f_j + \epsilon_i
+\end{equation}
+
+\textbf{Fama-French Three-Factor Model:}
+
+\begin{equation}
+r_i - r_f = \alpha_i + \beta_M (r_M - r_f) + \beta_{SMB} r_{SMB} + \beta_{HML} r_{HML} + \epsilon_i
+\end{equation}
+
+Factors:
+\begin{itemize}
+    \item \textbf{Market ($r_M - r_f$)}: Broad market return
+    \item \textbf{Size (SMB)}: Small minus big cap stocks
+    \item \textbf{Value (HML)}: High minus low book-to-market
+\end{itemize}
+
+\textbf{Carhart Four-Factor Model:}
+
+Adds momentum:
+\begin{equation}
+r_i - r_f = \alpha_i + \beta_M (r_M - r_f) + \beta_{SMB} r_{SMB} + \beta_{HML} r_{HML} + \beta_{MOM} r_{MOM} + \epsilon_i
+\end{equation}
+
+\textbf{Fama-French Five-Factor Model:}
+
+Adds profitability and investment:
+\begin{itemize}
+    \item \textbf{Profitability (RMW)}: Robust minus weak operating profitability
+    \item \textbf{Investment (CMA)}: Conservative minus aggressive investment
+\end{itemize}
+
+\subsection{Factor Construction}
+
+\textbf{Generic Factor Construction Process:}
+
+\begin{enumerate}
+    \item \textbf{Universe selection}: Define investable universe
+    \item \textbf{Factor scoring}: Compute factor exposures for each asset
+    \item \textbf{Portfolio formation}: Long high-score assets, short low-score assets
+    \item \textbf{Weighting}: Equal weight, market-cap weight, or risk-parity
+    \item \textbf{Rebalancing}: Monthly, quarterly, or annual rebalancing
+\end{enumerate}
+
+\textbf{Long-Short Factor Portfolio:}
+
+\begin{equation}
+r_{\text{factor}} = \frac{1}{N_L}\sum_{i \in \text{Long}} r_i - \frac{1}{N_S}\sum_{j \in \text{Short}} r_j
+\end{equation}
+
+This isolates factor exposure while hedging market risk.
+
+\subsection{Smart Beta Strategies}
+
+Smart beta combines passive indexing with factor tilts:
+
+\textbf{Minimum Variance:}
+
+\begin{equation}
+\min_w \quad w^T \Sigma w \quad \text{subject to} \quad w^T \mathbf{1} = 1
+\end{equation}
+
+Solution: $w^* = \frac{\Sigma^{-1}\mathbf{1}}{\mathbf{1}^T\Sigma^{-1}\mathbf{1}}$
+
+\textbf{Risk Parity:}
+
+Equalize risk contribution across assets:
+\begin{equation}
+\text{RC}_i = w_i \frac{\partial \sigma_p}{\partial w_i} = w_i (\Sigma w)_i
+\end{equation}
+
+Set $\text{RC}_i = \text{RC}_j$ for all $i, j$.
+
+\textbf{Maximum Diversification:}
+
+\begin{equation}
+\max_w \quad \frac{w^T \sigma}{\sqrt{w^T \Sigma w}}
+\end{equation}
+
+where $\sigma$ is the vector of individual asset volatilities.
+
+\section{Statistical Arbitrage}
+
+\subsection{Pairs Trading}
+
+Pairs trading exploits mean reversion in the spread between two cointegrated assets:
+
+\textbf{Cointegration Test:}
+
+For two price series $P_1(t)$ and $P_2(t)$, test if:
+\begin{equation}
+S(t) = P_1(t) - \beta P_2(t)
+\end{equation}
+
+is stationary (mean-reverting).
+
+\textbf{Augmented Dickey-Fuller Test:}
+
+\begin{equation}
+\Delta S(t) = \alpha + \gamma S(t-1) + \sum_{i=1}^{p} \phi_i \Delta S(t-i) + \epsilon(t)
+\end{equation}
+
+If $\gamma < 0$ is statistically significant, $S(t)$ is mean-reverting.
+
+\textbf{Trading Strategy:}
+
+\begin{enumerate}
+    \item Compute spread $S(t) = P_1(t) - \hat{\beta} P_2(t)$
+    \item Calculate z-score: $z(t) = \frac{S(t) - \mu_S}{\sigma_S}$
+    \item Trade rules:
+    \begin{itemize}
+        \item If $z(t) > 2$: Short spread (short $P_1$, long $\beta P_2$)
+        \item If $z(t) < -2$: Long spread (long $P_1$, short $\beta P_2$)
+        \item If $|z(t)| < 0.5$: Close position
+    \end{itemize}
+\end{enumerate}
+
+\textbf{P\&L Calculation:}
+
+\begin{equation}
+\text{P\&L} = \Delta P_1 - \beta \Delta P_2 = \Delta S
+\end{equation}
+
+Profit when spread mean-reverts.
+
+\subsection{Mean Reversion Strategies}
+
+\textbf{Ornstein-Uhlenbeck Process:}
+
+Model mean-reverting behavior:
+\begin{equation}
+dX_t = \kappa(\mu - X_t) dt + \sigma dW_t
+\end{equation}
+
+Parameters:
+\begin{itemize}
+    \item $\kappa$ = mean reversion speed
+    \item $\mu$ = long-term mean
+    \item $\sigma$ = volatility
+\end{itemize}
+
+\textbf{Half-life of Mean Reversion:}
+
+\begin{equation}
+\tau_{1/2} = \frac{\ln(2)}{\kappa}
+\end{equation}
+
+This determines optimal holding period.
+
+\textbf{Optimal Entry/Exit Thresholds:}
+
+Using dynamic programming, optimal thresholds are:
+\begin{align}
+\text{Enter long at } X_{\text{low}} &= \mu - c\sigma \\
+\text{Exit at } X_{\text{exit}} &= \mu \\
+\text{Enter short at } X_{\text{high}} &= \mu + c\sigma
+\end{align}
+
+where $c$ depends on $\kappa$, $\sigma$, and transaction costs.
+
+\subsection{Index Arbitrage}
+
+Exploit mispricings between index futures and underlying basket:
+
+\textbf{Fair Value of Index Future:}
+
+\begin{equation}
+F = S e^{(r - d)T}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $S$ = spot index level
+    \item $r$ = risk-free rate
+    \item $d$ = dividend yield
+    \item $T$ = time to expiration
+\end{itemize}
+
+\textbf{Arbitrage Opportunities:}
+
+\begin{itemize}
+    \item \textbf{Cash-and-carry}: If $F > S e^{(r-d)T} + \text{costs}$, sell future, buy basket
+    \item \textbf{Reverse cash-and-carry}: If $F < S e^{(r-d)T} - \text{costs}$, buy future, short basket
+\end{itemize}
+
+\section{Momentum and Trend Following}
+
+\subsection{Time-Series Momentum}
+
+Time-series momentum (trend following) profits from persistent trends:
+
+\textbf{Signal Construction:}
+
+\begin{equation}
+\text{Signal}_t = \text{sign}(r_{t-1:t-n})
+\end{equation}
+
+where $r_{t-1:t-n}$ is the return over the past $n$ periods.
+
+\textbf{Position Sizing:}
+
+\begin{equation}
+w_t = \frac{c}{\sigma_t} \cdot \text{Signal}_t
+\end{equation}
+
+where $c$ is target volatility and $\sigma_t$ is realized volatility (inverse volatility weighting).
+
+\textbf{Multiple Timeframes:}
+
+Combine signals across different lookback periods:
+\begin{equation}
+\text{Signal}_t = \sum_{i=1}^{K} \alpha_i \cdot \text{sign}(r_{t-1:t-n_i})
+\end{equation}
+
+Common periods: 1-month, 3-month, 6-month, 12-month.
+
+\subsection{Cross-Sectional Momentum}
+
+Buy recent winners, sell recent losers within a universe:
+
+\textbf{Jegadeesh-Titman Strategy (1993):}
+
+\begin{enumerate}
+    \item Rank assets by past 12-month return (skipping most recent month)
+    \item Long top decile, short bottom decile
+    \item Hold for 1 month, then rebalance
+\end{enumerate}
+
+\textbf{Momentum Factor:}
+
+\begin{equation}
+r_{\text{MOM}} = \frac{1}{N_W}\sum_{i \in \text{Winners}} r_i - \frac{1}{N_L}\sum_{j \in \text{Losers}} r_j
+\end{equation}
+
+\textbf{Risk Management:}
+
+\begin{itemize}
+    \item \textbf{Stop losses}: Exit when momentum reverses
+    \item \textbf{Volatility scaling}: Reduce exposure during high volatility
+    \item \textbf{Sector neutrality}: Control for sector effects
+\end{itemize}
+
+\subsection{Momentum Crashes}
+
+Momentum strategies suffer large losses during market rebounds after crashes:
+
+\textbf{Explanation:}
+
+\begin{itemize}
+    \item Momentum loads heavily on losers (shorts) after crashes
+    \item Sharp rebounds cause large losses on short side
+    \item Strategies become overcrowded, amplifying crashes
+\end{itemize}
+
+\textbf{Mitigation:}
+
+\begin{itemize}
+    \item \textbf{Dynamic leverage}: Reduce leverage after large drawdowns
+    \item \textbf{Market timing}: Avoid momentum in volatile, rebounding markets
+    \item \textbf{Options overlay}: Use put options to hedge tail risk
+\end{itemize}
+
+\section{Market Making and Liquidity Provision}
+
+\subsection{Bid-Ask Spread Management}
+
+Market makers profit from the spread while managing inventory risk:
+
+\textbf{Optimal Quotes (Avellaneda-Stoikov):}
+
+\begin{align}
+\delta_{\text{bid}} &= \frac{1}{\gamma} \ln\left(1 + \frac{\gamma}{k}\right) + \frac{q \sigma^2 (T - t)}{2} \\
+\delta_{\text{ask}} &= \frac{1}{\gamma} \ln\left(1 + \frac{\gamma}{k}\right) - \frac{q \sigma^2 (T - t)}{2}
+\end{align}
+
+where:
+\begin{itemize}
+    \item $\delta_{\text{bid/ask}}$ = distance from mid-price
+    \item $\gamma$ = risk aversion
+    \item $k$ = order arrival intensity
+    \item $q$ = current inventory
+    \item $\sigma$ = volatility
+    \item $T - t$ = time remaining
+\end{itemize}
+
+\textbf{Inventory Management:}
+
+Adjust quotes to reduce unwanted inventory:
+\begin{itemize}
+    \item Long inventory → widen bid, tighten ask (encourage selling)
+    \item Short inventory → tighten bid, widen ask (encourage buying)
+\end{itemize}
+
+\subsection{Adverse Selection}
+
+Market makers face adverse selection from informed traders:
+
+\textbf{Glosten-Milgrom Framework:}
+
+\begin{equation}
+\text{Spread} = \text{Order processing cost} + \text{Adverse selection cost} + \text{Inventory cost}
+\end{equation}
+
+\textbf{Mitigation Strategies:}
+
+\begin{itemize}
+    \item \textbf{Quote updates}: Rapidly adjust quotes based on order flow
+    \item \textbf{Volume limits}: Cap exposure to any single counterparty
+    \item \textbf{Latency arbitrage defense}: Co-locate and use fast technology
+    \item \textbf{Internalization}: Execute non-toxic flow internally
+\end{itemize}
+
+\section{Algorithmic Execution}
+
+\subsection{Optimal Execution}
+
+Execute large orders while minimizing market impact and price risk:
+
+\textbf{Almgren-Chriss Framework:}
+
+Minimize cost function:
+\begin{equation}
+\mathbb{E}[\text{Cost}] + \lambda \cdot \text{Var}[\text{Cost}]
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $\mathbb{E}[\text{Cost}]$ = expected market impact
+    \item $\text{Var}[\text{Cost}]$ = price risk from delayed execution
+    \item $\lambda$ = risk aversion
+\end{itemize}
+
+\textbf{Optimal Trading Trajectory:}
+
+\begin{equation}
+x_t = X \sinh(\kappa(T - t)) / \sinh(\kappa T)
+\end{equation}
+
+where $x_t$ is the amount remaining to trade at time $t$ and $\kappa = \sqrt{\lambda\sigma^2 / \eta}$ with $\eta$ as permanent impact parameter.
+
+\subsection{VWAP and TWAP}
+
+\textbf{VWAP (Volume-Weighted Average Price):}
+
+Execute proportionally to expected volume profile:
+\begin{equation}
+\text{Target}(t) = Q \cdot \frac{\sum_{s \leq t} V_s}{\sum_{s \leq T} V_s}
+\end{equation}
+
+where $V_s$ is expected volume at time $s$.
+
+\textbf{TWAP (Time-Weighted Average Price):}
+
+Execute evenly over time:
+\begin{equation}
+\text{Target}(t) = Q \cdot \frac{t}{T}
+\end{equation}
+
+\textbf{Comparison:}
+
+\begin{itemize}
+    \item \textbf{VWAP}: Better for following natural market rhythm, benchmark tracking
+    \item \textbf{TWAP}: Simpler, better for illiquid stocks or outside market hours
+\end{itemize}
+
+\subsection{Implementation Shortfall}
+
+Measure execution quality relative to decision price:
+
+\begin{equation}
+\text{IS} = \frac{(P_{\text{execution}} - P_{\text{decision}}) \cdot Q}{P_{\text{decision}} \cdot Q}
+\end{equation}
+
+Decomposition:
+\begin{align}
+\text{IS} &= \text{Delay cost} + \text{Market impact} + \text{Opportunity cost} \\
+&= \underbrace{(P_0 - P_{\text{decision}})}_{\text{Delay}} + \underbrace{(P_{\text{avg}} - P_0)}_{\text{Impact}} + \underbrace{(P_{\text{final}} - P_{\text{avg}}) \cdot \% \text{ unfilled}}_{\text{Opportunity}}
+\end{align}
+
+\section{High-Frequency Trading}
+
+\subsection{Market Microstructure Effects}
+
+HFT exploits short-term inefficiencies in market microstructure:
+
+\textbf{Bid-Ask Bounce:}
+
+Trades alternate between bid and ask, creating negative autocorrelation:
+\begin{equation}
+\text{Cov}(\Delta P_t, \Delta P_{t-1}) = -\frac{s^2}{4}
+\end{equation}
+
+where $s$ is the spread.
+
+\textbf{Order Flow Toxicity:}
+
+Measure how informative order flow is:
+\begin{equation}
+\text{VPIN} = \frac{|\sum_{i=1}^{n} \text{BuyVol}_i - \sum_{i=1}^{n} \text{SellVol}_i|}{\sum_{i=1}^{n} \text{TotalVol}_i}
+\end{equation}
+
+High VPIN indicates toxic flow (informed trading).
+
+\subsection{Latency Arbitrage}
+
+Exploit speed advantages to trade on stale quotes:
+
+\textbf{Strategy:}
+
+\begin{enumerate}
+    \item Observe price change on exchange A
+    \item Race to exchange B before its quotes update
+    \item Execute against stale quotes
+    \item Profit from subsequent convergence
+\end{enumerate}
+
+\textbf{Arms Race:}
+
+\begin{itemize}
+    \item Co-location in data centers
+    \item Microwave/laser links between exchanges
+    \item Custom hardware (FPGAs)
+    \item Measured in microseconds ($\mu s$) or nanoseconds (ns)
+\end{itemize}
+
+\subsection{Regulation and Ethics}
+
+HFT raises important questions:
+
+\textbf{Benefits:}
+
+\begin{itemize}
+    \item Tighter spreads (lower transaction costs)
+    \item Increased liquidity
+    \item Faster price discovery
+\end{itemize}
+
+\textbf{Concerns:}
+
+\begin{itemize}
+    \item Flash crashes
+    \item Predatory strategies (quote stuffing, layering)
+    \item Unequal access (speed advantages)
+    \item Market fragmentation
+\end{itemize}
+
+\section{Risk Management}
+
+\subsection{Value at Risk (VaR)}
+
+Measure maximum expected loss at a given confidence level:
+
+\begin{equation}
+\Pr(\text{Loss} > \text{VaR}_\alpha) = \alpha
+\end{equation}
+
+\textbf{Parametric VaR:}
+
+Assume normal distribution:
+\begin{equation}
+\text{VaR}_\alpha = -(\mu - z_\alpha \sigma)
+\end{equation}
+
+where $z_\alpha$ is the $\alpha$-quantile of the standard normal.
+
+\textbf{Historical VaR:}
+
+Use empirical distribution of returns:
+\begin{equation}
+\text{VaR}_\alpha = -\text{quantile}(r, \alpha)
+\end{equation}
+
+\textbf{Monte Carlo VaR:}
+
+Simulate portfolio scenarios and compute empirical quantile.
+
+\subsection{Conditional Value at Risk (CVaR)}
+
+Expected loss given that loss exceeds VaR:
+
+\begin{equation}
+\text{CVaR}_\alpha = \mathbb{E}[\text{Loss} | \text{Loss} > \text{VaR}_\alpha]
+\end{equation}
+
+\textbf{Advantages:}
+
+\begin{itemize}
+    \item Coherent risk measure (subadditive)
+    \item Captures tail risk beyond VaR
+    \item Convex, enabling optimization
+\end{itemize}
+
+\subsection{Stress Testing and Scenario Analysis}
+
+Test portfolio performance under extreme scenarios:
+
+\textbf{Historical Scenarios:}
+
+\begin{itemize}
+    \item 1987 crash
+    \item 2008 financial crisis
+    \item 2020 COVID crash
+    \item Flash crash (2010)
+\end{itemize}
+
+\textbf{Hypothetical Scenarios:}
+
+\begin{itemize}
+    \item +/- 3 standard deviation moves
+    \item Correlation breakdown (all correlations → 1)
+    \item Liquidity freeze (spreads widen dramatically)
+    \item Factor shocks (value crash, momentum reversal)
+\end{itemize}
+
+\section{Conclusion}
+
+Advanced trading strategies synthesize insights from portfolio theory, factor investing, statistical arbitrage, algorithmic execution, and risk management. Success requires not only mathematical sophistication but also practical considerations: transaction costs, market impact, liquidity, and robust risk controls. The evolution from theoretical models to live trading demands rigorous backtesting, careful parameter estimation, and adaptive strategies that respond to changing market conditions. As markets become more efficient and competitive, the edge increasingly comes from superior data, faster execution, and disciplined risk management rather than simple factor exposures.
+
+\end{document}

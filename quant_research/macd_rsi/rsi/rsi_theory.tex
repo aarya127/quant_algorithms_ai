@@ -1,0 +1,319 @@
+\documentclass[11pt,letterpaper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+% Document info
+\title{\textbf{RSI: Relative Strength Index}}
+\author{Quantitative Research}
+\date{February 3, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Key Fundamentals}
+
+The Relative Strength Index (RSI) is a momentum oscillator that measures the speed and magnitude of recent price changes to evaluate overbought and oversold conditions. Developed by J. Welles Wilder Jr. in 1978, RSI has become one of the most widely used technical indicators for identifying potential reversal points and assessing price momentum.
+
+\subsection{Mathematical Construction}
+
+RSI is calculated using a multi-step process that normalizes recent price gains relative to losses:
+
+\textbf{Step 1: Calculate Price Changes}
+
+For each period $t$, compute:
+\begin{align}
+U_t &= \max(P_t - P_{t-1}, 0) \quad \text{(upward price change)} \\
+D_t &= \max(P_{t-1} - P_t, 0) \quad \text{(downward price change)}
+\end{align}
+
+\textbf{Step 2: Smooth with Exponential Moving Average}
+
+Wilder's smoothing method (similar to EMA but with different convention):
+\begin{align}
+\text{AvgGain}_t &= \frac{1}{n}\sum_{i=1}^{n} U_{t-i+1} \quad \text{(for first calculation)} \\
+\text{AvgGain}_t &= \frac{\text{AvgGain}_{t-1} \cdot (n-1) + U_t}{n} \quad \text{(subsequent)} \\
+\text{AvgLoss}_t &= \frac{\text{AvgLoss}_{t-1} \cdot (n-1) + D_t}{n}
+\end{align}
+
+The standard period is $n = 14$.
+
+\textbf{Step 3: Calculate Relative Strength and RSI}
+
+\begin{align}
+RS_t &= \frac{\text{AvgGain}_t}{\text{AvgLoss}_t} \\
+RSI_t &= 100 - \frac{100}{1 + RS_t} = \frac{100 \cdot \text{AvgGain}_t}{\text{AvgGain}_t + \text{AvgLoss}_t}
+\end{align}
+
+This normalization constrains RSI to the range $[0, 100]$, with:
+\begin{itemize}
+    \item RSI = 100 when AvgLoss = 0 (all gains, no losses)
+    \item RSI = 0 when AvgGain = 0 (all losses, no gains)
+    \item RSI = 50 when AvgGain = AvgLoss (balanced momentum)
+\end{itemize}
+
+\subsection{Theoretical Interpretation}
+
+RSI measures \textbf{relative momentum strength} by comparing the magnitude of recent gains to recent losses. Unlike raw momentum indicators that depend on absolute price levels, RSI is:
+
+\begin{itemize}
+    \item \textbf{Bounded}: Always between 0 and 100, making it comparable across assets and time periods
+    \item \textbf{Normalized}: Adjusts for the scale of price movements automatically
+    \item \textbf{Mean-reverting}: Designed to identify extremes where prices are likely to reverse
+\end{itemize}
+
+\textbf{Equilibrium Interpretation:}
+
+In an efficient market with no momentum, we expect RSI ≈ 50 (equal gains and losses). Deviations from 50 indicate:
+\begin{itemize}
+    \item RSI > 70: Persistent buying pressure (overbought)
+    \item RSI < 30: Persistent selling pressure (oversold)
+\end{itemize}
+
+These thresholds are conventional but not universal—assets with strong trends may sustain RSI > 70 or RSI < 30 for extended periods.
+
+\subsection{Signal Generation}
+
+RSI generates trading signals through multiple mechanisms:
+
+\textbf{1. Overbought/Oversold Levels:}
+\begin{itemize}
+    \item \textbf{Bearish signal}: RSI > 70 suggests asset may be overbought (sell signal)
+    \item \textbf{Bullish signal}: RSI < 30 suggests asset may be oversold (buy signal)
+\end{itemize}
+
+\textbf{2. Centerline Crossovers:}
+\begin{itemize}
+    \item \textbf{Bullish}: RSI crosses above 50 (momentum shifts positive)
+    \item \textbf{Bearish}: RSI crosses below 50 (momentum shifts negative)
+\end{itemize}
+
+\textbf{3. Divergence:}
+\begin{itemize}
+    \item \textbf{Bullish divergence}: Price makes lower lows while RSI makes higher lows (weakening downtrend)
+    \item \textbf{Bearish divergence}: Price makes higher highs while RSI makes lower highs (weakening uptrend)
+\end{itemize}
+
+\textbf{4. Swing Rejections (Wilder's Original Method):}
+\begin{itemize}
+    \item \textbf{Bullish}: RSI falls below 30, bounces above 30, pulls back but holds above 30, then breaks above previous high
+    \item \textbf{Bearish}: RSI rises above 70, falls below 70, rallies but stays below 70, then breaks below previous low
+\end{itemize}
+
+\section{What It Models}
+
+\subsection{Momentum Exhaustion and Mean Reversion}
+
+RSI is fundamentally a mean-reversion indicator that identifies when momentum has become extreme and is likely to reverse. The bounded nature of RSI reflects the empirical observation that price momentum cannot persist indefinitely—eventually, buying or selling pressure exhausts itself.
+
+\textbf{Statistical Foundation:}
+
+Consider price changes $\Delta P_t$ as a random walk with time-varying drift $\mu_t$:
+\begin{equation}
+\Delta P_t = \mu_t + \sigma \epsilon_t, \quad \epsilon_t \sim N(0,1)
+\end{equation}
+
+RSI effectively estimates the probability that $\mu_t > 0$ (upward momentum) based on recent realized gains and losses. When RSI is extreme (>70 or <30), it suggests $|\mu_t|$ is high, but such regimes are typically transient.
+
+\subsection{Overshooting and Reversal Patterns}
+
+In behavioral finance terms, RSI captures market sentiment extremes:
+
+\begin{itemize}
+    \item \textbf{Overbought (RSI > 70)}: Excessive optimism, potential for profit-taking or short-term reversal
+    \item \textbf{Oversold (RSI < 30)}: Excessive pessimism, potential for bargain hunting or short covering
+\end{itemize}
+
+However, in strongly trending markets, RSI can remain in overbought or oversold territory for extended periods. This is because RSI measures \textit{rate of change}, not \textit{trend strength}.
+
+\textbf{Trend vs. Mean Reversion:}
+
+\begin{equation}
+P(\text{Reversal} | RSI > 70) = f(\text{volatility regime}, \text{trend strength}, \text{volume})
+\end{equation}
+
+High RSI in a strong uptrend often signals \textit{continuation} rather than reversal. Context is crucial.
+
+\subsection{Failure Swings and Divergence}
+
+RSI divergence is one of the most powerful signals for trend reversals:
+
+\textbf{Divergence Detection:}
+
+Let $P_{\max}(t_1)$ and $P_{\max}(t_2)$ be two consecutive price peaks with $t_2 > t_1$. Bearish divergence occurs when:
+\begin{equation}
+P_{\max}(t_2) > P_{\max}(t_1) \quad \text{but} \quad RSI(t_2) < RSI(t_1)
+\end{equation}
+
+This indicates that while price made a new high, momentum weakened—a warning sign for trend exhaustion.
+
+\textbf{Why Divergence Works:}
+
+Divergence reflects a breakdown in the relationship between price and momentum. If price rises but RSI falls, it suggests:
+\begin{itemize}
+    \item Gains are smaller in magnitude (weaker buying)
+    \item Fewer participants driving the move (concentration risk)
+    \item Potential exhaustion of buyers (supply/demand imbalance forming)
+\end{itemize}
+
+\section{Applications in Quantitative Trading}
+
+\subsection{Mean Reversion Strategies}
+
+\textbf{Basic RSI Mean Reversion:}
+\begin{enumerate}
+    \item \textbf{Entry}: Buy when RSI < 30, sell when RSI > 70
+    \item \textbf{Exit}: Close long when RSI > 50, close short when RSI < 50
+    \item \textbf{Stop}: Exit if RSI makes new extreme (RSI < 20 for longs, RSI > 80 for shorts)
+\end{enumerate}
+
+\textbf{Performance Characteristics:}
+\begin{itemize}
+    \item High win rate (60-70\%) in range-bound markets
+    \item Low profit factor in trending markets (frequent stops)
+    \item Works best on mean-reverting assets (stocks, FX pairs with stable fundamentals)
+\end{itemize}
+
+\subsection{Regime-Dependent RSI Strategies}
+
+RSI performance is highly regime-dependent. A sophisticated approach uses regime detection:
+
+\textbf{Trend Regime (ADX > 25):}
+\begin{itemize}
+    \item Use RSI for pullback entries in trend direction
+    \item Buy when RSI dips to 40-50 in uptrend (not full oversold)
+    \item Sell when RSI rallies to 50-60 in downtrend (not full overbought)
+\end{itemize}
+
+\textbf{Range Regime (ADX < 25):}
+\begin{itemize}
+    \item Use traditional RSI extremes (30/70)
+    \item Trade mean reversion from overbought/oversold levels
+    \item Require rapid RSI reversal (momentum snap-back)
+\end{itemize}
+
+\subsection{Multi-Timeframe RSI}
+
+Combining RSI across multiple timeframes improves signal quality:
+
+\textbf{Hierarchical Filter:}
+\begin{enumerate}
+    \item \textbf{Weekly RSI}: Determines overall trend bias (>50 bullish, <50 bearish)
+    \item \textbf{Daily RSI}: Identifies tactical entry opportunities
+    \item \textbf{Hourly RSI}: Provides precise entry timing
+\end{enumerate}
+
+Example: Only take long positions when weekly RSI > 50 and daily RSI < 30 (trend + pullback).
+
+\textbf{Mathematical Formulation:}
+
+Let $RSI^{(w)}_t$, $RSI^{(d)}_t$, $RSI^{(h)}_t$ be weekly, daily, hourly RSI. Signal function:
+\begin{equation}
+S_t = 
+\begin{cases}
++1 & \text{if } RSI^{(w)}_t > 50 \text{ and } RSI^{(d)}_t < 30 \\
+-1 & \text{if } RSI^{(w)}_t < 50 \text{ and } RSI^{(d)}_t > 70 \\
+0 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+\subsection{RSI in Portfolio Construction}
+
+RSI can be used for cross-sectional momentum/mean-reversion strategies:
+
+\textbf{Long-Short Portfolio:}
+\begin{equation}
+w_i(t) = \text{rank}\left(\frac{RSI_i(t) - 50}{25}\right) - 0.5
+\end{equation}
+
+This creates a market-neutral portfolio:
+\begin{itemize}
+    \item Long assets with low RSI (oversold)
+    \item Short assets with high RSI (overbought)
+    \item Dollar-neutral construction
+\end{itemize}
+
+\textbf{Risk-Adjusted Weighting:}
+
+Adjust position sizes for RSI signal strength and asset volatility:
+\begin{equation}
+w_i(t) = \frac{\text{RSI}_i(t) - 50}{\sigma_i(t)} \cdot \frac{1}{\sum_j |\text{RSI}_j(t) - 50| / \sigma_j(t)}
+\end{equation}
+
+\section{Limitations and Extensions}
+
+\subsection{Known Limitations}
+
+\begin{itemize}
+    \item \textbf{Trending markets}: RSI can remain overbought/oversold for extended periods during strong trends
+    \item \textbf{Lag}: The 14-period EMA introduces lag, causing delayed signals
+    \item \textbf{Fixed thresholds}: 30/70 levels are arbitrary and may not be optimal across assets or market conditions
+    \item \textbf{No volume information}: RSI ignores trading volume, which can indicate conviction behind price moves
+\end{itemize}
+
+\subsection{Modern Extensions}
+
+\textbf{Adaptive RSI:}
+
+Dynamically adjust the RSI period based on market volatility:
+\begin{equation}
+n_t = n_0 \cdot \left(\frac{\sigma_0}{\sigma_t}\right)^\alpha
+\end{equation}
+
+where $\alpha \in [0.5, 1]$ controls adaptation speed. Higher volatility → shorter period (faster RSI).
+
+\textbf{Stochastic RSI:}
+
+Apply stochastic oscillator to RSI to create a more sensitive indicator:
+\begin{equation}
+\text{StochRSI}_t = \frac{RSI_t - \min(RSI_{t-n:t})}{\max(RSI_{t-n:t}) - \min(RSI_{t-n:t})}
+\end{equation}
+
+This produces a 0-1 bounded indicator that identifies extremes within RSI extremes.
+
+\textbf{Volume-Weighted RSI:}
+
+Incorporate volume to weight gains/losses:
+\begin{align}
+U_t &= \max(P_t - P_{t-1}, 0) \cdot V_t \\
+D_t &= \max(P_{t-1} - P_t, 0) \cdot V_t
+\end{align}
+
+This makes RSI more responsive to high-volume price moves, filtering low-volume noise.
+
+\textbf{RSI with Machine Learning:}
+
+\begin{itemize}
+    \item \textbf{Feature engineering}: Use RSI, RSI divergence, RSI slope as features
+    \item \textbf{Optimal thresholds}: Learn asset-specific overbought/oversold levels via classification
+    \item \textbf{Regime detection}: Train models to identify when RSI signals are reliable vs. unreliable
+\end{itemize}
+
+Example: Use random forest to predict P(reversal | RSI, volume, volatility, trend strength).
+
+\subsection{RSI in High-Frequency Trading}
+
+At shorter timeframes (seconds to minutes), RSI behavior changes:
+
+\begin{itemize}
+    \item \textbf{Mean reversion dominates}: Markets exhibit stronger short-term mean reversion
+    \item \textbf{Lower thresholds}: Use 40/60 instead of 30/70 for faster signals
+    \item \textbf{Microstructure noise}: RSI becomes more sensitive to bid-ask bounce and order flow toxicity
+\end{itemize}
+
+\textbf{Tick-Based RSI:}
+
+Instead of time-based periods, use tick-based or volume-based bars to compute RSI, making the indicator more robust to varying market activity levels.
+
+\section{Conclusion}
+
+The Relative Strength Index is a powerful momentum oscillator designed for mean-reversion trading. Its bounded nature and normalization make it suitable for cross-asset comparison and systematic strategy development. While RSI suffers from lag and can produce false signals in trending markets, it excels in range-bound conditions and when combined with divergence analysis. Modern quantitative applications enhance RSI through regime detection, multi-timeframe analysis, volume weighting, and machine learning integration. Understanding RSI's theoretical foundation—as a measure of momentum exhaustion—is critical for effective deployment in algorithmic trading systems.
+
+\end{document}
