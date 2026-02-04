@@ -1,0 +1,482 @@
+\documentclass[11pt,letterpaper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+% Document info
+\title{\textbf{Derivatives Volatility: Theory and Applications}}
+\author{Quantitative Research}
+\date{January 27, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+Volatility is the most critical parameter in derivatives pricing, yet it is neither directly observable nor constant. This document explores the theoretical foundations of volatility in derivatives markets, covering implied volatility, volatility surfaces, term structures, and advanced modeling techniques. Understanding volatility dynamics is essential for pricing, hedging, and trading derivatives effectively.
+
+\subsection{The Volatility Paradox}
+
+In the Black-Scholes framework, volatility $\sigma$ is assumed constant. However, market observations reveal three key violations:
+
+\begin{itemize}
+    \item \textbf{Volatility smile}: Implied volatility varies with strike price (not constant across strikes)
+    \item \textbf{Volatility term structure}: Implied volatility varies with time to expiration
+    \item \textbf{Stochastic volatility}: Realized volatility changes over time (not constant)
+\end{itemize}
+
+This paradox motivates the need for more sophisticated models that capture the complex dynamics of volatility.
+
+\section{Implied Volatility}
+
+\subsection{Definition and Calculation}
+
+Implied volatility (IV) is the volatility parameter $\sigma_{\text{imp}}$ that, when input into the Black-Scholes formula, produces the observed market price:
+
+\begin{equation}
+C_{\text{market}}(S, K, T, r) = C_{\text{BS}}(S, K, T, r, \sigma_{\text{imp}})
+\end{equation}
+
+Since there is no closed-form solution for $\sigma_{\text{imp}}$, numerical methods are required:
+
+\textbf{Newton-Raphson Method:}
+
+\begin{equation}
+\sigma_{n+1} = \sigma_n - \frac{C_{\text{BS}}(\sigma_n) - C_{\text{market}}}{\nu(\sigma_n)}
+\end{equation}
+
+where $\nu = \frac{\partial C}{\partial \sigma}$ is the Vega of the option.
+
+\textbf{Interpretation:}
+
+Implied volatility represents the market's expectation of future realized volatility over the option's life, adjusted for:
+\begin{itemize}
+    \item Risk premium (volatility risk premium)
+    \item Supply and demand dynamics
+    \item Jumps and tail risk
+    \item Leverage effects
+\end{itemize}
+
+\subsection{Implied vs Realized Volatility}
+
+The relationship between implied and realized volatility reveals market expectations and risk premia:
+
+\begin{equation}
+\sigma_{\text{implied}} = \mathbb{E}[\sigma_{\text{realized}}] + \text{VRP} + \epsilon
+\end{equation}
+
+where VRP is the volatility risk premium and $\epsilon$ captures model error.
+
+\textbf{Empirical Observations:}
+
+\begin{itemize}
+    \item \textbf{Forward-looking bias}: Implied volatility tends to overestimate realized volatility (positive VRP)
+    \item \textbf{Mean reversion}: Both IV and RV exhibit mean-reverting behavior
+    \item \textbf{Asymmetry}: IV increases more during market crashes than decreases during rallies
+    \item \textbf{Clustering}: High volatility periods cluster together (GARCH effects)
+\end{itemize}
+
+\section{Volatility Smile}
+
+\subsection{The Smile Phenomenon}
+
+The volatility smile describes how implied volatility varies with strike price for a fixed expiration. For equity options:
+
+\begin{equation}
+\sigma_{\text{imp}}(K) = \sigma_{\text{ATM}} + f(K/S)
+\end{equation}
+
+where $f(\cdot)$ captures the smile shape.
+
+\textbf{Common Smile Shapes:}
+
+\begin{itemize}
+    \item \textbf{Equity smile (skew)}: Downward sloping—higher IV for low strikes (put wing)
+    \item \textbf{FX smile}: Symmetric U-shape—higher IV for both low and high strikes
+    \item \textbf{Commodity smile}: Often inverted or irregular based on supply/demand dynamics
+\end{itemize}
+
+\subsection{Causes of the Volatility Smile}
+
+\textbf{1. Leverage Effect (Equity Skew):}
+
+As stock prices fall, leverage increases, making equity riskier:
+\begin{equation}
+\sigma_{\text{equity}} = \frac{V}{E} \sigma_{\text{firm}}
+\end{equation}
+
+where $V$ is firm value and $E$ is equity value. As $S \downarrow$, $E \downarrow$, so $\sigma \uparrow$.
+
+\textbf{2. Jump Risk:}
+
+Markets experience discrete jumps (crashes, earnings surprises) not captured by continuous diffusion models. Out-of-the-money puts are expensive because they insure against jumps:
+
+\begin{equation}
+dS = \mu S dt + \sigma S dW + J S dN
+\end{equation}
+
+where $dN$ is a jump process.
+
+\textbf{3. Supply and Demand:}
+
+Institutional demand for downside protection (portfolio insurance) drives up put prices, increasing implied volatility for low strikes.
+
+\textbf{4. Fat Tails:}
+
+Empirical return distributions have fatter tails than the log-normal assumption, making extreme outcomes more likely than Black-Scholes predicts.
+
+\subsection{Smile Parameterizations}
+
+\textbf{SVI (Stochastic Volatility Inspired):}
+
+\begin{equation}
+w(k) = a + b\left(\rho(k - m) + \sqrt{(k - m)^2 + \sigma^2}\right)
+\end{equation}
+
+where $w = \sigma^2 T$ is total implied variance and $k = \ln(K/F)$ is log-moneyness.
+
+Parameters:
+\begin{itemize}
+    \item $a$ = ATM level
+    \item $b$ = angle between wings
+    \item $\rho$ = skew/slope
+    \item $m$ = horizontal shift
+    \item $\sigma$ = curvature
+\end{itemize}
+
+\textbf{SABR Approximation:}
+
+For short maturities, the SABR model provides an approximate closed-form solution for the smile:
+
+\begin{equation}
+\sigma_B(K) \approx \frac{\alpha}{(FK)^{(1-\beta)/2}\left[1 + \frac{(1-\beta)^2}{24}\ln^2(F/K) + \cdots\right]} \left[1 + \left(\frac{(1-\beta)^2\alpha^2}{24(FK)^{1-\beta}} + \frac{\rho\beta\nu\alpha}{4(FK)^{(1-\beta)/2}} + \frac{2-3\rho^2}{24}\nu^2\right)T\right]
+\end{equation}
+
+\section{Volatility Surface}
+
+\subsection{Construction}
+
+The volatility surface $\sigma(K, T)$ is a two-dimensional function mapping strike and expiration to implied volatility:
+
+\begin{equation}
+\sigma_{\text{imp}} = \sigma(K, T)
+\end{equation}
+
+\textbf{Construction Steps:}
+
+\begin{enumerate}
+    \item \textbf{Data collection}: Gather option prices for various strikes and expirations
+    \item \textbf{IV calculation}: Invert Black-Scholes to get IV for each option
+    \item \textbf{Interpolation}: Use splines or parametric models to fill gaps
+    \item \textbf{Extrapolation}: Extend surface beyond liquid strikes/tenors
+    \item \textbf{Arbitrage removal}: Ensure no-arbitrage conditions (calendar spreads, butterfly spreads)
+\end{enumerate}
+
+\subsection{No-Arbitrage Constraints}
+
+A valid volatility surface must satisfy:
+
+\textbf{1. Calendar Spread Arbitrage:}
+
+Total variance must be increasing in time:
+\begin{equation}
+\frac{\partial}{\partial T}(T \cdot \sigma^2(K, T)) \geq 0
+\end{equation}
+
+\textbf{2. Butterfly Arbitrage:}
+
+Call prices must be convex in strike:
+\begin{equation}
+\frac{\partial^2 C}{\partial K^2} \geq 0
+\end{equation}
+
+This translates to constraints on the density:
+\begin{equation}
+e^{rT} \frac{\partial^2 C}{\partial K^2} = p(K) \geq 0
+\end{equation}
+
+where $p(K)$ is the risk-neutral density.
+
+\textbf{3. Vertical Spread Arbitrage:}
+
+Call prices must be decreasing in strike:
+\begin{equation}
+\frac{\partial C}{\partial K} \leq 0
+\end{equation}
+
+\subsection{Surface Dynamics}
+
+The volatility surface evolves over time as market conditions change:
+
+\begin{equation}
+\sigma(K, T, t) = \sigma(K, T, 0) + \Delta\sigma(K, T, t)
+\end{equation}
+
+\textbf{Sticky Rules:}
+
+\begin{itemize}
+    \item \textbf{Sticky strike}: IV remains constant for a given strike as spot moves
+    \item \textbf{Sticky delta}: IV remains constant for a given delta as spot moves
+    \item \textbf{Sticky moneyness}: IV remains constant for a given $K/S$ ratio
+\end{itemize}
+
+Empirically, equity markets exhibit behavior between sticky strike and sticky delta, while FX markets are closer to sticky delta.
+
+\section{Volatility Term Structure}
+
+\subsection{Term Structure Patterns}
+
+The volatility term structure describes how implied volatility varies with time to expiration for a fixed strike (usually ATM):
+
+\begin{equation}
+\sigma_{\text{ATM}}(T) = \text{ATM implied volatility for maturity } T
+\end{equation}
+
+\textbf{Common Shapes:}
+
+\begin{itemize}
+    \item \textbf{Upward sloping}: Short-term IV < long-term IV (calm markets)
+    \item \textbf{Downward sloping}: Short-term IV > long-term IV (stressed markets)
+    \item \textbf{Humped}: Mid-term IV elevated (event risk, earnings)
+    \item \textbf{Flat}: IV constant across maturities (rare)
+\end{itemize}
+
+\subsection{Forward Volatility}
+
+Forward volatility is the volatility implied between two future dates:
+
+\begin{equation}
+\sigma_{\text{fwd}}(T_1, T_2)^2 = \frac{T_2 \sigma^2(T_2) - T_1 \sigma^2(T_1)}{T_2 - T_1}
+\end{equation}
+
+This decomposes the term structure into incremental volatility expectations.
+
+\textbf{Applications:}
+
+\begin{itemize}
+    \item \textbf{Event hedging}: Isolate volatility risk around specific events (earnings, Fed meetings)
+    \item \textbf{Variance swaps}: Price variance over specific future periods
+    \item \textbf{Calendar spread trading}: Express views on term structure changes
+\end{itemize}
+
+\section{Volatility Models}
+
+\subsection{Local Volatility Models}
+
+Local volatility models make $\sigma$ a deterministic function of spot and time:
+
+\begin{equation}
+dS = r S dt + \sigma_{\text{loc}}(S, t) S dW
+\end{equation}
+
+\textbf{Dupire's Formula:}
+
+The local volatility function is uniquely determined by the volatility surface:
+
+\begin{equation}
+\sigma_{\text{loc}}^2(K, T) = \frac{\frac{\partial C}{\partial T} + rK\frac{\partial C}{\partial K}}{\frac{1}{2}K^2\frac{\partial^2 C}{\partial K^2}}
+\end{equation}
+
+\textbf{Properties:}
+
+\begin{itemize}
+    \item \textbf{Calibration}: Perfectly fits the observed volatility surface
+    \item \textbf{Forward smile}: Produces unrealistic flat forward smiles
+    \item \textbf{Hedging}: Predicts incorrect hedge ratios (too much spot hedging)
+\end{itemize}
+
+\subsection{Stochastic Volatility Models}
+
+Stochastic volatility models treat volatility as a random process:
+
+\begin{align}
+dS &= \mu S dt + \sqrt{v} S dW^S \\
+dv &= \kappa(\theta - v) dt + \xi \sqrt{v} dW^v \\
+dW^S dW^v &= \rho dt
+\end{align}
+
+\textbf{Key Features:}
+
+\begin{itemize}
+    \item \textbf{Correlation $\rho$}: Negative for equities (leverage effect), near-zero for FX
+    \item \textbf{Mean reversion}: $\kappa$ controls speed of reversion to long-term mean $\theta$
+    \item \textbf{Vol of vol $\xi$}: Controls volatility clustering and smile curvature
+\end{itemize}
+
+\textbf{Popular Models:}
+
+\begin{itemize}
+    \item \textbf{Heston (1993)}: Square-root process for variance (affine structure)
+    \item \textbf{SABR (2002)}: CEV process with stochastic volatility (closed-form approximation)
+    \item \textbf{Bates (1996)}: Heston + jumps (captures both smile and skew)
+\end{itemize}
+
+\subsection{Jump-Diffusion Models}
+
+Add discrete jumps to capture tail risk:
+
+\begin{equation}
+dS = \mu S dt + \sigma S dW + J S dN
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $dN$ is a Poisson process with intensity $\lambda$
+    \item $J$ is the jump size, often $\ln(1 + J) \sim N(\mu_J, \sigma_J^2)$
+\end{itemize}
+
+\textbf{Merton Model (1976):}
+
+Combines log-normal diffusion with log-normal jumps. The characteristic function is:
+
+\begin{equation}
+\phi(u) = \exp\left(iu\mu T + \frac{1}{2}(iu - u^2)\sigma^2 T + \lambda T(e^{iu\mu_J - \frac{1}{2}u^2\sigma_J^2} - 1)\right)
+\end{equation}
+
+\section{Volatility Trading Strategies}
+
+\subsection{Vega Trading (Directional Volatility)}
+
+\textbf{Long Volatility:}
+\begin{itemize}
+    \item Buy straddles or strangles (long Vega, long Gamma)
+    \item Profit from IV increase or large spot moves
+    \item Pay Theta (time decay)
+\end{itemize}
+
+\textbf{Short Volatility:}
+\begin{itemize}
+    \item Sell straddles or strangles (short Vega, short Gamma)
+    \item Profit from IV decrease or stable spot
+    \item Collect Theta
+\end{itemize}
+
+\subsection{Volatility Arbitrage}
+
+\textbf{IV vs RV Arbitrage:}
+
+If implied volatility is too high relative to expected realized volatility:
+\begin{enumerate}
+    \item Sell options (short IV)
+    \item Delta hedge dynamically
+    \item Profit if realized vol < implied vol
+\end{enumerate}
+
+P\&L approximation:
+\begin{equation}
+\text{P\&L} \approx \frac{1}{2}\Gamma S^2 \left[\sigma_{\text{realized}}^2 - \sigma_{\text{implied}}^2\right] \Delta t - \text{transaction costs}
+\end{equation}
+
+\textbf{Dispersion Trading:}
+
+Trade the difference between index volatility and single-name volatilities:
+\begin{itemize}
+    \item Sell index options (expensive correlation)
+    \item Buy basket of single-name options (cheaper)
+    \item Profit from correlation breakdown
+\end{itemize}
+
+\subsection{Smile Trading}
+
+\textbf{Skew Trading:}
+
+Express views on the shape of the smile:
+\begin{itemize}
+    \item \textbf{Flatten skew}: Sell OTM puts, buy OTM calls (risk reversal)
+    \item \textbf{Steepen skew}: Buy OTM puts, sell OTM calls
+    \item \textbf{Delta hedge}: Remove directional exposure
+\end{itemize}
+
+\textbf{Butterfly Trading:}
+
+Trade curvature of the smile:
+\begin{itemize}
+    \item \textbf{Long butterfly}: Buy ATM, sell wings (profit from smile flattening)
+    \item \textbf{Short butterfly}: Sell ATM, buy wings (profit from smile steepening)
+\end{itemize}
+
+\subsection{Variance Swaps}
+
+A variance swap pays the difference between realized and implied variance:
+
+\begin{equation}
+\text{Payoff} = N_{\text{var}} \left[\sigma_{\text{realized}}^2 - K_{\text{var}}\right]
+\end{equation}
+
+where $N_{\text{var}}$ is the variance notional and $K_{\text{var}}$ is the variance strike.
+
+\textbf{Replication:}
+
+Variance swaps can be replicated with a portfolio of options:
+
+\begin{equation}
+\text{Variance} = \frac{2e^{rT}}{T}\left[\int_0^F \frac{P(K)}{K^2}dK + \int_F^\infty \frac{C(K)}{K^2}dK\right]
+\end{equation}
+
+This creates pure variance exposure without Gamma or path-dependence.
+
+\section{Advanced Topics}
+
+\subsection{Volatility Risk Premium}
+
+The volatility risk premium (VRP) is the difference between implied and realized volatility:
+
+\begin{equation}
+\text{VRP} = \sigma_{\text{implied}} - \mathbb{E}[\sigma_{\text{realized}}]
+\end{equation}
+
+\textbf{Empirical Evidence:}
+
+\begin{itemize}
+    \item VRP is positive on average (IV > RV) across most asset classes
+    \item VRP varies with market conditions (higher in stable markets)
+    \item VRP is compensation for volatility risk and jump risk
+    \item Selling volatility earns VRP but exposes to tail risk
+\end{itemize}
+
+\subsection{Model-Free Implied Volatility}
+
+The VIX index computes model-free implied volatility using a strip of options:
+
+\begin{equation}
+\text{VIX}^2 = \frac{2}{T}\sum_i \frac{\Delta K_i}{K_i^2} e^{rT} Q(K_i) - \frac{1}{T}\left[\frac{F}{K_0} - 1\right]^2
+\end{equation}
+
+where $Q(K_i)$ is the option price (call or put) at strike $K_i$.
+
+This approach:
+\begin{itemize}
+    \item Does not assume any pricing model
+    \item Aggregates information across the entire smile
+    \item Provides market-based volatility forecast
+\end{itemize}
+
+\subsection{Volatility Clustering}
+
+Volatility exhibits clustering—high volatility periods follow high volatility periods:
+
+\begin{equation}
+\sigma_t^2 = \omega + \alpha \epsilon_{t-1}^2 + \beta \sigma_{t-1}^2 \quad \text{(GARCH(1,1))}
+\end{equation}
+
+\textbf{Implications:}
+
+\begin{itemize}
+    \item Current volatility predicts future volatility
+    \item Volatility mean-reverts to long-run level $\frac{\omega}{1 - \alpha - \beta}$
+    \item Option pricing should account for volatility persistence
+    \item Dynamic hedging strategies benefit from volatility forecasting
+\end{itemize}
+
+\section{Conclusion}
+
+Volatility is the cornerstone of derivatives pricing and risk management. The evolution from constant volatility (Black-Scholes) to implied volatility surfaces, stochastic volatility models, and jump-diffusion frameworks reflects the market's complexity. Understanding volatility dynamics—smiles, term structures, clustering, and risk premia—is essential for effective derivatives trading, hedging, and arbitrage. Modern quantitative finance continues to develop sophisticated models that capture the nuanced behavior of volatility across different asset classes and market regimes.
+
+\end{document}

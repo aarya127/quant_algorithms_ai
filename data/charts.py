@@ -162,6 +162,10 @@ def calculate_ema(data: pd.Series, period: int) -> pd.Series:
 
 def calculate_rsi(data: pd.Series, period: int = 14) -> pd.Series:
     """Calculate Relative Strength Index"""
+    if len(data) < period + 1:
+        # Not enough data, return NaN series
+        return pd.Series([np.nan] * len(data), index=data.index)
+    
     delta = data.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
@@ -172,6 +176,15 @@ def calculate_rsi(data: pd.Series, period: int = 14) -> pd.Series:
 
 def calculate_macd(data: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
     """Calculate MACD (Moving Average Convergence Divergence)"""
+    if len(data) < slow + signal:
+        # Not enough data, return NaN series
+        nan_series = pd.Series([np.nan] * len(data), index=data.index)
+        return {
+            'macd': nan_series,
+            'signal': nan_series,
+            'histogram': nan_series
+        }
+    
     ema_fast = calculate_ema(data, fast)
     ema_slow = calculate_ema(data, slow)
     macd_line = ema_fast - ema_slow
@@ -215,6 +228,9 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
     try:
         print(f"📊 Fetching technical indicators for {symbol}...")
         
+        # Minimum data points needed for indicators
+        MIN_POINTS_NEEDED = 50  # Need at least 50 points for reliable indicators (26 for MACD + buffer)
+        
         # Get base chart data
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=period, interval=interval)
@@ -224,6 +240,28 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
                 "success": False,
                 "error": "No data available"
             }
+        
+        # Check if we have enough data points
+        if len(hist) < MIN_POINTS_NEEDED:
+            # Try to fetch more data with a longer period
+            print(f"⚠️ Only {len(hist)} data points available. Trying longer period...")
+            alternative_periods = ['3mo', '6mo', '1y', '2y']
+            
+            for alt_period in alternative_periods:
+                if alt_period == period:
+                    continue
+                hist = ticker.history(period=alt_period, interval=interval)
+                if len(hist) >= MIN_POINTS_NEEDED:
+                    period = alt_period
+                    print(f"✓ Using {alt_period} period with {len(hist)} data points")
+                    break
+            
+            # If still not enough data, return error
+            if len(hist) < MIN_POINTS_NEEDED:
+                return {
+                    "success": False,
+                    "error": f"Insufficient data for technical indicators. Only {len(hist)} data points available. Need at least {MIN_POINTS_NEEDED}. Try a longer time period (3mo, 6mo, or 1y)."
+                }
         
         close_prices = hist['Close']
         dates = hist.index.strftime('%Y-%m-%d %H:%M:%S').tolist()
@@ -272,7 +310,7 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
             "data_points": len(dates)
         }
         
-        print(f"✓ Calculated technical indicators for {symbol}")
+        print(f"✓ Calculated technical indicators for {symbol} ({len(dates)} data points)")
         
         return result
         

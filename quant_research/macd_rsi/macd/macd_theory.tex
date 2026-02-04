@@ -1,0 +1,222 @@
+\documentclass[11pt,letterpaper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+% Document info
+\title{\textbf{MACD: Moving Average Convergence Divergence}}
+\author{Quantitative Research}
+\date{February 3, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Key Fundamentals}
+
+The Moving Average Convergence Divergence (MACD) is a trend-following momentum indicator that reveals the relationship between two exponential moving averages (EMAs) of an asset's price. Developed by Gerald Appel in the late 1970s, MACD has become one of the most widely used technical indicators in quantitative trading.
+
+\subsection{The MACD Components}
+
+The MACD indicator consists of three key components that work together to identify trend changes and momentum shifts:
+
+\begin{itemize}
+    \item \textbf{MACD Line}: The difference between the 12-period EMA and 26-period EMA
+    \item \textbf{Signal Line}: A 9-period EMA of the MACD line
+    \item \textbf{Histogram}: The difference between the MACD line and the signal line
+\end{itemize}
+
+\textbf{Mathematical Definition:}
+
+For a price series $P_t$, the MACD is calculated as:
+
+\begin{align}
+\text{EMA}_n(t) &= \alpha_n P_t + (1-\alpha_n) \text{EMA}_n(t-1) \\
+\text{where } \alpha_n &= \frac{2}{n+1} \\
+\\
+\text{MACD}(t) &= \text{EMA}_{12}(t) - \text{EMA}_{26}(t) \\
+\text{Signal}(t) &= \text{EMA}_9(\text{MACD}(t)) \\
+\text{Histogram}(t) &= \text{MACD}(t) - \text{Signal}(t)
+\end{align}
+
+The choice of 12, 26, and 9 periods reflects the original calibration for daily data, corresponding approximately to trading weeks (12 days ≈ 2.5 weeks, 26 days ≈ 1 month, 9 days ≈ 2 weeks).
+
+\subsection{Signal Generation}
+
+MACD generates trading signals through several mechanisms:
+
+\textbf{1. Crossovers:}
+\begin{itemize}
+    \item \textbf{Bullish signal}: MACD line crosses above signal line ($\text{MACD}(t) > \text{Signal}(t)$ and $\text{MACD}(t-1) < \text{Signal}(t-1)$)
+    \item \textbf{Bearish signal}: MACD line crosses below signal line ($\text{MACD}(t) < \text{Signal}(t)$ and $\text{MACD}(t-1) > \text{Signal}(t-1)$)
+\end{itemize}
+
+\textbf{2. Zero Line Crossings:}
+\begin{itemize}
+    \item \textbf{Bullish}: MACD crosses above zero (short-term EMA exceeds long-term EMA)
+    \item \textbf{Bearish}: MACD crosses below zero (short-term EMA falls below long-term EMA)
+\end{itemize}
+
+\textbf{3. Divergence:}
+\begin{itemize}
+    \item \textbf{Bullish divergence}: Price makes lower lows while MACD makes higher lows (momentum weakening on downside)
+    \item \textbf{Bearish divergence}: Price makes higher highs while MACD makes lower highs (momentum weakening on upside)
+\end{itemize}
+
+\subsection{Theoretical Foundation}
+
+The MACD is fundamentally a momentum oscillator built on the principle that trend changes are preceded by changes in momentum. The indicator captures this through exponential smoothing, which gives more weight to recent prices.
+
+\textbf{Lag Structure:}
+
+The effective lag of an EMA is approximately $\frac{n-1}{2}$ periods. Thus:
+\begin{align}
+\text{Lag}(\text{EMA}_{12}) &\approx 5.5 \text{ days} \\
+\text{Lag}(\text{EMA}_{26}) &\approx 12.5 \text{ days} \\
+\text{Lag}(\text{MACD}) &\approx 7 \text{ days (differential lag)}
+\end{align}
+
+This lag structure means MACD is inherently a lagging indicator—it confirms trends rather than predicting them.
+
+\textbf{Frequency Domain Interpretation:}
+
+In frequency space, MACD acts as a band-pass filter that isolates medium-term cyclical components of price movements while filtering out both high-frequency noise and very low-frequency trends. The histogram amplifies this by taking the derivative (in a smoothed sense) of the MACD line.
+
+\section{What It Models}
+
+\subsection{Momentum and Trend Detection}
+
+MACD models the acceleration and deceleration of price trends by measuring the rate of change of the difference between two moving averages. When the histogram is positive and increasing, the trend is accelerating upward. When positive but decreasing, upward momentum is decelerating.
+
+\textbf{Mathematical Interpretation:}
+
+The MACD line can be viewed as a smoothed approximation of the price velocity:
+\begin{equation}
+\text{MACD}(t) \approx k \cdot \frac{dP}{dt} \bigg|_{\text{smoothed}}
+\end{equation}
+
+The histogram then approximates the acceleration:
+\begin{equation}
+\text{Histogram}(t) \approx k' \cdot \frac{d^2P}{dt^2} \bigg|_{\text{smoothed}}
+\end{equation}
+
+This kinematic analogy explains why MACD is effective at identifying turning points: zero acceleration (histogram crossing zero) often precedes trend reversals.
+
+\subsection{Mean Reversion vs Trend Following}
+
+MACD exhibits dual behavior depending on market conditions:
+
+\begin{itemize}
+    \item \textbf{Trending markets}: MACD crossovers and zero-line crossings provide effective trend-following signals with relatively low false positives
+    \item \textbf{Ranging markets}: MACD generates frequent whipsaw signals as the oscillator crosses back and forth around zero or the signal line
+\end{itemize}
+
+The indicator's performance is thus highly regime-dependent, performing well in persistent trends but poorly in choppy, mean-reverting environments.
+
+\subsection{Volatility Considerations}
+
+MACD is not normalized for volatility, which means signals have different significance depending on market volatility:
+
+\begin{equation}
+\text{Normalized MACD}(t) = \frac{\text{MACD}(t)}{\sigma_P(t)}
+\end{equation}
+
+where $\sigma_P(t)$ is the rolling standard deviation of prices. This normalization improves signal consistency across different volatility regimes.
+
+\section{Applications in Quantitative Trading}
+
+\subsection{Strategy Implementation}
+
+\textbf{Basic MACD Strategy:}
+\begin{enumerate}
+    \item \textbf{Entry}: Long when MACD crosses above signal line; short when MACD crosses below
+    \item \textbf{Exit}: Reverse position on opposite crossover
+    \item \textbf{Filter}: Only take signals when MACD and price are trending in the same direction
+\end{enumerate}
+
+\textbf{Enhanced MACD Strategy:}
+\begin{itemize}
+    \item \textbf{Multiple timeframes}: Use daily MACD for trend direction, hourly MACD for entry timing
+    \item \textbf{Volume confirmation}: Require increasing volume on crossover signals
+    \item \textbf{Volatility adjustment}: Scale position size inversely to MACD volatility
+\end{itemize}
+
+\subsection{Empirical Performance Characteristics}
+
+Studies on MACD performance reveal:
+
+\begin{itemize}
+    \item \textbf{Win rate}: Typically 40-45\% in equity markets (trend-following characteristic)
+    \item \textbf{Profit factor}: Strong trends can generate 2-3x profit factor, but ranging markets reduce this to <1
+    \item \textbf{Lag cost}: Average lag of 5-7 days means significant move is often missed before entry
+    \item \textbf{Parameter sensitivity}: Performance highly sensitive to EMA periods; 12/26/9 is not universally optimal
+\end{itemize}
+
+\subsection{Integration with Portfolio Management}
+
+MACD can be incorporated into portfolio strategies:
+
+\textbf{Signal Aggregation:}
+\begin{equation}
+w_i(t) = \tanh\left(\frac{\text{MACD}_i(t)}{\sigma_{\text{MACD},i}}\right)
+\end{equation}
+
+where $w_i(t)$ is the portfolio weight for asset $i$, normalized by MACD volatility.
+
+\textbf{Risk Management:}
+\begin{itemize}
+    \item \textbf{Stop loss}: Exit when histogram reverses (early momentum shift detection)
+    \item \textbf{Position sizing}: Allocate more capital to assets with strong MACD signals and low noise
+    \item \textbf{Correlation hedging}: Use MACD to identify when historically correlated assets diverge
+\end{itemize}
+
+\section{Limitations and Extensions}
+
+\subsection{Known Limitations}
+
+\begin{itemize}
+    \item \textbf{Lagging nature}: EMA-based construction means signals arrive after trend has started
+    \item \textbf{Whipsaws}: Frequent false signals in ranging/choppy markets
+    \item \textbf{No volatility adjustment}: Fixed parameters don't adapt to changing market conditions
+    \item \textbf{Parameter optimization}: Prone to overfitting when parameters are curve-fitted to historical data
+\end{itemize}
+
+\subsection{Modern Extensions}
+
+\textbf{Adaptive MACD:}
+
+Use volatility-adjusted or regime-dependent EMA periods:
+\begin{equation}
+n_{\text{fast}}(t) = n_0 \cdot \left(\frac{\sigma_0}{\sigma_t}\right)^\gamma
+\end{equation}
+
+where $\gamma$ controls adaptation speed (typically $\gamma \in [0.5, 1]$).
+
+\textbf{MACD with Machine Learning:}
+
+\begin{itemize}
+    \item \textbf{Feature engineering}: Use MACD, histogram, and their derivatives as features in ML models
+    \item \textbf{Regime classification}: Train classifiers to identify when MACD signals are reliable
+    \item \textbf{Signal filtering}: Use ML to filter false MACD crossovers based on market microstructure features
+\end{itemize}
+
+\textbf{Multi-Asset MACD:}
+
+Construct portfolio-level MACD by aggregating cross-sectional MACD signals:
+\begin{equation}
+\text{MACD}_{\text{portfolio}}(t) = \sum_{i=1}^{N} w_i \cdot \text{MACD}_i(t)
+\end{equation}
+
+This captures broader market momentum and can be more robust than individual asset signals.
+
+\section{Conclusion}
+
+MACD remains one of the most popular technical indicators due to its simplicity and intuitive interpretation. While it suffers from lag and generates false signals in ranging markets, it effectively captures momentum in trending environments. Modern quantitative applications combine MACD with volatility normalization, regime detection, and machine learning to improve performance. Understanding MACD's theoretical foundation—as a band-pass filter of price momentum—is essential for using it effectively in systematic trading strategies.
+
+\end{document}

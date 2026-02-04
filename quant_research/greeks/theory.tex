@@ -1,0 +1,743 @@
+\documentclass[11pt,letterpaper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{bm}
+
+% Document info
+\title{\textbf{Option Greeks and Risk Measures}}
+\author{Quantitative Research}
+\date{February 2, 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+The Greeks are a set of risk measures that quantify the sensitivity of an option's price (or a portfolio's value) to changes in underlying parameters. Derived from the Black-Scholes-Merton framework and its extensions, these measures are essential for risk management, hedging, and understanding option behavior. This document covers the five primary Greeks (Delta, Gamma, Theta, Vega, Rho) as well as the portfolio risk measures Alpha and Beta.
+
+\subsection{The Black-Scholes Framework}
+
+The Greeks are partial derivatives of the option pricing function. For a European call option, the Black-Scholes formula is:
+
+\begin{equation}
+C(S, K, T, r, \sigma) = S \cdot N(d_1) - K e^{-rT} N(d_2)
+\end{equation}
+
+where:
+\begin{align}
+d_1 &= \frac{\ln(S/K) + (r + \sigma^2/2)T}{\sigma\sqrt{T}} \\
+d_2 &= d_1 - \sigma\sqrt{T}
+\end{align}
+
+and:
+\begin{itemize}
+    \item $S$ = current stock price
+    \item $K$ = strike price
+    \item $T$ = time to expiration (years)
+    \item $r$ = risk-free interest rate
+    \item $\sigma$ = implied volatility
+    \item $N(\cdot)$ = cumulative standard normal distribution
+\end{itemize}
+
+The Greeks measure how $C$ changes as these parameters vary.
+
+\section{Delta ($\Delta$): Price Sensitivity}
+
+\subsection{Definition and Interpretation}
+
+Delta measures the rate of change of the option price with respect to changes in the underlying asset's price:
+
+\begin{equation}
+\Delta = \frac{\partial V}{\partial S}
+\end{equation}
+
+where $V$ is the option value and $S$ is the underlying price.
+
+\textbf{For European Options:}
+
+\begin{align}
+\Delta_{\text{call}} &= N(d_1) \in [0, 1] \\
+\Delta_{\text{put}} &= N(d_1) - 1 = -N(-d_1) \in [-1, 0]
+\end{align}
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item \textbf{Hedge ratio}: A delta of 0.50 means the option behaves like holding 0.50 shares of stock
+    \item \textbf{Price sensitivity}: For a \$1 increase in stock price, the option price increases by approximately \$Delta
+    \item \textbf{Probability}: Delta approximately equals the risk-neutral probability of the option expiring in-the-money
+    \item \textbf{Sign}: Calls have positive delta (gain when stock rises), puts have negative delta (gain when stock falls)
+\end{itemize}
+
+\subsection{Delta Behavior}
+
+Delta varies with moneyness and time to expiration:
+
+\begin{itemize}
+    \item \textbf{Deep in-the-money (ITM)}: Delta $\to$ 1 for calls, $\to$ -1 for puts (behaves like stock)
+    \item \textbf{At-the-money (ATM)}: Delta $\approx$ 0.50 for calls, $\approx$ -0.50 for puts
+    \item \textbf{Deep out-of-the-money (OTM)}: Delta $\to$ 0 (minimal price sensitivity)
+\end{itemize}
+
+\textbf{Time Decay Effect on Delta:}
+
+As expiration approaches ($T \to 0$):
+\begin{itemize}
+    \item ITM options: Delta $\to$ 1 (call) or -1 (put) rapidly
+    \item ATM options: Delta remains near 0.50 until very close to expiration
+    \item OTM options: Delta $\to$ 0 rapidly
+\end{itemize}
+
+This creates a \textbf{binary behavior} near expiration: options either act like stock (ITM) or become worthless (OTM).
+
+\subsection{Delta Hedging}
+
+Delta hedging involves holding a position in the underlying asset to offset the option's price sensitivity:
+
+\textbf{Delta-Neutral Portfolio:}
+
+To hedge a long call position with delta $\Delta_C$, short $\Delta_C$ shares:
+\begin{equation}
+\Pi = V_{\text{option}} - \Delta \cdot S
+\end{equation}
+
+The portfolio value is insensitive to small changes in $S$:
+\begin{equation}
+\frac{\partial \Pi}{\partial S} = \Delta - \Delta = 0
+\end{equation}
+
+\textbf{Dynamic Hedging:}
+
+Delta changes as the stock price moves (due to Gamma), requiring continuous rebalancing:
+\begin{equation}
+\Delta_{\text{hedge}}(t + dt) = \Delta_{\text{hedge}}(t) + \Gamma \cdot dS
+\end{equation}
+
+This creates \textbf{rebalancing costs}, especially in high-volatility environments.
+
+\subsection{Portfolio Delta}
+
+For a portfolio of $N$ options:
+\begin{equation}
+\Delta_{\text{portfolio}} = \sum_{i=1}^{N} n_i \cdot \Delta_i
+\end{equation}
+
+where $n_i$ is the quantity (positive for long, negative for short) of option $i$.
+
+\section{Gamma ($\Gamma$): Delta's Convexity}
+
+\subsection{Definition and Interpretation}
+
+Gamma measures the rate of change of Delta with respect to the underlying price—essentially, it's the second derivative of option value:
+
+\begin{equation}
+\Gamma = \frac{\partial^2 V}{\partial S^2} = \frac{\partial \Delta}{\partial S}
+\end{equation}
+
+\textbf{For European Options:}
+
+\begin{equation}
+\Gamma_{\text{call}} = \Gamma_{\text{put}} = \frac{N'(d_1)}{S \sigma \sqrt{T}} = \frac{e^{-d_1^2/2}}{S \sigma \sqrt{2\pi T}}
+\end{equation}
+
+where $N'(x) = \frac{1}{\sqrt{2\pi}} e^{-x^2/2}$ is the standard normal PDF.
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item \textbf{Delta acceleration}: For a \$1 move in stock price, Delta changes by Gamma
+    \item \textbf{Convexity}: Gamma measures the curvature of the option value function
+    \item \textbf{Rebalancing frequency}: Higher Gamma requires more frequent delta hedge adjustments
+    \item \textbf{Sign}: Always positive for long options (both calls and puts), negative for short options
+\end{itemize}
+
+\subsection{Gamma Behavior}
+
+Gamma is highest for at-the-money options near expiration:
+
+\begin{itemize}
+    \item \textbf{ATM options}: Maximum Gamma (greatest uncertainty about final payoff)
+    \item \textbf{ITM/OTM options}: Low Gamma (Delta is stable near 1 or 0)
+    \item \textbf{Near expiration}: Gamma spikes for ATM options as expiration approaches
+    \item \textbf{Long-dated options}: Gamma is lower and spread more evenly across strikes
+\end{itemize}
+
+\textbf{Gamma Explosion:}
+
+As $T \to 0$ for ATM options ($S \approx K$):
+\begin{equation}
+\Gamma \approx \frac{1}{S \sigma \sqrt{2\pi T}} \to \infty
+\end{equation}
+
+This makes delta hedging extremely challenging near expiration for ATM options.
+
+\subsection{Gamma in Risk Management}
+
+\textbf{P\&L Approximation:}
+
+Using a Taylor expansion, the change in portfolio value is:
+\begin{equation}
+\Delta V \approx \Delta \cdot \Delta S + \frac{1}{2} \Gamma \cdot (\Delta S)^2 + \Theta \cdot \Delta t
+\end{equation}
+
+The Gamma term captures \textbf{convexity profit/loss}:
+\begin{itemize}
+    \item \textbf{Long Gamma (long options)}: Profit from large price moves in either direction
+    \item \textbf{Short Gamma (short options)}: Loss from large price moves, profit from stability
+\end{itemize}
+
+\textbf{Gamma Scalping:}
+
+Market makers exploit Gamma through dynamic hedging:
+\begin{enumerate}
+    \item Sell options (short Gamma) and collect premium
+    \item Delta hedge continuously
+    \item If realized volatility < implied volatility, profit from rehedging
+    \item If realized volatility > implied volatility, lose from rehedging
+\end{enumerate}
+
+The P\&L from Gamma scalping is approximately:
+\begin{equation}
+\text{P\&L} \approx \frac{1}{2} \Gamma \cdot \left( (\sigma_{\text{realized}})^2 - (\sigma_{\text{implied}})^2 \right) \cdot S^2 \cdot dt
+\end{equation}
+
+\section{Theta ($\Theta$): Time Decay}
+
+\subsection{Definition and Interpretation}
+
+Theta measures the rate of change of the option value with respect to the passage of time (time decay):
+
+\begin{equation}
+\Theta = \frac{\partial V}{\partial T} = -\frac{\partial V}{\partial t}
+\end{equation}
+
+Note: $\Theta$ is often expressed as the negative of $\partial V / \partial t$ to make it positive for option sellers.
+
+\textbf{For European Call Option:}
+
+\begin{equation}
+\Theta_{\text{call}} = -\frac{S N'(d_1) \sigma}{2\sqrt{T}} - rK e^{-rT} N(d_2)
+\end{equation}
+
+\textbf{For European Put Option:}
+
+\begin{equation}
+\Theta_{\text{put}} = -\frac{S N'(d_1) \sigma}{2\sqrt{T}} + rK e^{-rT} N(-d_2)
+\end{equation}
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item \textbf{Daily decay}: Theta represents the dollar amount an option loses per day due to time passage
+    \item \textbf{Sign}: Usually negative for long options (they lose value over time), positive for short options
+    \item \textbf{Acceleration}: Time decay accelerates as expiration approaches
+    \item \textbf{Cost of optionality}: Theta is the price paid for maintaining an option position
+\end{itemize}
+
+\subsection{Theta Behavior}
+
+Theta varies significantly with moneyness and time to expiration:
+
+\begin{itemize}
+    \item \textbf{ATM options}: Maximum absolute Theta (most time value to decay)
+    \item \textbf{OTM options}: Lower Theta early, but percentage decay is high
+    \item \textbf{ITM options}: Theta approaching zero for deep ITM (mostly intrinsic value)
+    \item \textbf{Near expiration}: Theta accelerates dramatically for ATM options
+\end{itemize}
+
+\textbf{Time Decay Pattern:}
+
+Time decay is \textit{not} linear. An option does not lose 1/30th of its value each day over 30 days. Instead:
+\begin{equation}
+\text{Value}(T) \propto \sqrt{T}
+\end{equation}
+
+This means options lose more value per day as expiration approaches.
+
+\subsection{Theta-Gamma Relationship}
+
+Theta and Gamma are related through the Black-Scholes PDE:
+\begin{equation}
+\Theta + \frac{1}{2} \sigma^2 S^2 \Gamma + r S \Delta - r V = 0
+\end{equation}
+
+Rearranging:
+\begin{equation}
+\Theta = -\frac{1}{2} \sigma^2 S^2 \Gamma - r S \Delta + r V
+\end{equation}
+
+\textbf{Key Insight:}
+
+Theta is the \textit{compensation} for Gamma risk. Selling options (positive Theta, negative Gamma) means collecting time decay in exchange for exposure to large price moves. This is the fundamental trade-off in options trading.
+
+\subsection{Theta in Trading Strategies}
+
+\textbf{Theta-Positive Strategies (Option Selling):}
+\begin{itemize}
+    \item Short straddles/strangles
+    \item Covered calls
+    \item Cash-secured puts
+    \item Iron condors
+\end{itemize}
+
+These strategies profit from time decay if the underlying remains stable.
+
+\textbf{Theta-Negative Strategies (Option Buying):}
+\begin{itemize}
+    \item Long calls/puts for directional bets
+    \item Long straddles for volatility plays
+    \item Calendar spreads (long back-month, short front-month)
+\end{itemize}
+
+These strategies require the underlying to move significantly to overcome time decay.
+
+\section{Vega ($\mathcal{V}$ or $\nu$): Volatility Sensitivity}
+
+\subsection{Definition and Interpretation}
+
+Vega measures the sensitivity of the option value to changes in implied volatility:
+
+\begin{equation}
+\mathcal{V} = \frac{\partial V}{\partial \sigma}
+\end{equation}
+
+\textbf{For European Options:}
+
+\begin{equation}
+\mathcal{V}_{\text{call}} = \mathcal{V}_{\text{put}} = S \sqrt{T} N'(d_1) = S \sqrt{T} \frac{e^{-d_1^2/2}}{\sqrt{2\pi}}
+\end{equation}
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item \textbf{Volatility exposure}: For a 1\% increase in implied volatility, the option price increases by Vega
+    \item \textbf{Sign}: Always positive for long options (higher volatility = higher option value)
+    \item \textbf{Volatility trading}: Vega allows traders to take positions on volatility without directional bias
+    \item \textbf{Units}: Often quoted in dollars per 1\% change in volatility (e.g., Vega = 0.15 means \$0.15 per 1\% vol increase)
+\end{itemize}
+
+\subsection{Vega Behavior}
+
+Vega is highest for at-the-money options with longer time to expiration:
+
+\begin{itemize}
+    \item \textbf{ATM options}: Maximum Vega (greatest sensitivity to volatility changes)
+    \item \textbf{OTM/ITM options}: Lower Vega (less uncertain outcomes)
+    \item \textbf{Long-dated options}: Higher Vega (more time for volatility to impact value)
+    \item \textbf{Near expiration}: Vega approaches zero (payoff becomes deterministic)
+\end{itemize}
+
+\textbf{Vega Term Structure:}
+
+For a fixed strike, Vega increases with time to expiration:
+\begin{equation}
+\mathcal{V} \propto \sqrt{T}
+\end{equation}
+
+This is why LEAPS (long-term options) are more sensitive to volatility changes than short-term options.
+
+\subsection{Vega in Volatility Trading}
+
+\textbf{Long Vega Strategies (Volatility Buyers):}
+\begin{itemize}
+    \item Long straddles/strangles: Profit from volatility increase regardless of direction
+    \item Calendar spreads: Long back-month (high Vega), short front-month (low Vega)
+    \item Long options before earnings: Capitalize on volatility expansion
+\end{itemize}
+
+\textbf{Short Vega Strategies (Volatility Sellers):}
+\begin{itemize}
+    \item Short straddles/strangles: Profit from volatility decrease and time decay
+    \item Iron condors: Collect premium when implied volatility is high
+    \item Short options after earnings: Exploit volatility contraction
+\end{itemize}
+
+\subsection{Vega Risk Management}
+
+\textbf{Vega-Neutral Portfolios:}
+
+Construct positions where $\sum_i n_i \mathcal{V}_i = 0$ to eliminate volatility risk:
+
+Example: Long 1 ATM call (high Vega) + short 2 OTM calls (lower Vega each) can create a Vega-neutral position.
+
+\textbf{Vega Hedging:}
+
+Since implied volatility changes affect all options, Vega hedging typically requires options positions (not stock):
+\begin{equation}
+\mathcal{V}_{\text{hedge}} = -\mathcal{V}_{\text{portfolio}}
+\end{equation}
+
+This is often achieved through VIX futures or variance swaps in practice.
+
+\subsection{Implied Volatility vs Realized Volatility}
+
+Vega exposure is a bet on the difference between implied and realized volatility:
+
+\begin{itemize}
+    \item \textbf{Long Vega + Delta neutral}: Profit if realized vol > implied vol
+    \item \textbf{Short Vega + Delta neutral}: Profit if realized vol < implied vol
+\end{itemize}
+
+The P\&L from Vega exposure over time $dt$ is approximately:
+\begin{equation}
+\text{P\&L}_{\text{vega}} \approx \mathcal{V} \cdot \Delta \sigma \cdot dt
+\end{equation}
+
+where $\Delta \sigma$ is the change in implied volatility.
+
+\section{Rho ($\rho$): Interest Rate Sensitivity}
+
+\subsection{Definition and Interpretation}
+
+Rho measures the sensitivity of the option value to changes in the risk-free interest rate:
+
+\begin{equation}
+\rho = \frac{\partial V}{\partial r}
+\end{equation}
+
+\textbf{For European Options:}
+
+\begin{align}
+\rho_{\text{call}} &= K T e^{-rT} N(d_2) > 0 \\
+\rho_{\text{put}} &= -K T e^{-rT} N(-d_2) < 0
+\end{align}
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item \textbf{Rate sensitivity}: For a 1\% increase in interest rates, the option price changes by Rho
+    \item \textbf{Sign}: Positive for calls (higher rates increase call value), negative for puts
+    \item \textbf{Magnitude}: Generally the smallest Greek in impact, especially for short-term options
+    \item \textbf{Units}: Often quoted as dollars per 1\% change in interest rate
+\end{itemize}
+
+\subsection{Why Interest Rates Affect Options}
+
+Interest rates impact option values through two mechanisms:
+
+\begin{enumerate}
+    \item \textbf{Present value of strike}: Higher rates reduce the present value of the strike price paid at expiration (benefits calls, hurts puts)
+    \item \textbf{Carry cost}: Higher rates increase the cost of carrying stock vs holding calls (benefits calls)
+\end{enumerate}
+
+The effect is captured in the Black-Scholes formula through the discount factor $e^{-rT}$ applied to the strike.
+
+\subsection{Rho in Practice}
+
+Rho is typically the least-watched Greek because:
+
+\begin{itemize}
+    \item Interest rates change slowly compared to stock prices and volatility
+    \item The impact is usually small for short-term options (Rho $\propto T$)
+    \item Other Greeks (Delta, Gamma, Vega, Theta) dominate P\&L
+\end{itemize}
+
+\textbf{When Rho Matters:}
+
+\begin{itemize}
+    \item \textbf{Long-dated options (LEAPS)}: Rho impact increases linearly with time
+    \item \textbf{Interest rate derivatives}: Options on bonds, interest rate futures
+    \item \textbf{Macro environments}: Periods of rapid rate changes (e.g., Fed hiking cycles)
+    \item \textbf{Cross-currency options}: Foreign interest rates introduce additional Rho exposure
+\end{itemize}
+
+\subsection{Rho for LEAPS}
+
+For a 2-year call option:
+\begin{equation}
+\rho_{\text{LEAPS}} = K \cdot 2 \cdot e^{-r \cdot 2} N(d_2)
+\end{equation}
+
+If $K = \$100$ and $N(d_2) \approx 0.6$:
+\begin{equation}
+\rho_{\text{LEAPS}} \approx 100 \cdot 2 \cdot 0.95 \cdot 0.6 = \$114
+\end{equation}
+
+This means a 1\% rate increase (e.g., 3\% to 4\%) would increase the option value by \$114—significant for large positions.
+
+\section{Alpha ($\alpha$): Risk-Adjusted Return}
+
+\subsection{Definition and Interpretation}
+
+Alpha measures the excess return of an investment relative to a benchmark, adjusted for risk. It originates from the Capital Asset Pricing Model (CAPM) and represents the value added by active management.
+
+\textbf{CAPM Framework:}
+
+\begin{equation}
+r_i = r_f + \beta_i (r_m - r_f) + \alpha_i
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $r_i$ = return of asset $i$
+    \item $r_f$ = risk-free rate
+    \item $r_m$ = market return
+    \item $\beta_i$ = systematic risk (see next section)
+    \item $\alpha_i$ = excess return not explained by market exposure
+\end{itemize}
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item \textbf{Positive alpha}: Outperformance relative to risk-adjusted benchmark (skill)
+    \item \textbf{Negative alpha}: Underperformance relative to risk-adjusted benchmark
+    \item \textbf{Zero alpha}: Performance explained entirely by market exposure (no skill)
+    \item \textbf{Units}: Typically expressed as percentage per period (annual alpha)
+\end{itemize}
+
+\subsection{Estimating Alpha}
+
+Alpha is estimated via regression of excess returns on market excess returns:
+
+\begin{equation}
+r_i - r_f = \alpha_i + \beta_i (r_m - r_f) + \epsilon_i
+\end{equation}
+
+where $\epsilon_i$ is the residual (idiosyncratic risk).
+
+\textbf{Example:}
+
+If a portfolio returns 15\% when the market returns 10\% and the risk-free rate is 2\%, with estimated $\beta = 1.2$:
+
+\begin{align}
+\text{Expected return} &= 2\% + 1.2 \times (10\% - 2\%) = 11.6\% \\
+\alpha &= 15\% - 11.6\% = 3.4\%
+\end{align}
+
+The portfolio generated 3.4\% excess return beyond what its market risk would predict.
+
+\subsection{Alpha in Portfolio Management}
+
+\textbf{Alpha Generation Strategies:}
+
+\begin{itemize}
+    \item \textbf{Stock selection}: Identifying mispriced securities (fundamental analysis, quantitative models)
+    \item \textbf{Market timing}: Adjusting market exposure based on forecasts (tactical allocation)
+    \item \textbf{Alternative risk premia}: Exploiting factors like value, momentum, quality
+    \item \textbf{Arbitrage}: Statistical arbitrage, merger arbitrage, convertible arbitrage
+\end{itemize}
+
+\textbf{Alpha Decay:}
+
+Alpha is not stable over time:
+\begin{itemize}
+    \item Competition erodes profitable strategies (crowding)
+    \item Market regimes change (what worked in the past may not work in the future)
+    \item Alpha observed in-sample often fails to persist out-of-sample (overfitting)
+\end{itemize}
+
+\subsection{Information Ratio}
+
+Alpha is often evaluated using the Information Ratio (IR):
+
+\begin{equation}
+\text{IR} = \frac{\alpha}{\sigma(\epsilon)}
+\end{equation}
+
+where $\sigma(\epsilon)$ is the standard deviation of residual returns (tracking error).
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item IR measures alpha per unit of idiosyncratic risk
+    \item IR > 0.5 is considered good, IR > 1.0 is excellent
+    \item Higher IR indicates more consistent alpha generation
+\end{itemize}
+
+\subsection{Portable Alpha}
+
+Portable alpha strategies separate alpha generation from beta exposure:
+
+\begin{enumerate}
+    \item \textbf{Generate alpha}: Use active strategies (e.g., long-short equity, hedge funds)
+    \item \textbf{Gain beta}: Use derivatives (futures, swaps) to get market exposure
+    \item \textbf{Total return}: $r_{\text{total}} = \alpha + \beta \cdot r_m$
+\end{enumerate}
+
+This allows investors to combine alpha from one strategy with beta from another (e.g., hedge fund alpha + S\&P 500 beta).
+
+\section{Beta ($\beta$): Systematic Risk}
+
+\subsection{Definition and Interpretation}
+
+Beta measures the sensitivity of an asset's returns to market returns, representing systematic (non-diversifiable) risk:
+
+\begin{equation}
+\beta_i = \frac{\text{Cov}(r_i, r_m)}{\text{Var}(r_m)} = \rho_{i,m} \frac{\sigma_i}{\sigma_m}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $\text{Cov}(r_i, r_m)$ = covariance between asset and market returns
+    \item $\text{Var}(r_m)$ = variance of market returns
+    \item $\rho_{i,m}$ = correlation between asset and market
+    \item $\sigma_i, \sigma_m$ = standard deviations of asset and market
+\end{itemize}
+
+\textbf{Interpretation:}
+
+\begin{itemize}
+    \item \textbf{$\beta = 1$}: Asset moves in line with the market (e.g., index fund)
+    \item \textbf{$\beta > 1$}: Asset is more volatile than the market (amplifies market moves)
+    \item \textbf{$\beta < 1$}: Asset is less volatile than the market (dampens market moves)
+    \item \textbf{$\beta = 0$}: Asset is uncorrelated with the market (e.g., risk-free asset)
+    \item \textbf{$\beta < 0$}: Asset moves inversely to the market (e.g., gold, VIX)
+\end{itemize}
+
+\subsection{Estimating Beta}
+
+Beta is estimated via regression of asset returns on market returns:
+
+\begin{equation}
+r_i = \alpha_i + \beta_i r_m + \epsilon_i
+\end{equation}
+
+The slope coefficient $\beta_i$ is the asset's beta.
+
+\textbf{Example Betas:}
+
+\begin{itemize}
+    \item \textbf{Technology stocks}: $\beta \approx 1.2$ - 1.5 (high growth, high volatility)
+    \item \textbf{Utility stocks}: $\beta \approx 0.5$ - 0.7 (defensive, stable)
+    \item \textbf{Gold}: $\beta \approx 0$ to $-0.2$ (safe haven, negative correlation)
+    \item \textbf{Treasury bonds}: $\beta \approx -0.1$ to $-0.3$ (flight to quality)
+\end{itemize}
+
+\subsection{Beta in Portfolio Construction}
+
+\textbf{Portfolio Beta:}
+
+For a portfolio of $N$ assets with weights $w_i$:
+\begin{equation}
+\beta_{\text{portfolio}} = \sum_{i=1}^{N} w_i \beta_i
+\end{equation}
+
+\textbf{Beta Targeting:}
+
+Investors can adjust portfolio beta to match desired market exposure:
+\begin{itemize}
+    \item \textbf{$\beta = 1$}: Neutral market exposure (track the market)
+    \item \textbf{$\beta > 1$}: Leverage market exposure (bullish stance)
+    \item \textbf{$\beta < 1$}: Reduce market exposure (defensive stance)
+    \item \textbf{$\beta = 0$}: Market-neutral (eliminate systematic risk)
+\end{itemize}
+
+\textbf{Beta Hedging with Futures:}
+
+To reduce portfolio beta from $\beta_P$ to target beta $\beta_T$:
+\begin{equation}
+N_{\text{futures}} = -\frac{(\beta_P - \beta_T) \cdot V_P}{\beta_F \cdot V_F}
+\end{equation}
+
+where $V_P$ is portfolio value and $V_F$ is futures contract value.
+
+\subsection{Limitations of Beta}
+
+\begin{itemize}
+    \item \textbf{Non-stationarity}: Beta changes over time (business cycles, leverage, sector shifts)
+    \item \textbf{Market proxy}: Results depend on choice of market index (S\&P 500 vs Russell 2000)
+    \item \textbf{Non-linear effects}: Beta may differ in up markets vs down markets
+    \item \textbf{Factor exposures}: Beta captures only market risk, ignoring other factors (size, value, momentum)
+\end{itemize}
+
+\subsection{Multi-Factor Beta Models}
+
+Modern portfolio theory extends beta to multiple factors (Fama-French, Carhart):
+
+\begin{equation}
+r_i = \alpha_i + \beta_{M,i} r_M + \beta_{SMB,i} r_{SMB} + \beta_{HML,i} r_{HML} + \beta_{MOM,i} r_{MOM} + \epsilon_i
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $\beta_M$ = market beta
+    \item $\beta_{SMB}$ = size beta (small-cap vs large-cap exposure)
+    \item $\beta_{HML}$ = value beta (value vs growth exposure)
+    \item $\beta_{MOM}$ = momentum beta (winners vs losers exposure)
+\end{itemize}
+
+This provides a more nuanced understanding of systematic risk beyond simple market beta.
+
+\section{Greeks in Risk Management}
+
+\subsection{Greeks Profile of Common Strategies}
+
+\textbf{Long Call:}
+\begin{itemize}
+    \item Delta: Positive (0 to 1)
+    \item Gamma: Positive (convexity benefit)
+    \item Theta: Negative (time decay cost)
+    \item Vega: Positive (benefits from vol increase)
+    \item Rho: Positive (benefits from rate increase)
+\end{itemize}
+
+\textbf{Short Put (Cash-Secured):}
+\begin{itemize}
+    \item Delta: Positive (similar to long stock)
+    \item Gamma: Negative (convexity risk)
+    \item Theta: Positive (collect time decay)
+    \item Vega: Negative (hurt by vol increase)
+    \item Rho: Positive (benefits from rate increase)
+\end{itemize}
+
+\textbf{Iron Condor:}
+\begin{itemize}
+    \item Delta: Near zero (directionally neutral)
+    \item Gamma: Negative (short options at wings)
+    \item Theta: Positive (time decay strategy)
+    \item Vega: Negative (sells volatility)
+    \item Rho: Near zero (offsetting positions)
+\end{itemize}
+
+\subsection{Greeks-Based Risk Limits}
+
+Professional traders and risk managers set limits on Greeks exposure:
+
+\begin{itemize}
+    \item \textbf{Delta limit}: Max dollar exposure to directional moves (e.g., \$1M delta)
+    \item \textbf{Gamma limit}: Max convexity exposure (e.g., \$10K Gamma)
+    \item \textbf{Vega limit}: Max volatility exposure (e.g., \$50K Vega)
+    \item \textbf{Theta limit}: Min/max time decay exposure (e.g., -\$5K to +\$10K daily Theta)
+\end{itemize}
+
+\subsection{Stress Testing with Greeks}
+
+Greeks enable rapid stress testing of option portfolios:
+
+\textbf{Scenario 1: Market crash (-10\% stock, +50\% vol):}
+\begin{equation}
+\Delta P \approx \Delta \cdot (-0.10S) + \frac{1}{2}\Gamma \cdot (0.10S)^2 + \mathcal{V} \cdot (0.5\sigma)
+\end{equation}
+
+\textbf{Scenario 2: Volatility collapse (+2\% stock, -30\% vol):}
+\begin{equation}
+\Delta P \approx \Delta \cdot (0.02S) + \frac{1}{2}\Gamma \cdot (0.02S)^2 + \mathcal{V} \cdot (-0.3\sigma)
+\end{equation}
+
+This allows traders to quickly assess potential P\&L under various market conditions.
+
+\section{Conclusion}
+
+The Greeks provide a comprehensive framework for understanding and managing option risk:
+
+\begin{itemize}
+    \item \textbf{Delta} captures directional exposure and hedge ratios
+    \item \textbf{Gamma} measures convexity and rebalancing requirements
+    \item \textbf{Theta} quantifies time decay and the cost of optionality
+    \item \textbf{Vega} expresses volatility sensitivity and vol trading opportunities
+    \item \textbf{Rho} accounts for interest rate risk, especially in long-dated options
+    \item \textbf{Alpha} measures skill in generating risk-adjusted returns
+    \item \textbf{Beta} quantifies systematic market exposure and correlation
+\end{itemize}
+
+Mastery of the Greeks is essential for successful options trading, portfolio risk management, and derivatives strategy implementation. They transform complex non-linear payoffs into tangible risk metrics that can be monitored, hedged, and optimized in real-time.
+
+\end{document}

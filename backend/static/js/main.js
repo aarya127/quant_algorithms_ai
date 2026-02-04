@@ -2218,7 +2218,6 @@ function addWatchlistItem(container, symbol, name) {
         <div class="d-flex justify-content-between align-items-center">
             <div class="flex-grow-1">
                 <strong>${symbol}</strong>
-                ${name ? `<div class="small text-muted">${name.substring(0, 25)}${name.length > 25 ? '...' : ''}</div>` : ''}
             </div>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-primary">...</span>

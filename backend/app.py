@@ -1052,6 +1052,11 @@ def get_research_paper(paper_name):
             'sabr': '../quant_research/stochastic_volatility/sabr_model/theory.tex',
             'state_space': '../quant_research/state_space_models/theory.tex',
             'market_microstructure': '../quant_research/market_microstructure/theory.tex',
+            'macd': '../quant_research/macd_rsi/macd_theory.tex',
+            'rsi': '../quant_research/macd_rsi/rsi_theory.tex',
+            'greeks': '../quant_research/greeks/theory.tex',
+            'derivatives_volatility': '../quant_research/derivatives_volatility/theory.tex',
+            'advanced_trading': '../quant_research/advanced_trading/theory.tex',
         }
         
         if paper_name not in paper_map:
