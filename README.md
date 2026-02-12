@@ -36,6 +36,58 @@
 - **Quantitative Analysis**: Technical indicators (SMA, RSI, MACD) with visual charting
 - **Economic Calendar**: Tracks FOMC meetings, CPI reports, earnings dates, and market holidays
 - **Influential Monitoring**: Tracks tweets from market-moving figures (Elon Musk, Warren Buffett, Trump, etc.)
+- **Research-Driven Development**: Built on peer-reviewed quantitative finance research with comprehensive documentation
+
+### 🧩 Quant Algorithm Architecture
+
+This repository follows professional quantitative finance standards. Algorithms under development follow this comprehensive lifecycle:
+
+```
+Idea → Model → Signal → Portfolio & Sizing → Execution → Risk Controls
+  ↓      ↓       ↓           ↓                    ↓            ↓
+Define  Validate Convert   Sizing &        Order Placement  Hard Stops
+Objective Empirically Output   Correlation   & Slippage      & Limits
+         to Signal    Control
+           ↓
+Backtesting → Stress Testing → Performance Attribution → Monitoring & Guardrails
+   ↓              ↓                    ↓                        ↓
+Causal    Regime Shifts,        Where does PnL         Logging, Metrics,
+Testing   Volatility Spikes     come from?              Alerts, Reconciliation
+```
+
+#### **The 10 Stages of Algorithm Development** (Memorize This!)
+
+1. **Define the Trading Objective** - Asset class, holding period, market regime, success metrics
+2. **Choose / Build the Model** - ARIMA, GARCH, factor models with empirical validation
+3. **Convert Model → Signal** - Deterministic entry/exit logic with stable thresholds
+4. **Position Sizing & Portfolio Logic** - Max position size, volatility targeting, leverage limits
+5. **Execution Logic** - Market vs limit orders, TWAP/VWAP, slippage assumptions
+6. **Risk Controls (Hard Stops)** - Max drawdown, daily loss limits, kill switches
+7. **Backtesting (With Realism)** - No lookahead bias, include transaction costs, latency
+8. **Stress & Failure Testing** - Regime shifts, volatility spikes, liquidity crashes, parameter instability
+9. **Performance Attribution** - Understand where PnL comes from and when losses occur
+10. **Monitoring & Guardrails** - Logging, metrics, alerts, reconciliation checks
+
+#### **Models & Algorithms In Development**
+
+This repository contains implementations and research across quantitative finance domains:
+
+| Category | Focus | Status |
+|----------|-------|--------|
+| **Time Series Models** | ARIMA, GARCH, Cointegration, Vector Autoregression | 🔄 In Progress |
+| **Volatility Models** | Heston, SABR, Local Volatility, Jump-Diffusion | 🔄 Building |
+| **Factor Strategies** | Value, Momentum, Size, Quality, Mean Reversion | 🔄 Research |
+| **Options Pricing** | Greeks, Implied Volatility, Smile Dynamics | 📚 Theory Complete |
+| **Execution Algorithms** | TWAP, VWAP, Optimal Execution, Market Making | 🔄 Implementing |
+| **Portfolio Optimization** | Mean-Variance, Risk Parity, Smart Beta | 🔄 Building |
+| **Backtesting Framework** | Walk-forward testing, parameter stability | 📝 Planning |
+
+Each algorithm under development includes:
+- Comprehensive mathematical documentation
+- Empirical validation on historical data  
+- Risk measurement and stress testing
+- Performance monitoring templates
+- Real-world implementation considerations
 
 ---
 
@@ -91,6 +143,32 @@
 - Earnings history and calendar
 - Insider transactions and sentiment
 - Basic financials from Finnhub
+
+### 📚 **Quantitative Research Hub**
+Comprehensive research library with **9+ peer-reviewed papers** on quantitative finance:
+
+#### **Stochastic Volatility Models**
+- Heston Model: Mathematical foundations, calibration, and implementation
+- SABR Model: CEV backbone and volatility smile modeling
+- Derivatives Volatility: Complete guide to implied volatility, surfaces, and trading
+
+#### **Technical Indicators**
+- MACD (Moving Average Convergence Divergence): Momentum detection and trend following
+- RSI (Relative Strength Index): Mean reversion and overbought/oversold signals
+
+#### **Options & Risk Measures**
+- The Greeks (Delta, Gamma, Theta, Vega, Rho): Comprehensive hedging and risk framework
+- Alpha & Beta: Portfolio performance attribution and systematic risk
+
+#### **Time Series & Econometric Models**
+- State Space Models: Kalman filters and hidden variable estimation
+- Market Microstructure: Price formation, spreads, and execution dynamics
+
+#### **Advanced Trading Strategies**
+- Modern portfolio theory and factor investing
+- Statistical arbitrage and mean reversion
+- Algorithmic execution and high-frequency trading
+- Risk management frameworks (VaR, CVaR, stress testing)
 
 ---
 
@@ -306,6 +384,58 @@ Access the application at: **http://localhost:5000**
 
 ```
 quant_algorithms_ai/
+├── Algorithms/                    # Trading algorithm implementations
+│   ├── Machine Learning Algorithms/
+│   ├── Monte Carlo Simulations/
+│   ├── Position Sizing/
+│   └── Volatility Forecasting/
+│
+├── Models/                        # Quantitative finance models
+│   ├── Asset Allocation Models/
+│   ├── Credit Risk Models/
+│   ├── Equity Options Pricing/
+│   ├── Execution Models/ (TWAP, VWAP)
+│   ├── Interest Rate Models/ (FMM, HJM, Hull-White, LLM-BGM)
+│   └── Time Series Models/
+│       ├── ARIMA, GARCH, Volatility Clustering
+│       └── Machine Learning (Vector Autoregression)
+│
+├── Quant Research/                # 9+ Research Papers
+│   ├── Stochastic Volatility Models/
+│   │   ├── heston_model/ → Heston Theory (PDF)
+│   │   ├── sabr_model/ → SABR Theory (PDF)
+│   │   └── diagnostics/ → Model validation
+│   │
+│   ├── Technical Indicators/
+│   │   └── macd_rsi/ → MACD & RSI Theory (PDFs)
+│   │
+│   ├── Options & Greeks/
+│   │   └── greeks/ → Delta, Gamma, Theta, Vega, Rho (PDF)
+│   │
+│   ├── Time Series & Econometrics/
+│   │   ├── state_space_models/ → Kalman Filters (PDF)
+│   │   └── market_microstructure/ → Price Formation, Execution (PDF)
+│   │
+│   ├── Volatility Derivatives/
+│   │   └── derivatives_volatility/ → Volatility Surfaces, Trading (PDF)
+│   │
+│   ├── Advanced Trading/
+│   │   ├── prototype.py → Algorithm prototypes
+│   │   ├── cointegration/ → Pairs trading research
+│   │   └── theory.tex → Portfolio Theory & Strategies (PDF)
+│   │
+│   ├── Risk Management/
+│   │   ├── var_calculations/ → Value at Risk
+│   │   └── cvar/ → Conditional VaR
+│   │
+│   └── Other Research/
+│       ├── Derivatives Volatility/
+│       ├── FRM/CQF Modules/
+│       ├── Greeks & Risk Measures/
+│       ├── MACD & RSI/
+│       ├── Stochastic Volatility/
+│       └── VaR Calculations/
+│
 ├── Data/                          # Data fetching modules
 │   ├── alpaca_news.py            # Alpaca news stream
 │   ├── alphavantage.py           # Alpha Vantage API
@@ -319,8 +449,8 @@ quant_algorithms_ai/
 │   ├── finbert.py                # FinBERT model integration
 │   └── finbert_canadian.py       # Canadian market adaptation
 │
-├── UI/                            # Web application
-│   ├── app.py                    # Flask backend
+├── Backend/                       # Web application
+│   ├── app.py                    # Flask backend with research PDF serving
 │   ├── stock_analyzer.py         # Stock analysis engine
 │   ├── economic_events.json      # Calendar data (67 events)
 │   ├── templates/
@@ -328,16 +458,16 @@ quant_algorithms_ai/
 │   ├── static/
 │   │   ├── css/
 │   │   │   └── style.css         # Custom styling
-│   │   └── js/
-│   │       └── main.js           # Frontend JavaScript (1930 lines)
+│   │   ├── js/
+│   │   │   └── main.js           # Frontend JavaScript (2800+ lines)
+│   │   └── research/
+│   │       ├── PDFs/              # Compiled research papers
+│   │       └── markdown/          # Legacy markdown docs
 │
 ├── Tests/                         # API testing suite
 │   ├── test_finnhub.py
 │   ├── test_alphavantage.py
 │   └── results/                  # Test output logs
-│
-├── Time Series Forecast/          # ML forecasting (WIP)
-│   └── time_series.ipynb         # Jupyter notebook
 │
 ├── requirements.txt               # Python dependencies
 ├── README.md                      # This file
@@ -485,24 +615,64 @@ SOFTWARE.
 
 ## 🗺️ Roadmap
 
-### Upcoming Features
-- [ ] Machine learning price prediction models
+### Quantitative Research & Algorithm Development
+
+#### **Phase 1: Research Foundation** ✅ Complete
+- [x] Market Microstructure theory and paper
+- [x] Stochastic Volatility Models (Heston, SABR)
+- [x] Technical Indicators (MACD, RSI)
+- [x] Option Greeks and Risk Measures
+- [x] State Space Models and Kalman Filters
+- [x] Derivatives Volatility research
+- [x] Advanced Trading Strategies framework
+
+#### **Phase 2: Algorithm Implementation** 🔄 In Progress
+- [ ] Time Series Models (ARIMA, GARCH, Cointegration)
+- [ ] Factor-based Portfolio Strategies (Value, Momentum, Mean Reversion)
+- [ ] Volatility Forecasting Models
+- [ ] Risk-Adjusted Position Sizing
+- [ ] Pairs Trading Framework
+- [ ] Machine Learning Enhancements
+
+#### **Phase 3: Backtesting & Validation** 📝 Planning
+- [ ] Walk-forward backtesting framework
+- [ ] Stress testing and parameter stability analysis
+- [ ] Cross-validation for out-of-sample testing
+- [ ] Performance attribution analysis
+- [ ] Monte Carlo simulation
+
+#### **Phase 4: Production Deployment** 🚀 Future
+- [ ] Live paper trading
+- [ ] Risk monitoring and guardrails
+- [ ] Execution optimization
+- [ ] Multi-strategy orchestration
+- [ ] Real-time metrics and alerting
+
+### UI & Platform Features
+
+#### **Upcoming Features**
+- [ ] Interactive research paper viewer in Quant section
+- [ ] Algorithm parameter optimization dashboard
+- [ ] Backtest results visualization
+- [ ] Strategy performance comparison
+- [ ] Factor analysis and attribution
 - [ ] Portfolio management and tracking
-- [ ] Options chain analysis
-- [ ] Backtesting framework for strategies
+- [ ] Options chain analysis with Greeks
 - [ ] Email/SMS alerts for price targets
-- [ ] Mobile-responsive improvements
 - [ ] Dark mode toggle
 - [ ] Export reports to PDF
 - [ ] Multi-user authentication
 - [ ] WebSocket for real-time updates
 
-### In Progress
+#### **In Progress**
 - [x] Economic calendar with 2026 events
 - [x] Twitter influential account monitoring
 - [x] Custom watchlist with localStorage
 - [x] Multi-exchange stock search
 - [x] FinBERT sentiment analysis
+- [x] Quantitative Research Hub (9+ papers)
+- [x] Dynamic LaTeX PDF compilation and serving
+- [x] Comprehensive research paper library
 
 ---
 
