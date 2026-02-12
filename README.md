@@ -38,57 +38,6 @@
 - **Influential Monitoring**: Tracks tweets from market-moving figures (Elon Musk, Warren Buffett, Trump, etc.)
 - **Research-Driven Development**: Built on peer-reviewed quantitative finance research with comprehensive documentation
 
-### 🧩 Quant Algorithm Architecture
-
-This repository follows professional quantitative finance standards. Algorithms under development follow this comprehensive lifecycle:
-
-```
-Idea → Model → Signal → Portfolio & Sizing → Execution → Risk Controls
-  ↓      ↓       ↓           ↓                    ↓            ↓
-Define  Validate Convert   Sizing &        Order Placement  Hard Stops
-Objective Empirically Output   Correlation   & Slippage      & Limits
-         to Signal    Control
-           ↓
-Backtesting → Stress Testing → Performance Attribution → Monitoring & Guardrails
-   ↓              ↓                    ↓                        ↓
-Causal    Regime Shifts,        Where does PnL         Logging, Metrics,
-Testing   Volatility Spikes     come from?              Alerts, Reconciliation
-```
-
-#### **The 10 Stages of Algorithm Development** (Memorize This!)
-
-1. **Define the Trading Objective** - Asset class, holding period, market regime, success metrics
-2. **Choose / Build the Model** - ARIMA, GARCH, factor models with empirical validation
-3. **Convert Model → Signal** - Deterministic entry/exit logic with stable thresholds
-4. **Position Sizing & Portfolio Logic** - Max position size, volatility targeting, leverage limits
-5. **Execution Logic** - Market vs limit orders, TWAP/VWAP, slippage assumptions
-6. **Risk Controls (Hard Stops)** - Max drawdown, daily loss limits, kill switches
-7. **Backtesting (With Realism)** - No lookahead bias, include transaction costs, latency
-8. **Stress & Failure Testing** - Regime shifts, volatility spikes, liquidity crashes, parameter instability
-9. **Performance Attribution** - Understand where PnL comes from and when losses occur
-10. **Monitoring & Guardrails** - Logging, metrics, alerts, reconciliation checks
-
-#### **Models & Algorithms In Development**
-
-This repository contains implementations and research across quantitative finance domains:
-
-| Category | Focus | Status |
-|----------|-------|--------|
-| **Time Series Models** | ARIMA, GARCH, Cointegration, Vector Autoregression | 🔄 In Progress |
-| **Volatility Models** | Heston, SABR, Local Volatility, Jump-Diffusion | 🔄 Building |
-| **Factor Strategies** | Value, Momentum, Size, Quality, Mean Reversion | 🔄 Research |
-| **Options Pricing** | Greeks, Implied Volatility, Smile Dynamics | 📚 Theory Complete |
-| **Execution Algorithms** | TWAP, VWAP, Optimal Execution, Market Making | 🔄 Implementing |
-| **Portfolio Optimization** | Mean-Variance, Risk Parity, Smart Beta | 🔄 Building |
-| **Backtesting Framework** | Walk-forward testing, parameter stability | 📝 Planning |
-
-Each algorithm under development includes:
-- Comprehensive mathematical documentation
-- Empirical validation on historical data  
-- Risk measurement and stress testing
-- Performance monitoring templates
-- Real-world implementation considerations
-
 ---
 
 ## ✨ Key Features
@@ -204,6 +153,61 @@ Comprehensive research library with **9+ peer-reviewed papers** on quantitative 
     │Sentiment │      │(Targeted)│
     └──────────┘      └──────────┘
 ```
+
+---
+
+## 🧩 Quant Algorithm Architecture
+
+This repository follows professional quantitative finance standards. Algorithms under development follow this comprehensive lifecycle:
+
+```
+Idea → Model → Signal → Portfolio & Sizing → Execution → Risk Controls
+  ↓      ↓       ↓           ↓                    ↓            ↓
+Define  Validate Convert   Sizing &        Order Placement  Hard Stops
+Objective Empirically Output   Correlation   & Slippage      & Limits
+         to Signal    Control
+           ↓
+Backtesting → Stress Testing → Performance Attribution → Monitoring & Guardrails
+   ↓              ↓                    ↓                        ↓
+Causal    Regime Shifts,        Where does PnL         Logging, Metrics,
+Testing   Volatility Spikes     come from?              Alerts, Reconciliation
+```
+
+### **Algorithm Development Structure**
+
+All algorithms in this repository follow this systematic approach:
+
+1. **Define the Trading Objective** - Asset class, holding period, market regime, success metrics
+2. **Choose / Build the Model** - ARIMA, GARCH, factor models with empirical validation
+3. **Convert Model → Signal** - Deterministic entry/exit logic with stable thresholds
+4. **Position Sizing & Portfolio Logic** - Max position size, volatility targeting, leverage limits
+5. **Execution Logic** - Market vs limit orders, TWAP/VWAP, slippage assumptions
+6. **Risk Controls (Hard Stops)** - Max drawdown, daily loss limits, kill switches
+7. **Backtesting (With Realism)** - No lookahead bias, include transaction costs, latency
+8. **Stress & Failure Testing** - Regime shifts, volatility spikes, liquidity crashes, parameter instability
+9. **Performance Attribution** - Understand where PnL comes from and when losses occur
+10. **Monitoring & Guardrails** - Logging, metrics, alerts, reconciliation checks
+
+### **Models & Algorithms In Development**
+
+This repository contains implementations and research across quantitative finance domains:
+
+| Category | Focus | Status |
+|----------|-------|--------|
+| **Time Series Models** | ARIMA, GARCH, Cointegration, Vector Autoregression | 🔄 In Progress |
+| **Volatility Models** | Heston, SABR, Local Volatility, Jump-Diffusion | 🔄 Building |
+| **Factor Strategies** | Value, Momentum, Size, Quality, Mean Reversion | 🔄 Research |
+| **Options Pricing** | Greeks, Implied Volatility, Smile Dynamics | 📚 Theory Complete |
+| **Execution Algorithms** | TWAP, VWAP, Optimal Execution, Market Making | 🔄 Implementing |
+| **Portfolio Optimization** | Mean-Variance, Risk Parity, Smart Beta | 🔄 Building |
+| **Backtesting Framework** | Walk-forward testing, parameter stability | 📝 Planning |
+
+Each algorithm under development includes:
+- Comprehensive mathematical documentation
+- Empirical validation on historical data  
+- Risk measurement and stress testing
+- Performance monitoring templates
+- Real-world implementation considerations
 
 ---
 
@@ -571,7 +575,7 @@ This project is licensed under the **MIT License**.
 ```
 MIT License
 
-Copyright (c) 2026 Aarya Sinha
+Copyright (c) 2026 Aarya Shah
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
