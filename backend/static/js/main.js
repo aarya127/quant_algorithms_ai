@@ -1281,30 +1281,9 @@ function viewResearch(type) {
     const bsLoadingModal = new bootstrap.Modal(loadingModal);
     bsLoadingModal.show();
     
-    if (type === 'advanced_trading') {
-        // Handle markdown files
-        fetch(`/api/research/${type}/markdown`)
-            .then(response => response.json())
-            .then(data => {
-                bsLoadingModal.hide();
-                loadingModal.remove();
-                
-                if (data.success) {
-                    showMarkdownModal('Advanced Trading Theory', data.content);
-                } else {
-                    alert('Failed to load research paper: ' + data.error);
-                }
-            })
-            .catch(error => {
-                bsLoadingModal.hide();
-                loadingModal.remove();
-                console.error('Error loading markdown:', error);
-                alert('Failed to load research paper');
-            });
-    } else {
-        // Handle LaTeX PDFs - dynamically compile and open
-        fetch(`/api/research/${type}`)
-            .then(response => {
+    // Handle LaTeX PDFs - dynamically compile and open
+    fetch(`/api/research/${type}`)
+        .then(response => {
                 bsLoadingModal.hide();
                 loadingModal.remove();
                 
@@ -1325,35 +1304,6 @@ function viewResearch(type) {
                 console.error('Error compiling LaTeX:', error);
                 alert('Failed to generate PDF. Please try again.');
             });
-    }
-}
-
-// Show markdown in modal
-function showMarkdownModal(title, markdown) {
-    // Create a simple modal to display markdown
-    const modal = document.createElement('div');
-    modal.className = 'modal fade';
-    modal.innerHTML = `
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">${title}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <pre style="white-space: pre-wrap; font-family: Georgia, serif; line-height: 1.6;">${markdown}</pre>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
-    
-    modal.addEventListener('hidden.bs.modal', function() {
-        modal.remove();
-    });
 }
 
 // Download Research Paper
