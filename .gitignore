@@ -172,3 +172,19 @@ keys.txt
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+
+# C++ Build Artifacts
+performance/cpp_execution/build/
+cpp_bindings*.so
+*.o
+*.a
+*.dylib
+*.dll
+*.exe
+
+# Go Build Artifacts
+performance/go_services/bin/
+performance/go_services/pkg/
+*.test
+*.out
+go.sum

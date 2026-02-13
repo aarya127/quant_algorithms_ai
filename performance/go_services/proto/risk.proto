@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package risk;
+
+option go_package = "github.com/aarya127/quant_algorithms_ai/go/proto";
+
+// RiskEngine service for real-time risk management
+service RiskEngine {
+  // Check if a position is within risk limits
+  rpc CheckPosition(PositionRequest) returns (PositionResponse);
+  
+  // Get current risk metrics
+  rpc GetMetrics(MetricsRequest) returns (MetricsResponse);
+  
+  // Stream real-time alerts
+  rpc StreamAlerts(AlertRequest) returns (stream AlertResponse);
+}
+
+message PositionRequest {
+  string symbol = 1;
+  string quantity = 2;  // Decimal as string
+  string price = 3;     // Decimal as string
+  string side = 4;      // "BUY" or "SELL"
+}
+
+message PositionResponse {
+  bool approved = 1;
+  string message = 2;
+}
+
+message MetricsRequest {
+  // Empty for now
+}
+
+message MetricsResponse {
+  string total_exposure = 1;
+  string total_pnl = 2;
+  string daily_pnl = 3;
+  string leverage = 4;
+  string var_95 = 5;
+  double sharpe = 6;
+  double volatility = 7;
+  int32 position_count = 8;
+  repeated string limit_breaches = 9;
+}
+
+message AlertRequest {
+  // Subscribe to alerts
+}
+
+message AlertResponse {
+  string severity = 1;  // "INFO", "WARNING", "CRITICAL"
+  string message = 2;
+  int64 timestamp = 3;
+}

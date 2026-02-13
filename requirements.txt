@@ -7,3 +7,11 @@ finnhub-python==2.4.19
 requests==2.31.0
 tweepy==4.16.0
 websockets==15.0.1
+
+# C++ integration
+pybind11>=2.11.0
+
+# Go integration (gRPC)
+grpcio>=1.59.0
+grpcio-tools>=1.59.0
+protobuf>=4.25.0
