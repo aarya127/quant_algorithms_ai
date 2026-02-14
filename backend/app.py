@@ -1123,6 +1123,31 @@ def get_research_paper(paper_name):
             'error': f'Error generating PDF: {str(e)}'
         }), 500
 
+@app.route('/api/research/diagnostics/html')
+def get_diagnostics_notebook():
+    """
+    Serve the diagnostics notebook as HTML
+    """
+    try:
+        html_file = os.path.join(os.path.dirname(__file__), 'static/research/diagnostics.html')
+        
+        if not os.path.exists(html_file):
+            return jsonify({
+                'success': False,
+                'error': 'Diagnostics notebook not found'
+            }), 404
+        
+        return send_file(
+            html_file,
+            mimetype='text/html',
+            as_attachment=False
+        )
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/research/<paper_name>/markdown')
 def get_research_markdown(paper_name):
     """
