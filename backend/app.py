@@ -1123,30 +1123,19 @@ def get_research_paper(paper_name):
             'error': f'Error generating PDF: {str(e)}'
         }), 500
 
-@app.route('/api/research/diagnostics/html')
-def get_diagnostics_notebook():
+@app.route('/api/research/diagnostics/notebook')
+def get_diagnostics_notebook_info():
     """
-    Serve the diagnostics notebook as HTML
+    Provide information about the diagnostics notebook
     """
-    try:
-        html_file = os.path.join(os.path.dirname(__file__), 'static/research/diagnostics.html')
-        
-        if not os.path.exists(html_file):
-            return jsonify({
-                'success': False,
-                'error': 'Diagnostics notebook not found'
-            }), 404
-        
-        return send_file(
-            html_file,
-            mimetype='text/html',
-            as_attachment=False
-        )
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    return jsonify({
+        'success': True,
+        'notebook': 'diagnostics.ipynb',
+        'path': 'quant_research/stochastic_volatility/diagnostics.ipynb',
+        'github_url': 'https://github.com/aarya127/quant_algorithms_ai/blob/main/quant_research/stochastic_volatility/diagnostics.ipynb',
+        'nbviewer_url': 'https://nbviewer.org/github/aarya127/quant_algorithms_ai/blob/main/quant_research/stochastic_volatility/diagnostics.ipynb',
+        'description': 'Comprehensive validation notebook for SABR and Heston stochastic volatility models'
+    })
 
 @app.route('/api/research/<paper_name>/markdown')
 def get_research_markdown(paper_name):
