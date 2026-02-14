@@ -1124,18 +1124,60 @@ def get_research_paper(paper_name):
         }), 500
 
 @app.route('/api/research/diagnostics/notebook')
-def get_diagnostics_notebook_info():
+def get_diagnostics_notebook():
     """
-    Provide information about the diagnostics notebook
+    Convert and serve diagnostics notebook as HTML on-demand
     """
-    return jsonify({
-        'success': True,
-        'notebook': 'diagnostics.ipynb',
-        'path': 'quant_research/stochastic_volatility/diagnostics.ipynb',
-        'github_url': 'https://github.com/aarya127/quant_algorithms_ai/blob/main/quant_research/stochastic_volatility/diagnostics.ipynb',
-        'nbviewer_url': 'https://nbviewer.org/github/aarya127/quant_algorithms_ai/blob/main/quant_research/stochastic_volatility/diagnostics.ipynb',
-        'description': 'Comprehensive validation notebook for SABR and Heston stochastic volatility models'
-    })
+    try:
+        # Path to the notebook
+        notebook_path = os.path.join(
+            os.path.dirname(__file__), 
+            '../quant_research/stochastic_volatility/diagnostics.ipynb'
+        )
+        
+        if not os.path.exists(notebook_path):
+            return jsonify({
+                'success': False,
+                'error': 'Notebook not found'
+            }), 404
+        
+        # Create temporary directory for conversion
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_html = os.path.join(tmpdir, 'diagnostics.html')
+            
+            # Convert notebook to HTML without code cells (--no-input)
+            result = subprocess.run(
+                ['jupyter', 'nbconvert', '--to', 'html', '--no-input', 
+                 '--output', output_html, notebook_path],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if result.returncode != 0:
+                return jsonify({
+                    'success': False,
+                    'error': 'Notebook conversion failed',
+                    'details': result.stderr
+                }), 500
+            
+            # Serve the converted HTML
+            return send_file(
+                output_html,
+                mimetype='text/html',
+                as_attachment=False
+            )
+            
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'success': False,
+            'error': 'Conversion timed out'
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/api/research/<paper_name>/markdown')
 def get_research_markdown(paper_name):
