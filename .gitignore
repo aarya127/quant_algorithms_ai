@@ -78,6 +78,8 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
+# Exception: Allow the diagnostics notebook for research publication
+!quant_research/stochastic_volatility/diagnostics.ipynb
 
 # IPython
 profile_default/
