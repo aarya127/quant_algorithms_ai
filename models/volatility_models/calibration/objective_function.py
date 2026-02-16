@@ -12,9 +12,6 @@ Why dual objectives matter:
 - Price-weighting emphasizes liquid, important strikes
 
 This approach is production-grade and used by trading desks.
-
-Author: Volatility Research Team  
-Date: February 15, 2026
 """
 
 import numpy as np
@@ -124,7 +121,7 @@ class ObjectiveFunction:
         # Precompute weights
         self._compute_weights()
         
-        print(f"✓ Initialized objective function")
+        print(f"Initialized objective function")
         print(f"  Market quotes: {len(market_data)}")
         print(f"  Vol weight: {self.config.vol_weight:.1%}")
         print(f"  Price weight: {self.config.price_weight:.1%}")
@@ -398,7 +395,7 @@ def print_calibration_diagnostics(params: ModelParams,
     print("CALIBRATION DIAGNOSTICS")
     print("="*70)
     
-    print(f"\n📊 Fit Quality:")
+    print(f"\nFit Quality:")
     print(f"  Total Error:      {diagnostics['total_error']:.6f}")
     print(f"  Vol RMSE:         {diagnostics['vol_rmse']:.4f} ({diagnostics['vol_rmse']*100:.2f}%)")
     print(f"  Price RMSE:       {diagnostics['price_rmse']:.4f}")
@@ -406,7 +403,7 @@ def print_calibration_diagnostics(params: ModelParams,
     print(f"  Mean Vol Error:   {diagnostics['mean_vol_error']:.4f} ({diagnostics['mean_vol_error']*100:.2f}%)")
     print(f"  Max Price Error:  {diagnostics['max_price_error_pct']:.2f}%")
     
-    print(f"\n📈 Calibrated Parameters:")
+    print(f"\nCalibrated Parameters:")
     if isinstance(params, SABRParams):
         print(f"  α (alpha):  {params.alpha:.6f}")
         print(f"  β (beta):   {params.beta:.4f} [fixed]")
@@ -420,21 +417,21 @@ def print_calibration_diagnostics(params: ModelParams,
         print(f"  ρ (rho):    {params.rho:.4f}")
         feller_violation = params.check_feller()
         if feller_violation > 0:
-            print(f"  ⚠️  Feller condition violated by {feller_violation:.6f}")
+            print(f"  WARNING: Feller condition violated by {feller_violation:.6f}")
         else:
-            print(f"  ✓ Feller condition satisfied")
+            print(f"  Feller condition satisfied")
     
     print("="*70 + "\n")
 
 
 if __name__ == "__main__":
     print("Objective Function Module for Volatility Model Calibration")
-    print("=" * 70)
+    print("="*70)
     print("\nKey Features:")
-    print("✓ Dual objectives (vol + price RMSE)")
-    print("✓ Vega weighting (emphasizes ATM)")
-    print("✓ Robust to outliers (Huber loss)")
-    print("✓ Production-grade design")
+    print("- Dual objectives (vol + price RMSE)")
+    print("- Vega weighting (emphasizes ATM)")
+    print("- Robust to outliers (Huber loss)")
+    print("- Production-grade design")
     print("\nUsage:")
     print(">>> from models.volatility_models.calibration.objective_function import create_sabr_objective")
     print(">>> obj_func = create_sabr_objective(market_data, spot=100, beta=1.0)")

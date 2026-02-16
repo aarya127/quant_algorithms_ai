@@ -12,7 +12,7 @@ from data.finnhub import get_company_news, get_basic_financials, get_earnings_su
 print("Loading FinBERT model...")
 tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
 model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-print("✓ Model loaded\n")
+print("Model loaded\n")
 
 # Stock list - US stocks only (for Finnhub)
 # For Canadian stocks, use finbert_canadian.py with Alpha Vantage
@@ -52,7 +52,7 @@ def get_sentiment(text):
 def analyze_stock_sentiment(symbol, company_name, days=7):
     """Comprehensive sentiment analysis for a stock using Finnhub data"""
     print(f"\n{'='*70}")
-    print(f"📊 ANALYZING: {company_name} ({symbol})")
+    print(f"ANALYZING: {company_name} ({symbol})")
     print(f"{'='*70}")
     
     today = datetime.date.today()
@@ -97,9 +97,9 @@ def analyze_stock_sentiment(symbol, company_name, days=7):
                         print(f"   Sentiment: {sentiment.upper()}")
                         print(f"   Scores: Pos={scores['positive']:.2f}, Neg={scores['negative']:.2f}, Neu={scores['neutral']:.2f}")
         else:
-            print("   ⚠️  No news articles found")
+            print("   WARNING: No news articles found")
     except Exception as e:
-        print(f"   ❌ Error fetching news: {str(e)}")
+        print(f"   ERROR: Error fetching news: {str(e)}")
     
     # 2. Analyze Earnings Data
     print(f"\n💰 Fetching earnings data...")
@@ -137,12 +137,12 @@ def analyze_stock_sentiment(symbol, company_name, days=7):
                     else:
                         neutral_count += 1
         else:
-            print("   ℹ️  No recent earnings data available")
+            print("   INFO: No recent earnings data available")
     except Exception as e:
-        print(f"   ⚠️  Could not fetch earnings: {str(e)}")
+        print(f"   WARNING: Could not fetch earnings: {str(e)}")
     
     # 3. Calculate Overall Sentiment
-    print(f"\n📈 OVERALL SENTIMENT ANALYSIS")
+    print(f"\nOVERALL SENTIMENT ANALYSIS")
     print(f"{'─'*70}")
     
     if sentiment_scores:
@@ -154,11 +154,11 @@ def analyze_stock_sentiment(symbol, company_name, days=7):
         # Determine overall sentiment
         max_score = max(avg_positive, avg_negative, avg_neutral)
         if max_score == avg_positive:
-            overall = "POSITIVE 📈"
+            overall = "POSITIVE"
         elif max_score == avg_negative:
-            overall = "NEGATIVE 📉"
+            overall = "NEGATIVE"
         else:
-            overall = "NEUTRAL ➡️"
+            overall = "NEUTRAL"
         
         print(f"   Sources analyzed: {len(sentiment_scores)}")
         print(f"   Distribution: {positive_count} positive, {negative_count} negative, {neutral_count} neutral")
@@ -166,7 +166,7 @@ def analyze_stock_sentiment(symbol, company_name, days=7):
         print(f"   • Positive: {avg_positive:.1%}")
         print(f"   • Negative: {avg_negative:.1%}")
         print(f"   • Neutral:  {avg_neutral:.1%}")
-        print(f"\n   🎯 OVERALL SENTIMENT: {overall}")
+        print(f"\n   OVERALL SENTIMENT: {overall}")
         
         # Sentiment strength
         confidence = max_score
@@ -176,7 +176,7 @@ def analyze_stock_sentiment(symbol, company_name, days=7):
             strength = "MODERATE"
         else:
             strength = "WEAK"
-        print(f"   📊 Confidence: {strength} ({confidence:.1%})")
+        print(f"   Confidence: {strength} ({confidence:.1%})")
         
         total_count = positive_count + negative_count + neutral_count
         
@@ -197,7 +197,7 @@ def analyze_stock_sentiment(symbol, company_name, days=7):
             'summary': f"Analyzed {len(sentiment_scores)} sources: {positive_count} positive, {negative_count} negative, {neutral_count} neutral"
         }
     else:
-        print("   ⚠️  No data available for sentiment analysis")
+        print("   WARNING: No data available for sentiment analysis")
         return None
 
 
@@ -217,12 +217,12 @@ def main():
             if result:
                 results.append(result)
         except Exception as e:
-            print(f"\n❌ Error analyzing {symbol}: {str(e)}")
+            print(f"\nERROR: Error analyzing {symbol}: {str(e)}")
     
     # Summary table
     if results:
         print(f"\n\n{'='*70}")
-        print("📊 SUMMARY TABLE")
+        print("SUMMARY TABLE")
         print(f"{'='*70}")
         print(f"{'Symbol':<12} {'Company':<20} {'Sentiment':<12} {'Pos':<8} {'Neg':<8} {'Sources':<8}")
         print(f"{'-'*70}")

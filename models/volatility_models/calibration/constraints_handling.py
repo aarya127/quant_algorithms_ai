@@ -12,9 +12,6 @@ of hard rejections. This approach:
 Key constraints:
 - SABR: correlation bounds (-1 < ρ < 1), positivity (α, ν > 0)
 - Heston: Feller condition (2κθ >= ξ²), correlation bounds, positivity
-
-Author: Volatility Research Team
-Date: February 15, 2026
 """
 
 import numpy as np
@@ -54,7 +51,7 @@ class ConstraintHandler:
         """
         self.config = config or ConstraintConfig()
         
-        print(f"✓ Initialized constraint handler")
+        print(f"Initialized constraint handler")
         print(f"  Soft penalties: {self.config.use_soft_penalties}")
         print(f"  Penalty weight: {self.config.penalty_weight}")
         print(f"  Feller weight:  {self.config.feller_penalty_weight}")
@@ -414,7 +411,7 @@ class ConstraintHandler:
             alpha, rho, nu = params
             penalty, violations = self.check_sabr_constraints(alpha, rho, nu)
             
-            print(f"\n📊 SABR Parameters:")
+            print(f"\nSABR Parameters:")
             print(f"  α = {alpha:.6f}")
             print(f"  ρ = {rho:.4f}")
             print(f"  ν = {nu:.4f}")
@@ -423,7 +420,7 @@ class ConstraintHandler:
             V0, kappa, theta, xi, rho = params
             penalty, violations = self.check_heston_constraints(V0, kappa, theta, xi, rho)
             
-            print(f"\n📊 Heston Parameters:")
+            print(f"\nHeston Parameters:")
             print(f"  V₀ = {V0:.6f} (σ₀ = {np.sqrt(V0):.2%})")
             print(f"  κ  = {kappa:.4f}")
             print(f"  θ  = {theta:.6f} (σ_∞ = {np.sqrt(theta):.2%})")
@@ -435,14 +432,14 @@ class ConstraintHandler:
             feller_rhs = xi ** 2
             print(f"\n  Feller: 2κθ = {feller_lhs:.6f} vs ξ² = {feller_rhs:.6f}")
             if feller_lhs >= feller_rhs:
-                print(f"  ✓ Feller condition SATISFIED")
+                print(f"  Feller condition SATISFIED")
             else:
                 violation_pct = (feller_rhs - feller_lhs) / feller_rhs * 100
-                print(f"  ⚠️  Feller condition VIOLATED by {violation_pct:.2f}%")
+                print(f"  WARNING: Feller condition VIOLATED by {violation_pct:.2f}%")
         
-        print(f"\n🚨 Constraint Violations:")
+        print(f"\nConstraint Violations:")
         if penalty == 0:
-            print(f"  ✓ All constraints satisfied")
+            print(f"  All constraints satisfied")
         else:
             print(f"  Total penalty: {penalty:.6f}")
             for name, value in violations.items():
@@ -490,13 +487,13 @@ def create_heston_constrained_objective(objective_func: callable,
 
 if __name__ == "__main__":
     print("Constraint Handling Module for Volatility Model Calibration")
-    print("=" * 70)
+    print("="*70)
     print("\nKey Features:")
-    print("✓ Soft penalties (avoids optimizer instability)")
-    print("✓ Smooth gradients near boundaries")
-    print("✓ Special handling for Feller condition")
-    print("✓ Smart initialization (>90% speedup)")
-    print("✓ Production-grade design")
+    print("- Soft penalties (avoids optimizer instability)")
+    print("- Smooth gradients near boundaries")
+    print("- Special handling for Feller condition")
+    print("- Smart initialization (>90% speedup)")
+    print("- Production-grade design")
     print("\nUsage:")
     print(">>> from models.volatility_models.calibration.constraints_handling import ConstraintHandler")
     print(">>> handler = ConstraintHandler()")
