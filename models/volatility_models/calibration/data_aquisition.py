@@ -8,9 +8,6 @@ Phase 1: Raw data acquisition (yfinance)
 Phase 2: Aggressive cleaning & IV calculation (QuantLib)
 Phase 3: Forward extraction via put-call parity
 Phase 4: Export for calibration pipeline
-
-Author: Volatility Research Team
-Date: February 15, 2026
 """
 
 import yfinance as yf
@@ -25,7 +22,7 @@ try:
     import QuantLib as ql
     QUANTLIB_AVAILABLE = True
 except ImportError:
-    print("⚠️  QuantLib not installed. Install with: pip install QuantLib")
+    print("WARNING: QuantLib not installed. Install with: pip install QuantLib")
     QUANTLIB_AVAILABLE = False
 
 
@@ -53,7 +50,7 @@ class OptionChainDataAcquisition:
         self.cleaned_options = None
         self.forward_prices = {}
         
-        print(f"🎯 Initialized data acquisition for {ticker}")
+        print(f"Initialized data acquisition for {ticker}")
         print(f"   Risk-free rate: {risk_free_rate:.2%}")
     
     # ========================================================================
@@ -84,11 +81,11 @@ class OptionChainDataAcquisition:
                 raise ValueError(f"No price data available for {self.ticker}")
             
             self.spot_price = hist['Close'].iloc[-1]
-            print(f"✓ Current spot price: ${self.spot_price:.2f}")
+            print(f"Current spot price: ${self.spot_price:.2f}")
             
             # Get all available expiration dates
             expirations = self.underlying.options
-            print(f"✓ Found {len(expirations)} expiration dates")
+            print(f"Found {len(expirations)} expiration dates")
             
             # Fetch options for all expirations
             all_options = []
@@ -111,7 +108,7 @@ class OptionChainDataAcquisition:
                     all_options.append(puts)
                     
                 except Exception as e:
-                    print(f"⚠️  Failed to fetch {exp_date}: {e}")
+                    print(f"WARNING: Failed to fetch {exp_date}: {e}")
                     continue
             
             if not all_options:
@@ -119,14 +116,14 @@ class OptionChainDataAcquisition:
             
             self.raw_options = pd.concat(all_options, ignore_index=True)
             
-            print(f"✓ Fetched {len(self.raw_options):,} option contracts")
+            print(f"Fetched {len(self.raw_options):,} option contracts")
             print(f"  - Calls: {len(self.raw_options[self.raw_options['optionType']=='call']):,}")
             print(f"  - Puts: {len(self.raw_options[self.raw_options['optionType']=='put']):,}")
             
             return self.raw_options
             
         except Exception as e:
-            print(f"❌ Error fetching option chain: {e}")
+            print(f"ERROR: Error fetching option chain: {e}")
             raise
     
     # ========================================================================
@@ -184,31 +181,31 @@ class OptionChainDataAcquisition:
         df['moneyness'] = df['strike'] / self.spot_price
         df['log_moneyness'] = np.log(df['moneyness'])
         
-        print(f"\n📊 Initial dataset: {initial_count:,} contracts")
+        print(f"\nInitial dataset: {initial_count:,} contracts")
         
         # Filter 1: Remove expired
         df = df[df['days_to_expiry'] > 0]
-        print(f"✓ After removing expired: {len(df):,} ({100*len(df)/initial_count:.1f}%)")
+        print(f"After removing expired: {len(df):,} ({100*len(df)/initial_count:.1f}%)")
         
         # Filter 2: Liquidity (volume)
         df = df[df['volume'].fillna(0) >= min_volume]
-        print(f"✓ After volume filter (>={min_volume}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
+        print(f"After volume filter (>={min_volume}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
         
         # Filter 3: Open interest
         df = df[df['openInterest'].fillna(0) >= min_open_interest]
-        print(f"✓ After open interest filter (>={min_open_interest}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
+        print(f"After open interest filter (>={min_open_interest}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
         
         # Filter 4: Bid-ask spread
         df = df[df['spread_pct'] <= max_bid_ask_spread_pct]
-        print(f"✓ After spread filter (<={max_bid_ask_spread_pct:.1%}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
+        print(f"After spread filter (<={max_bid_ask_spread_pct:.1%}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
         
         # Filter 5: Moneyness range
         df = df[(df['moneyness'] >= min_moneyness) & (df['moneyness'] <= max_moneyness)]
-        print(f"✓ After moneyness filter ({min_moneyness:.1f}-{max_moneyness:.1f}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
+        print(f"After moneyness filter ({min_moneyness:.1f}-{max_moneyness:.1f}): {len(df):,} ({100*len(df)/initial_count:.1f}%)")
         
         # Filter 6: Positive prices
         df = df[df['mid_price'] > 0]
-        print(f"✓ After positive price filter: {len(df):,} ({100*len(df)/initial_count:.1f}%)")
+        print(f"After positive price filter: {len(df):,} ({100*len(df)/initial_count:.1f}%)")
         
         # Filter 7: Arbitrage bounds
         df['discount_factor'] = np.exp(-self.risk_free_rate * df['time_to_maturity'])
@@ -221,11 +218,11 @@ class OptionChainDataAcquisition:
         df.loc[put_mask, 'intrinsic_value'] = np.maximum(df.loc[put_mask, 'pv_strike'] - self.spot_price, 0)
         
         df = df[df['mid_price'] >= df['intrinsic_value'] * 0.95]  # 5% tolerance
-        print(f"✓ After arbitrage check: {len(df):,} ({100*len(df)/initial_count:.1f}%)")
+        print(f"After arbitrage check: {len(df):,} ({100*len(df)/initial_count:.1f}%)")
         
         self.cleaned_options = df
         
-        print(f"\n✅ Cleaning complete: {len(df):,} / {initial_count:,} contracts retained ({100*len(df)/initial_count:.1f}%)")
+        print(f"\nCleaning complete: {len(df):,} / {initial_count:,} contracts retained ({100*len(df)/initial_count:.1f}%)")
         
         return self.cleaned_options
     
@@ -272,7 +269,7 @@ class OptionChainDataAcquisition:
                 forward = atm_strike + np.exp(self.risk_free_rate * T) * (C - P)
                 self.forward_prices[T] = forward
         
-        print(f"✓ Extracted {len(self.forward_prices)} forward prices:")
+        print(f"Extracted {len(self.forward_prices)} forward prices:")
         for T, F in sorted(self.forward_prices.items()):
             print(f"  T={T:.3f}y → F=${F:.2f} (vs Spot=${self.spot_price:.2f})")
         
@@ -302,10 +299,10 @@ class OptionChainDataAcquisition:
         df = self.cleaned_options.copy()
         
         if QUANTLIB_AVAILABLE:
-            print("✓ Using QuantLib for accurate IV calculation...")
+            print("Using QuantLib for accurate IV calculation...")
             df['implied_volatility'] = df.apply(self._compute_iv_quantlib, axis=1)
         else:
-            print("⚠️  Using yfinance IV (less reliable)")
+            print("WARNING: Using yfinance IV (less reliable)")
             df['implied_volatility'] = df['impliedVolatility']
         
         # Filter out failed calculations
@@ -313,7 +310,7 @@ class OptionChainDataAcquisition:
         df = df[df['implied_volatility'].notna()]
         df = df[(df['implied_volatility'] > 0) & (df['implied_volatility'] < 3.0)]
         
-        print(f"✓ IV computation complete: {len(df):,} / {initial:,} options ({100*len(df)/initial:.1f}%)")
+        print(f"IV computation complete: {len(df):,} / {initial:,} options ({100*len(df)/initial:.1f}%)")
         print(f"  IV range: {df['implied_volatility'].min():.2%} - {df['implied_volatility'].max():.2%}")
         
         self.cleaned_options = df
@@ -392,7 +389,7 @@ class OptionChainDataAcquisition:
         export_df = self.cleaned_options[export_cols].copy()
         export_df.to_csv(filename, index=False)
         
-        print(f"\n✅ Exported {len(export_df):,} contracts to {filename}")
+        print(f"\nExported {len(export_df):,} contracts to {filename}")
         print(f"   Ready for calibration with objective_function.py")
     
     def get_market_data_dict(self) -> Dict[str, pd.DataFrame]:
@@ -455,7 +452,7 @@ def acquire_option_data(ticker: str,
         acq.export_for_calibration(f'{ticker.lower()}_options.csv')
     
     print(f"\n{'='*70}")
-    print("✅ DATA ACQUISITION COMPLETE")
+    print("DATA ACQUISITION COMPLETE")
     print(f"{'='*70}\n")
     
     return acq

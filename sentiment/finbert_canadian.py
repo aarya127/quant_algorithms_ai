@@ -11,7 +11,7 @@ from Data.alphavantage import AlphaVantage
 print("Loading FinBERT model...")
 tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
 model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-print("✓ Model loaded\n")
+print("Model loaded\n")
 
 # Canadian stocks on TSX
 canadian_stocks = {
@@ -50,7 +50,7 @@ def get_sentiment(text):
 def analyze_canadian_stock_sentiment(symbol, company_name):
     """Comprehensive sentiment analysis for Canadian stocks using Alpha Vantage"""
     print(f"\n{'='*70}")
-    print(f"📊 ANALYZING: {company_name} ({symbol})")
+    print(f"ANALYZING: {company_name} ({symbol})")
     print(f"{'='*70}")
     
     sentiment_scores = []
@@ -100,13 +100,13 @@ def analyze_canadian_stock_sentiment(symbol, company_name):
                         print(f"   FinBERT Scores: Pos={scores['positive']:.2f}, Neg={scores['negative']:.2f}, Neu={scores['neutral']:.2f}")
                         print(f"   Alpha Vantage: {av_sentiment} (score: {av_score:.2f})")
         else:
-            print("   ⚠️  No news articles found")
+            print("   WARNING: No news articles found")
             
             # Check if we hit API limit
             if 'Note' in news_data:
-                print(f"   ℹ️  {news_data['Note']}")
+                print(f"   INFO: {news_data['Note']}")
     except Exception as e:
-        print(f"   ❌ Error fetching news: {str(e)}")
+        print(f"   ERROR: Error fetching news: {str(e)}")
     
     # 2. Get Company Overview
     print(f"\n🏢 Fetching company overview...")
@@ -131,12 +131,12 @@ def analyze_canadian_stock_sentiment(symbol, company_name):
                 if desc_sentiment and desc_scores:
                     print(f"   Company Description Sentiment: {desc_sentiment.upper()}")
         else:
-            print("   ℹ️  No company overview available")
+            print("   INFO: No company overview available")
     except Exception as e:
-        print(f"   ⚠️  Could not fetch company overview: {str(e)}")
+        print(f"   WARNING: Could not fetch company overview: {str(e)}")
     
     # 3. Get Quote Data
-    print(f"\n💹 Fetching current quote...")
+    print(f"\nFetching current quote...")
     try:
         quote = av.get_global_quote(symbol)
         
@@ -168,12 +168,12 @@ def analyze_canadian_stock_sentiment(symbol, company_name):
                 else:
                     neutral_count += 1
         else:
-            print("   ℹ️  No quote data available")
+            print("   INFO: No quote data available")
     except Exception as e:
-        print(f"   ⚠️  Could not fetch quote: {str(e)}")
+        print(f"   WARNING: Could not fetch quote: {str(e)}")
     
     # 4. Calculate Overall Sentiment
-    print(f"\n📈 OVERALL SENTIMENT ANALYSIS")
+    print(f"\nOVERALL SENTIMENT ANALYSIS")
     print(f"{'─'*70}")
     
     if sentiment_scores:
@@ -185,11 +185,11 @@ def analyze_canadian_stock_sentiment(symbol, company_name):
         # Determine overall sentiment
         max_score = max(avg_positive, avg_negative, avg_neutral)
         if max_score == avg_positive:
-            overall = "POSITIVE 📈"
+            overall = "POSITIVE"
         elif max_score == avg_negative:
-            overall = "NEGATIVE 📉"
+            overall = "NEGATIVE"
         else:
-            overall = "NEUTRAL ➡️"
+            overall = "NEUTRAL"
         
         print(f"   Sources analyzed: {len(sentiment_scores)}")
         print(f"   Distribution: {positive_count} positive, {negative_count} negative, {neutral_count} neutral")
@@ -197,7 +197,7 @@ def analyze_canadian_stock_sentiment(symbol, company_name):
         print(f"   • Positive: {avg_positive:.1%}")
         print(f"   • Negative: {avg_negative:.1%}")
         print(f"   • Neutral:  {avg_neutral:.1%}")
-        print(f"\n   🎯 OVERALL SENTIMENT: {overall}")
+        print(f"\n   OVERALL SENTIMENT: {overall}")
         
         # Sentiment strength
         confidence = max_score
@@ -207,7 +207,7 @@ def analyze_canadian_stock_sentiment(symbol, company_name):
             strength = "MODERATE"
         else:
             strength = "WEAK"
-        print(f"   📊 Confidence: {strength} ({confidence:.1%})")
+        print(f"   Confidence: {strength} ({confidence:.1%})")
         
         return {
             'symbol': symbol,
@@ -221,7 +221,7 @@ def analyze_canadian_stock_sentiment(symbol, company_name):
             'distribution': {'positive': positive_count, 'negative': negative_count, 'neutral': neutral_count}
         }
     else:
-        print("   ⚠️  No data available for sentiment analysis")
+        print("   WARNING: No data available for sentiment analysis")
         return None
 
 
@@ -241,15 +241,13 @@ def main():
     for symbol, company_name in test_stocks.items():
         try:
             result = analyze_canadian_stock_sentiment(symbol, company_name)
-            if result:
-                results.append(result)
-        except Exception as e:
-            print(f"\n❌ Error analyzing {symbol}: {str(e)}")
-    
-    # Summary table
+        if result:
+            results.append(result)
+    except Exception as e:
+        print(f"\nERROR: Error analyzing {symbol}: {str(e)}")    # Summary table
     if results:
         print(f"\n\n{'='*70}")
-        print("📊 SUMMARY TABLE - CANADIAN STOCKS")
+        print("SUMMARY TABLE - CANADIAN STOCKS")
         print(f"{'='*70}")
         print(f"{'Symbol':<12} {'Company':<20} {'Sentiment':<12} {'Pos':<8} {'Neg':<8} {'Sources':<8}")
         print(f"{'-'*70}")
