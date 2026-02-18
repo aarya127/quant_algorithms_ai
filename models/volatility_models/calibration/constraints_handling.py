@@ -192,12 +192,12 @@ class ConstraintHandler:
         Get optimization bounds for SABR parameters.
         
         Returns:
-            List of (lower, upper) tuples for [alpha, rho, nu]
+            List of (lower, upper) tuples for [alpha, nu, rho]
         """
         return [
             (0.0001, 2.0),    # alpha: very wide range
-            (-0.999, 0.999),  # rho: just inside ±1
-            (0.0001, 3.0)     # nu: very wide range
+            (0.0001, 3.0),    # nu: very wide range
+            (-0.999, 0.999)   # rho: just inside ±1
         ]
     
     def smart_sabr_initialization(self,

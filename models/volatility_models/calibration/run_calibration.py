@@ -28,6 +28,9 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from models.volatility_models.calibration.data_aquisition import acquire_option_data
 from models.volatility_models.calibration.objective_function import create_sabr_objective, create_heston_objective
 from models.volatility_models.calibration.constraints_handling import ConstraintHandler, ConstraintConfig
+from models.volatility_models.calibration.caplet_stripping import (
+    ForwardCurveBuilder, CapletVolatilityStripper, BlackCapletPricer
+)
 from scipy.optimize import minimize, differential_evolution
 
 
@@ -51,18 +54,21 @@ def setup_logging(log_file: str = None):
 class CalibrationOrchestrator:
     """Orchestrates the complete volatility calibration pipeline"""
     
-    def __init__(self, ticker: str, model_type: str, risk_free_rate: float = 0.05):
+    def __init__(self, ticker: str, model_type: str, risk_free_rate: float = 0.05, 
+                 product_type: str = 'equity'):
         """
         Initialize the calibration orchestrator
         
         Args:
-            ticker: Stock ticker symbol (e.g., 'SPY', 'NVDA')
+            ticker: Stock ticker symbol (e.g., 'SPY', 'NVDA') or rate product identifier
             model_type: Model to calibrate ('sabr' or 'heston')
             risk_free_rate: Risk-free interest rate (decimal)
+            product_type: 'equity' for options, 'rates' for caplets/floorlets
         """
         self.ticker = ticker
         self.model_type = model_type.lower()
         self.risk_free_rate = risk_free_rate
+        self.product_type = product_type.lower()
         self.logger = logging.getLogger(__name__)
         
         # Results storage
@@ -72,6 +78,7 @@ class CalibrationOrchestrator:
         self.diagnostics = {}
         
         self.logger.info(f"Initialized calibration for {ticker} using {model_type.upper()} model")
+        self.logger.info(f"Product type: {product_type}")
         self.logger.info(f"Risk-free rate: {risk_free_rate:.4f}")
     
     def step1_acquire_data(self):
@@ -81,36 +88,58 @@ class CalibrationOrchestrator:
         self.logger.info("=" * 70)
         
         try:
-            self.logger.info(f"Fetching option chain data for {self.ticker}...")
+            if self.product_type == 'equity':
+                self.logger.info(f"Fetching equity option chain data for {self.ticker}...")
+                
+                # Use the data acquisition module
+                acq = acquire_option_data(
+                    ticker=self.ticker,
+                    risk_free_rate=self.risk_free_rate
+                )
+                
+                # Get the cleaned options DataFrame
+                if acq.cleaned_options is None or len(acq.cleaned_options) == 0:
+                    raise ValueError("No market data retrieved after cleaning")
+                
+                # Store the DataFrame directly for objective function
+                self.market_data = acq.cleaned_options
+                self.spot_price = acq.spot_price
+                
+                # Log data summary
+                num_options = len(self.market_data)
+                self.logger.info(f"Successfully retrieved {num_options} option quotes")
+                
+                expiries = self.market_data['expirationDate'].unique()
+                self.logger.info(f"Expiration dates: {len(expiries)} unique maturities")
+                
+                self.logger.info(f"Current spot price: ${self.spot_price:.2f}")
+                
+                # Log IV range
+                if 'implied_volatility' in self.market_data.columns:
+                    iv_min = self.market_data['implied_volatility'].min()
+                    iv_max = self.market_data['implied_volatility'].max()
+                    self.logger.info(f"IV range: {iv_min:.4f} to {iv_max:.4f}")
             
-            # Use the data acquisition module
-            acq = acquire_option_data(
-                ticker=self.ticker,
-                risk_free_rate=self.risk_free_rate
-            )
+            elif self.product_type == 'rates':
+                self.logger.info("Interest rate products - using caplet stripping workflow...")
+                self.logger.info("NOTE: For rates, provide swap_data and cap_data as manual inputs")
+                self.logger.info("Example: orchestrator.load_rate_data(swap_tenors, swap_rates, cap_maturities, cap_prices)")
+                
+                # For rates, we need manual data input (not from yfinance)
+                # User should call load_rate_data() before running pipeline
+                if not hasattr(self, 'rate_data_loaded') or not self.rate_data_loaded:
+                    raise ValueError(
+                        "Rate data not loaded. Call orchestrator.load_rate_data() first with:\n"
+                        "  - swap_tenors: [1, 2, 5, 10] (years)\n"
+                        "  - swap_rates: [0.04, 0.045, 0.05, 0.052] (decimals)\n"
+                        "  - cap_maturities: [1, 2, 3, 5] (years)\n"
+                        "  - cap_prices: [0.0012, 0.0035, 0.0068, 0.0142] (undiscounted)"
+                    )
+                
+                self.logger.info(f"Using pre-loaded rate data: {len(self.market_data)} caplet vols")
             
-            # Get the cleaned options DataFrame
-            if acq.cleaned_options is None or len(acq.cleaned_options) == 0:
-                raise ValueError("No market data retrieved after cleaning")
-            
-            # Store the DataFrame directly for objective function
-            self.market_data = acq.cleaned_options
-            self.spot_price = acq.spot_price
-            
-            # Log data summary
-            num_options = len(self.market_data)
-            self.logger.info(f"Successfully retrieved {num_options} option quotes")
-            
-            expiries = self.market_data['expirationDate'].unique()
-            self.logger.info(f"Expiration dates: {len(expiries)} unique maturities")
-            
-            self.logger.info(f"Current spot price: ${self.spot_price:.2f}")
-            
-            # Log IV range
-            if 'implied_volatility' in self.market_data.columns:
-                iv_min = self.market_data['implied_volatility'].min()
-                iv_max = self.market_data['implied_volatility'].max()
-                self.logger.info(f"IV range: {iv_min:.4f} to {iv_max:.4f}")
+            else:
+                raise ValueError(f"Unknown product type: {self.product_type}")
             
             self.logger.info("Data acquisition completed successfully")
             return True
@@ -119,10 +148,59 @@ class CalibrationOrchestrator:
             self.logger.error(f"Data acquisition failed: {str(e)}")
             return False
     
+    def load_rate_data(self, swap_tenors: list, swap_rates: list, 
+                       cap_maturities: list, cap_prices: list, strike: float = 0.05):
+        """
+        Load interest rate market data for caplet calibration.
+        
+        Args:
+            swap_tenors: Swap tenors in years [1, 2, 5, 10]
+            swap_rates: Par swap rates [0.04, 0.045, 0.05, 0.052]
+            cap_maturities: Cap maturities in years [1, 2, 3, 5]
+            cap_prices: Cap prices (undiscounted) [0.0012, 0.0035, ...]
+            strike: Strike rate (decimal)
+        """
+        self.logger.info("Loading interest rate market data...")
+        
+        try:
+            # Build forward curve from swaps
+            curve_builder = ForwardCurveBuilder()
+            forward_curve = curve_builder.bootstrap_from_swaps(swap_tenors, swap_rates)
+            
+            # Strip caplet volatilities
+            pricer = BlackCapletPricer(forward_curve)
+            stripper = CapletVolatilityStripper(forward_curve, pricer)
+            
+            caplet_vols = stripper.strip_from_cap_prices(cap_maturities, cap_prices, strike)
+            
+            # Convert to DataFrame format for calibration
+            self.market_data = pd.DataFrame({
+                'maturity': [c['maturity'] for c in caplet_vols],
+                'strike': [c['strike'] for c in caplet_vols],
+                'implied_volatility': [c['volatility'] for c in caplet_vols],
+                'forward_rate': [c['forward_rate'] for c in caplet_vols]
+            })
+            
+            # For rates, "spot" is the first forward rate
+            self.spot_price = self.market_data['forward_rate'].iloc[0]
+            
+            self.rate_data_loaded = True
+            
+            self.logger.info(f"Loaded {len(caplet_vols)} caplet volatilities")
+            self.logger.info(f"Maturity range: {min(cap_maturities):.1f} to {max(cap_maturities):.1f} years")
+            self.logger.info(f"Vol range: {self.market_data['implied_volatility'].min():.4f} to {self.market_data['implied_volatility'].max():.4f}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load rate data: {str(e)}")
+            self.rate_data_loaded = False
+            return False
+    
     def step2_validate_data(self):
         """Step 2: Validate market data quality"""
         self.logger.info("=" * 70)
-        self.logger.info("STEP 2: DATA VALIDATION")
+        self.logger.info("STEP 2: DATA VALIDATION & SURFACE DENSITY CHECK")
         self.logger.info("=" * 70)
         
         if self.market_data is None or len(self.market_data) == 0:
@@ -139,6 +217,68 @@ class CalibrationOrchestrator:
                 return False
             
             self.logger.info("All required columns present")
+            
+            # SURFACE DENSITY GATE - Critical for reliable calibration
+            self.logger.info("-" * 70)
+            self.logger.info("SURFACE DENSITY CHECK (Production Desk Standard)")
+            self.logger.info("-" * 70)
+            
+            total_points = len(self.market_data)
+            num_maturities = self.market_data['expirationDate'].nunique() if 'expirationDate' in self.market_data.columns else 1
+            
+            # Calculate strikes per maturity
+            if 'expirationDate' in self.market_data.columns:
+                strikes_per_maturity = self.market_data.groupby('expirationDate')['strike'].count()
+                min_strikes = strikes_per_maturity.min()
+                max_strikes = strikes_per_maturity.max()
+                avg_strikes = strikes_per_maturity.mean()
+                
+                self.logger.info(f"Total IV points: {total_points}")
+                self.logger.info(f"Number of maturities: {num_maturities}")
+                self.logger.info(f"Strikes per maturity - Min: {min_strikes}, Max: {max_strikes}, Avg: {avg_strikes:.1f}")
+            else:
+                min_strikes = total_points
+                avg_strikes = total_points
+                self.logger.info(f"Total IV points: {total_points}")
+                self.logger.info(f"Number of maturities: {num_maturities}")
+            
+            # Apply production-grade density gates
+            gate_passed = False
+            failure_reasons = []
+            
+            # Gate 1: Minimum strikes per maturity
+            if min_strikes >= 12:
+                gate_passed = True
+                self.logger.info(f"Gate 1 PASS: Min {min_strikes} strikes per maturity (threshold: 12)")
+            else:
+                failure_reasons.append(f"Gate 1 FAIL: Only {min_strikes} strikes per maturity (need >= 12)")
+            
+            # Gate 2: Total IV points
+            if total_points >= 20:
+                if not gate_passed:
+                    gate_passed = True
+                self.logger.info(f"Gate 2 PASS: {total_points} total IV points (threshold: 20)")
+            else:
+                failure_reasons.append(f"Gate 2 FAIL: Only {total_points} total IV points (need >= 20)")
+            
+            # Gate 3: Sufficient maturity x strike coverage
+            if num_maturities >= 3 and avg_strikes >= 7:
+                if not gate_passed:
+                    gate_passed = True
+                self.logger.info(f"Gate 3 PASS: {num_maturities} maturities x {avg_strikes:.1f} avg strikes (threshold: 3x7)")
+            else:
+                failure_reasons.append(f"Gate 3 FAIL: {num_maturities} maturities x {avg_strikes:.1f} avg strikes (need >= 3x7)")
+            
+            if not gate_passed:
+                self.logger.error("INSUFFICIENT SURFACE DENSITY FOR CALIBRATION")
+                for reason in failure_reasons:
+                    self.logger.error(f"  {reason}")
+                self.logger.error("Decision: SKIP CALIBRATION - Mark as 'insufficient liquidity'")
+                self.logger.error("Recommendation: Try more liquid ticker or relax filtering parameters")
+                return False
+            
+            self.logger.info("Surface density check PASSED - Sufficient for reliable calibration")
+            self.logger.info("-" * 70)
             
             # Validate data ranges
             ivs = self.market_data['implied_volatility'].values
@@ -444,16 +584,22 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Equity options
   python run_calibration.py --ticker SPY --model sabr
   python run_calibration.py --ticker NVDA --model heston --rf-rate 0.05
   python run_calibration.py --ticker AAPL --model sabr --output ./results
+  
+  # Interest rate products (caplets)
+  python run_calibration.py --ticker USD_CAPS --model sabr --product rates
         """
     )
     
     parser.add_argument('--ticker', type=str, required=True,
-                        help='Stock ticker symbol (e.g., SPY, NVDA, AAPL)')
+                        help='Stock ticker symbol (e.g., SPY, NVDA, AAPL) or rate identifier')
     parser.add_argument('--model', type=str, choices=['sabr', 'heston'], required=True,
                         help='Volatility model to calibrate')
+    parser.add_argument('--product', type=str, choices=['equity', 'rates'], default='equity',
+                        help='Product type: equity options or interest rate caplets (default: equity)')
     parser.add_argument('--rf-rate', type=float, default=0.05,
                         help='Risk-free interest rate (default: 0.05)')
     parser.add_argument('--output', type=str, default=None,
@@ -470,7 +616,8 @@ Examples:
     orchestrator = CalibrationOrchestrator(
         ticker=args.ticker,
         model_type=args.model,
-        risk_free_rate=args.rf_rate
+        risk_free_rate=args.rf_rate,
+        product_type=args.product
     )
     
     success = orchestrator.run_full_pipeline(output_dir=args.output)

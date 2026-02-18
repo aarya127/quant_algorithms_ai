@@ -131,13 +131,13 @@ class OptionChainDataAcquisition:
     # ========================================================================
     
     def clean_option_data(self,
-                         min_volume: int = 10,
-                         min_open_interest: int = 50,
-                         max_bid_ask_spread_pct: float = 0.20,
-                         min_moneyness: float = 0.7,
-                         max_moneyness: float = 1.3) -> pd.DataFrame:
+                         min_volume: int = 5,
+                         min_open_interest: int = 1,
+                         max_bid_ask_spread_pct: float = 0.50,
+                         min_moneyness: float = 0.70,
+                         max_moneyness: float = 1.30) -> pd.DataFrame:
         """
-        Phase 2: Aggressively clean option data.
+        Phase 2: Clean option data with production-appropriate filters.
         
         Cleaning steps:
         1. Remove options with low liquidity
@@ -147,11 +147,11 @@ class OptionChainDataAcquisition:
         5. Remove options with invalid prices
         
         Args:
-            min_volume: Minimum daily volume
-            min_open_interest: Minimum open interest
-            max_bid_ask_spread_pct: Maximum bid-ask spread as % of mid-price
-            min_moneyness: Minimum strike/spot ratio
-            max_moneyness: Maximum strike/spot ratio
+            min_volume: Minimum daily volume (default: 5 for better surface coverage)
+            min_open_interest: Minimum open interest (default: 10 for better coverage)
+            max_bid_ask_spread_pct: Maximum bid-ask spread as % of mid-price (default: 30%)
+            min_moneyness: Minimum strike/spot ratio (default: 0.80)
+            max_moneyness: Maximum strike/spot ratio (default: 1.20)
             
         Returns:
             Cleaned DataFrame
