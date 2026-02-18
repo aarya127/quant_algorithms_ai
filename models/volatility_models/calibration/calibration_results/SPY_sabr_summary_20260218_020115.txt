@@ -1,0 +1,19 @@
+Volatility Calibration Summary
+============================================================
+
+Ticker: SPY
+Model: SABR
+Risk-free rate: 0.0500
+Calibration date: 2026-02-18 02:01:15
+
+Calibrated Parameters:
+------------------------------------------------------------
+alpha     :     1.152276
+nu        :     0.638256
+rho       :     0.556135
+
+Calibration Quality:
+------------------------------------------------------------
+Objective value: 0.882645
+Converged: True
+Function evaluations: 409
