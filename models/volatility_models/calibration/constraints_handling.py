@@ -15,7 +15,7 @@ Key constraints:
 """
 
 import numpy as np
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Dict, Optional, List
 from dataclasses import dataclass
 
 
