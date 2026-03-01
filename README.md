@@ -25,6 +25,7 @@ AI-powered quantitative analysis platform combining real-time market data, senti
 
 ### Quantitative Models
 - **Volatility Models**: SABR and Heston calibration with market validation
+- **Trading Signals**: Model-based signals with transaction cost modeling and reality checks
 - **Parameter Diagnostics**: Autocorrelation, regime detection, stress analysis
 - **Greeks Validation**: Delta, Gamma, Vega with put-call parity checks
 - **Rolling Window Testing**: Out-of-sample forecast validation
@@ -102,36 +103,53 @@ System auto-converts US tickers to TSX:
 
 ---
 
-## 📊 Volatility Calibration
+## 📊 Volatility Models & Trading Signals
 
-Production-grade SABR/Heston calibration with market validation:
+Production-grade SABR/Heston calibration with signal generation and market validation:
 
 ```bash
 cd models/volatility_models/calibration
 
-# Run calibration
+# Step 1: Run calibration
 python run_calibration.py --ticker SPY --model sabr
 
-# Validate Greeks
-cd ../market_validation
-python greeks_validation.py
+# Step 2: Generate trading signals
+cd ../signals
+python run_signals.py --ticker SPY --model sabr --export-csv
 
-# Full validation suite
+# Step 3: Validate model
+cd ../market_validation
 python run_all_validations.py --ticker SPY --model sabr
 ```
 
-**Features:**
+**Calibration Features:**
 - Surface density gates (production desk standards)
 - Parameter path diagnostics with regime detection
 - Greeks validation with put-call parity checks
 - Rolling window out-of-sample testing
 
+**Signal Generation Features (⚠️ Research Only):**
+- Transaction cost modeling (spreads + commissions)
+- Reality checks (liquidity, bid-ask spreads, strike availability)
+- Multi-leg strategies (spreads, calendars, volatility trades)
+- Stress testing (2x/3x cost scenarios, liquidity shocks)
+- Net edge calculation with minimum threshold (50 bps)
+
 **Recent Results (SPY SABR):**
 ```
-Parameters: α=1.15, ν=0.64, ρ=0.56
-Calibration: 24 IV points, 4.7s execution
-Greeks MAE: Δ=0.041, Γ=0.00002
-Put-call parity: PASS ✓
+Calibration:
+  Parameters: α=1.15, ν=0.64, ρ=0.56
+  Surface: 24 IV points, 4.7s execution
+  Greeks MAE: Δ=0.041, Γ=0.00002
+  Put-call parity: PASS ✓
+
+Signal Example:
+  Signal: LONG_STRADDLE
+  Model IV: 25.0%, Market IV: 22.0%
+  Raw edge: 300 bps
+  Costs: 246 bps (spread 116, commission 130)
+  Net edge: 54 bps ✓
+  Stress test: Breaks at 2x spreads
 ```
 
 ---
@@ -151,6 +169,11 @@ quant_algorithms_ai/
 │       │   ├── data_aquisition.py
 │       │   ├── objective_function.py
 │       │   └── constraints_handling.py
+│       ├── signals/      # Trading signal generation (research)
+│       │   ├── signal_generator.py
+│       │   ├── strategy_signals.py
+│       │   ├── run_signals.py
+│       │   └── README.md
 │       ├── market_validation/  # Production validation suite
 │       │   ├── parameter_diagnostics.py
 │       │   ├── greeks_validation.py
@@ -191,6 +214,7 @@ python greeks_validation.py
 - [ ] Backtesting framework with stress testing
 
 ### Completed ✅
+- [x] Trading signals with transaction costs & reality checks
 - [x] SABR/Heston calibration pipeline
 - [x] Market validation suite (Greeks, OOS testing)
 - [x] Real-time sentiment analysis
