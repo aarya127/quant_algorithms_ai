@@ -1047,16 +1047,17 @@ def get_research_paper(paper_name):
     """
     try:
         # Map paper names to their .tex file paths
+        _app_dir = os.path.dirname(os.path.abspath(__file__))
         paper_map = {
-            'heston': '../quant_research/stochastic_volatility/heston_model/theory.tex',
-            'sabr': '../quant_research/stochastic_volatility/sabr_model/theory.tex',
-            'state_space': '../quant_research/state_space_models/theory.tex',
-            'market_microstructure': '../quant_research/market_microstructure/theory.tex',
-            'macd': '../quant_research/macd_rsi/macd_theory.tex',
-            'rsi': '../quant_research/macd_rsi/rsi_theory.tex',
-            'greeks': '../quant_research/greeks/theory.tex',
-            'derivatives_volatility': '../quant_research/derivatives_volatility/theory.tex',
-            'advanced_trading': '../quant_research/advanced_trading/theory.tex',
+            'heston': os.path.normpath(os.path.join(_app_dir, '../algorithms/volatility_forecasting/research/heston_model/theory.tex')),
+            'sabr': os.path.normpath(os.path.join(_app_dir, '../algorithms/volatility_forecasting/research/sabr_model/theory.tex')),
+            'state_space': os.path.normpath(os.path.join(_app_dir, '../algorithms/market_making_algorithms/state_space_models/theory.tex')),
+            'market_microstructure': os.path.normpath(os.path.join(_app_dir, '../algorithms/execution_algorithms/market_microstructure/theory.tex')),
+            'macd': os.path.normpath(os.path.join(_app_dir, '../algorithms/macd_rsi/macd/macd_theory.tex')),
+            'rsi': os.path.normpath(os.path.join(_app_dir, '../algorithms/macd_rsi/rsi/rsi_theory.tex')),
+            'greeks': os.path.normpath(os.path.join(_app_dir, '../algorithms/greeks/theory.tex')),
+            'derivatives_volatility': os.path.normpath(os.path.join(_app_dir, '../algorithms/volatility_forecasting/research/derivatives_volatility/theory.tex')),
+            'advanced_trading': os.path.normpath(os.path.join(_app_dir, '../algorithms/execution_algorithms/advanced_trading/theory.tex')),
         }
         
         if paper_name not in paper_map:
@@ -1065,8 +1066,8 @@ def get_research_paper(paper_name):
                 'error': 'Research paper not found'
             }), 404
         
-        # Get the absolute path to the .tex file
-        tex_file = os.path.join(os.path.dirname(__file__), paper_map[paper_name])
+        # Get the absolute path to the .tex file (already absolute from paper_map)
+        tex_file = paper_map[paper_name]
         tex_dir = os.path.dirname(tex_file)
         tex_filename = os.path.basename(tex_file)
         
@@ -1130,10 +1131,8 @@ def get_diagnostics_notebook():
     """
     try:
         # Path to the notebook
-        notebook_path = os.path.join(
-            os.path.dirname(__file__), 
-            '../quant_research/stochastic_volatility/diagnostics.ipynb'
-        )
+        _app_dir2 = os.path.dirname(os.path.abspath(__file__))
+        notebook_path = os.path.normpath(os.path.join(_app_dir2, '../algorithms/volatility_forecasting/research/diagnostics.ipynb'))
         
         if not os.path.exists(notebook_path):
             return jsonify({
