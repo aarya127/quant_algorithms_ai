@@ -26,10 +26,11 @@ from signal_generator import (
     RealityCheckConfig, TradingSignal
 )
 from strategy_signals import StrategySignalGenerator, StrategySignal
+from trade_intents import TradeIntentBuilder
 
 # Import calibration modules
-from calibration.data_aquisition import VolatilityDataFetcher
-from calibration.sabr_pricer import SABRParams, price_sabr_option
+from calibration.data_aquisition import OptionChainDataAcquisition
+from sabr_pricer import SABRParams, price_sabr_option
 
 
 def load_calibrated_parameters(ticker: str, model: str) -> dict:
@@ -75,23 +76,23 @@ def fetch_current_market_data(ticker: str) -> dict:
     """
     print(f"\nFetching market data for {ticker}...")
     
-    fetcher = VolatilityDataFetcher()
-    
-    # Fetch options data
-    result = fetcher.fetch_option_data(
-        ticker=ticker,
-        min_volume=5,
-        min_open_interest=1,
-        max_bid_ask_spread_pct=0.50,
-        min_moneyness=0.7,
-        max_moneyness=1.3
-    )
-    
-    if result is None:
-        print("❌ Failed to fetch market data")
+    try:
+        fetcher = OptionChainDataAcquisition(ticker=ticker, risk_free_rate=0.05)
+        fetcher.fetch_option_chain()
+        options_df = fetcher.clean_option_data(
+            min_volume=5,
+            min_open_interest=1,
+            max_bid_ask_spread_pct=0.50,
+            min_moneyness=0.7,
+            max_moneyness=1.3,
+        )
+        fetcher.extract_forward_prices()
+        options_df = fetcher.compute_implied_volatilities()
+        spot = float(fetcher.spot_price)
+        risk_free = float(fetcher.risk_free_rate)
+    except Exception as e:
+        print(f"❌ Failed to fetch market data: {e}")
         return None
-    
-    options_df, spot, risk_free = result
     
     if options_df.empty:
         print("❌ No options data available")
@@ -110,10 +111,10 @@ def fetch_current_market_data(ticker: str) -> dict:
             'ask': row['ask'],
             'mid': (row['bid'] + row['ask']) / 2,
             'volume': row['volume'],
-            'open_interest': row['open_interest'],
+            'open_interest': row['openInterest'],
             'iv': row['implied_volatility'],
             'maturity': row['time_to_maturity'],
-            'option_type': row['option_type'],
+            'option_type': row['optionType'],
             'strike_exists': True
         }
     
@@ -328,6 +329,51 @@ def export_signals_to_csv(signals: list, ticker: str, model: str, output_dir: Pa
     print(df[['signal_type', 'net_edge_bps', 'confidence']].describe())
 
 
+def export_trade_intents_to_csv(intents: list, ticker: str, model: str, output_dir: Path):
+    """Export formalized trade intents to CSV for strategy handoff."""
+    if not intents:
+        print("No trade intents to export")
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    builder = TradeIntentBuilder()
+    records = builder.to_records(intents)
+    df = pd.DataFrame(records)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"trade_intents_{ticker}_{model}_{timestamp}.csv"
+    filepath = output_dir / filename
+
+    df.to_csv(filepath, index=False)
+    print(f"✓ Exported {len(df)} trade intents to {filepath}")
+
+
+def print_trade_intent_report(intents: list, top_n: int = 5):
+    """Print concise but complete trade-intent definitions."""
+    print("\n" + "=" * 70)
+    print(f"TOP {top_n} TRADE INTENTS")
+    print("=" * 70)
+
+    if not intents:
+        print("No trade intents generated")
+        return
+
+    for i, intent in enumerate(intents[:top_n], 1):
+        print(f"\nINTENT {i} | {intent.intent_id}")
+        print("-" * 70)
+        print(f"Instrument universe : {intent.instrument_universe}")
+        print(f"Trade direction     : {intent.trade_direction}")
+        print(f"Structure           : {intent.structure}")
+        print(f"Action              : {intent.action_summary}")
+        print(f"Entry condition     : {intent.entry_condition}")
+        print(f"Exit condition      : {intent.exit_condition}")
+        print(f"Holding horizon     : {intent.holding_horizon_days} days")
+        print(f"Invalidation        : {intent.invalidation_condition}")
+        print(f"Expected net edge   : {intent.expected_net_edge_bps:.0f} bps")
+        print(f"Confidence          : {intent.confidence:.1%}")
+        print(f"Hedge policy        : {intent.hedge_policy}")
+
+
 def main():
     """Main orchestration pipeline."""
     parser = argparse.ArgumentParser(
@@ -411,8 +457,21 @@ def main():
     
     # Step 6: Stress test top signals
     stress_test_signals(tradeable_signals[:3], market_data)
+
+    # Step 7: Convert tradeable signals into explicit trade intents
+    print("\n" + "=" * 70)
+    print("STEP 7: CONVERT SIGNALS TO TRADE INTENTS")
+    print("=" * 70)
+    intent_builder = TradeIntentBuilder(min_edge_bps=config.min_net_edge_bps)
+    trade_intents = intent_builder.build_from_single_leg_signals(
+        tradeable_signals,
+        ticker=args.ticker,
+        spot=spot,
+    )
+
+    print(f"✓ Generated {len(trade_intents)} trade intents")
     
-    # Step 7: Display top signals
+    # Step 8: Display top signals
     print("\n" + "="*70)
     print(f"TOP {args.top_n} TRADEABLE SIGNALS")
     print("="*70)
@@ -423,11 +482,15 @@ def main():
         print(f"SIGNAL {i}")
         print("="*70)
         generator.print_signal_report(signal)
+
+    # Step 9: Display top trade intents
+    print_trade_intent_report(trade_intents, top_n=args.top_n)
     
-    # Step 8: Export if requested
+    # Step 10: Export if requested
     if args.export_csv:
         output_dir = Path(__file__).parent / "output"
         export_signals_to_csv(signals, args.ticker, args.model, output_dir)
+        export_trade_intents_to_csv(trade_intents, args.ticker, args.model, output_dir)
     
     # Final summary
     print("\n" + "="*70)
@@ -435,6 +498,7 @@ def main():
     print("="*70)
     print(f"\nGenerated: {len(signals)} total signals")
     print(f"Tradeable: {len(tradeable_signals)} signals")
+    print(f"Intents:   {len(trade_intents)} trade intents")
     print(f"Pass rate: {len(tradeable_signals)/len(signals)*100:.1f}%")
     
     if tradeable_signals:
