@@ -20,6 +20,7 @@ import numpy as np
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from signal_generator import (
     VolatilitySignalGenerator, SignalStressTester, 
@@ -27,6 +28,16 @@ from signal_generator import (
 )
 from strategy_signals import StrategySignalGenerator, StrategySignal
 from trade_intents import TradeIntentBuilder
+from portfolio_engine.pipeline import (
+    build_candidates_from_intents,
+    build_portfolio_from_candidates,
+)
+from portfolio_engine.schemas import (
+    ExecutionAssumptions,
+    PortfolioConstraints,
+    SizingBasis,
+)
+from portfolio_engine.portfolio_constructor import HedgePolicy
 
 # Import calibration modules
 from calibration.data_aquisition import OptionChainDataAcquisition
@@ -374,6 +385,49 @@ def print_trade_intent_report(intents: list, top_n: int = 5):
         print(f"Hedge policy        : {intent.hedge_policy}")
 
 
+def print_portfolio_report(build_result):
+    """Print position vector, book exposures, and fill outcomes."""
+    print("\n" + "=" * 70)
+    print("TARGET POSITION VECTOR (GREEK-AWARE SIZING)")
+    print("=" * 70)
+
+    if not build_result.targets:
+        print("No target positions generated under current constraints")
+    else:
+        for i, t in enumerate(build_result.targets, 1):
+            print(
+                f"{i}. {t.intent_id} | {t.side.upper()} {t.contracts:>3d} {t.option_type.upper()} "
+                f"K={t.strike:.2f} T={t.maturity_days:.0f}d | premium=${t.premium_notional:,.0f} "
+                f"| Δ={t.delta:.2f} Γ={t.gamma:.4f} V={t.vega:.2f} Θ={t.theta:.2f} "
+                f"| stress=${t.stress_loss:,.0f}"
+            )
+
+    book = build_result.book
+    print("\n" + "=" * 70)
+    print("PORTFOLIO BOOK SUMMARY")
+    print("=" * 70)
+    print(f"Net delta            : {book.net_delta:.2f}")
+    print(f"Net gamma            : {book.net_gamma:.4f}")
+    print(f"Net vega             : {book.net_vega:.2f}")
+    print(f"Net theta            : {book.net_theta:.2f}")
+    print(f"Gross premium        : ${book.gross_premium:,.0f}")
+    print(f"Stress loss (1-day)  : ${book.total_stress_loss:,.0f}")
+    print(f"Delta hedge shares   : {book.delta_hedge_shares}")
+
+    accepted = sum(1 for f in build_result.fill_results if f.accepted)
+    total = len(build_result.fill_results)
+    print("\n" + "=" * 70)
+    print("EXECUTION SIMULATION SUMMARY")
+    print("=" * 70)
+    print(f"Accepted fills: {accepted}/{total}")
+    for fill in build_result.fill_results[:10]:
+        status = "OK" if fill.accepted else "REJECT"
+        print(
+            f"{status:6s} {fill.intent_id:28s} contracts={fill.filled_contracts:>3d} "
+            f"px={fill.fill_price:.4f} reason={fill.reason} cash={fill.total_cash_impact:,.2f}"
+        )
+
+
 def main():
     """Main orchestration pipeline."""
     parser = argparse.ArgumentParser(
@@ -388,6 +442,14 @@ def main():
                        help='Export signals to CSV')
     parser.add_argument('--top-n', type=int, default=5,
                        help='Number of top signals to display (default: 5)')
+    parser.add_argument('--capital-usd', type=float, default=250000,
+                       help='Portfolio capital for sizing (default: 250000)')
+    parser.add_argument('--sizing-basis', type=str, default='vega',
+                       choices=['vega', 'gamma', 'theta', 'premium', 'stress_loss'],
+                       help='Primary sizing risk unit (default: vega)')
+    parser.add_argument('--hedge-policy', type=str, default='threshold',
+                       choices=['continuous', 'discrete_daily', 'threshold'],
+                       help='Delta hedge policy (default: threshold)')
     
     args = parser.parse_args()
     
@@ -485,12 +547,94 @@ def main():
 
     # Step 9: Display top trade intents
     print_trade_intent_report(trade_intents, top_n=args.top_n)
+
+    # Step 10: Build greek-aware target position vector + portfolio + execution simulation
+    print("\n" + "=" * 70)
+    print("STEP 10: POSITION SIZING, PORTFOLIO CONSTRUCTION, EXECUTION MODEL")
+    print("=" * 70)
+
+    # Stable signal lookup keyed by generated intent id.
+    signal_by_intent_id = {
+        intent.intent_id: signal
+        for intent, signal in zip(trade_intents, tradeable_signals)
+    }
+
+    candidates = build_candidates_from_intents(
+        intents=trade_intents,
+        signals_by_intent_id=signal_by_intent_id,
+        market_by_strike=market_data['options'],
+        spot=spot,
+    )
+
+    constraints = PortfolioConstraints(capital_usd=args.capital_usd)
+    execution = ExecutionAssumptions(
+        fill_model='mid_minus_spread_fraction',
+        spread_capture_fraction=0.25,
+        slippage_bps=10.0,
+        commission_per_contract=0.65,
+        min_open_interest=config.min_open_interest,
+        min_volume=config.min_volume,
+        max_participation_rate=0.10,
+        max_quote_age_seconds=120,
+    )
+
+    build_result = build_portfolio_from_candidates(
+        candidates=candidates,
+        constraints=constraints,
+        sizing_basis=SizingBasis(args.sizing_basis),
+        hedge_policy=HedgePolicy(args.hedge_policy),
+        execution=execution,
+        allow_net_vega_accumulation=True,
+    )
+
+    print_portfolio_report(build_result)
     
-    # Step 10: Export if requested
+    # Step 11: Export if requested
     if args.export_csv:
         output_dir = Path(__file__).parent / "output"
         export_signals_to_csv(signals, args.ticker, args.model, output_dir)
         export_trade_intents_to_csv(trade_intents, args.ticker, args.model, output_dir)
+
+        # Export position vector and fills for auditability.
+        positions_df = pd.DataFrame([
+            {
+                'intent_id': t.intent_id,
+                'ticker': t.ticker,
+                'option_type': t.option_type,
+                'side': t.side,
+                'strike': t.strike,
+                'maturity_days': t.maturity_days,
+                'contracts': t.contracts,
+                'premium_notional': t.premium_notional,
+                'delta': t.delta,
+                'gamma': t.gamma,
+                'vega': t.vega,
+                'theta': t.theta,
+                'stress_loss': t.stress_loss,
+            }
+            for t in build_result.targets
+        ])
+
+        fills_df = pd.DataFrame([
+            {
+                'intent_id': f.intent_id,
+                'accepted': f.accepted,
+                'reason': f.reason,
+                'filled_contracts': f.filled_contracts,
+                'fill_price': f.fill_price,
+                'estimated_fees': f.estimated_fees,
+                'total_cash_impact': f.total_cash_impact,
+            }
+            for f in build_result.fill_results
+        ])
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        positions_path = output_dir / f"target_positions_{args.ticker}_{args.model}_{ts}.csv"
+        fills_path = output_dir / f"execution_fills_{args.ticker}_{args.model}_{ts}.csv"
+        positions_df.to_csv(positions_path, index=False)
+        fills_df.to_csv(fills_path, index=False)
+        print(f"✓ Exported {len(positions_df)} target positions to {positions_path}")
+        print(f"✓ Exported {len(fills_df)} fill simulation rows to {fills_path}")
     
     # Final summary
     print("\n" + "="*70)
@@ -499,6 +643,7 @@ def main():
     print(f"\nGenerated: {len(signals)} total signals")
     print(f"Tradeable: {len(tradeable_signals)} signals")
     print(f"Intents:   {len(trade_intents)} trade intents")
+    print(f"Targets:   {len(build_result.targets)} sized positions")
     print(f"Pass rate: {len(tradeable_signals)/len(signals)*100:.1f}%")
     
     if tradeable_signals:
