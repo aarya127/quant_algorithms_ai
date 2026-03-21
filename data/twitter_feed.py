@@ -5,6 +5,7 @@ Fetches latest tweets from financial news accounts and market-related hashtags
 
 import tweepy
 import logging
+import os
 from datetime import datetime
 from typing import List, Dict
 
@@ -12,10 +13,10 @@ from typing import List, Dict
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Twitter API credentials
-API_KEY = "***REMOVED***"
-API_SECRET = "***REMOVED***"
-BEARER_TOKEN = "***REMOVED***"
+# Twitter API credentials (set as environment variables in production)
+API_KEY = os.environ.get('TWITTER_API_KEY', '***REMOVED***')
+API_SECRET = os.environ.get('TWITTER_API_SECRET', '***REMOVED***')
+BEARER_TOKEN = os.environ.get('TWITTER_BEARER_TOKEN', '***REMOVED***')
 
 # Market-influencing accounts to follow (reduces API calls significantly)
 INFLUENTIAL_ACCOUNTS = [

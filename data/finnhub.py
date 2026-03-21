@@ -1,24 +1,27 @@
 import finnhub
 import datetime
+import os
 
 def load_api_key():
-    """Load Finnhub API key from keys.txt"""
-    # Try to find keys.txt in current directory or parent directory
-    import os
+    """Load Finnhub API key from env var or keys.txt fallback"""
+    # Production: read from environment variable
+    key = os.environ.get('FINNHUB_API_KEY')
+    if key:
+        return key
+
+    # Local dev fallback: read from keys.txt
     possible_paths = ['keys.txt', '../keys.txt', os.path.join(os.path.dirname(__file__), '..', 'keys.txt')]
-    
     for path in possible_paths:
         if os.path.exists(path):
             with open(path, 'r') as f:
                 lines = f.readlines()
                 for i, line in enumerate(lines):
-                    # Check for finnhub or finhub (typo)
                     if 'finnhub' in line.lower() or 'finhub' in line.lower():
                         if i + 1 < len(lines):
                             return lines[i + 1].strip()
             break
-    
-    raise ValueError("Finnhub API key not found in keys.txt")
+
+    raise ValueError("Finnhub API key not found. Set FINNHUB_API_KEY env var or add to keys.txt")
 
 def get_company_profile(symbol):
     """Get company profile information"""
