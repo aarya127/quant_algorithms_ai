@@ -73,6 +73,11 @@ def is_canadian_stock(symbol):
     """Check if a stock is Canadian"""
     return symbol in CANADIAN_STOCKS_MAP
 
+@app.route('/health')
+def health():
+    """Railway healthcheck endpoint — always returns 200 immediately"""
+    return jsonify({'status': 'ok'}), 200
+
 @app.route('/')
 def index():
     """Main dashboard"""

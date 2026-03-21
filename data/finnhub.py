@@ -21,7 +21,7 @@ def load_api_key():
                             return lines[i + 1].strip()
             break
 
-    raise ValueError("Finnhub API key not found. Set FINNHUB_API_KEY env var or add to keys.txt")
+    return None  # API calls will fail gracefully rather than crashing at startup
 
 def get_company_profile(symbol):
     """Get company profile information"""
