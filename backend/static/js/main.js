@@ -135,13 +135,20 @@ function setupEventListeners() {
         });
     }
     
-    // Tab change listeners
+    // Tab change listeners (stock detail tabs)
     document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
         tab.addEventListener('shown.bs.tab', function(e) {
             const target = e.target.getAttribute('data-bs-target');
             if (currentStock) {
                 handleTabChange(target, currentStock);
             }
+        });
+    });
+
+    // Quant pill tab listeners — refresh AOS so fade-up cards animate in correctly
+    document.querySelectorAll('[data-bs-toggle="pill"]').forEach(pill => {
+        pill.addEventListener('shown.bs.tab', function() {
+            setTimeout(() => AOS.refresh(), 50);
         });
     });
 }
@@ -239,8 +246,10 @@ async function loadStockDetails(symbol) {
     console.log(`LOADING DATA FOR: ${symbol}`);
     console.log(`========================================\n`);
     
-    // Show stock details section
+    // Show stock details section, hide default welcome panel
     document.getElementById('stockDetails').style.display = 'block';
+    const dashDefault = document.getElementById('dashboardDefault');
+    if (dashDefault) dashDefault.style.display = 'none';
     document.getElementById('stockSymbol').textContent = symbol;
     
     // Show loading state
@@ -1357,9 +1366,61 @@ function downloadResearch(type) {
         });
 }
 
-// Create New Algorithm
+// View Algorithm source code in modal
+function viewAlgorithm(name, title) {
+    const modal = new bootstrap.Modal(document.getElementById('codeViewerModal'));
+    document.getElementById('codeViewerTitle').innerHTML =
+        `<i class="fas fa-code me-2"></i>${title || 'Algorithm Source'}`;
+    document.getElementById('codeViewerLoading').style.display = 'block';
+    document.getElementById('codeViewerContent').style.display = 'none';
+    modal.show();
+
+    fetch(`/api/algorithm/${name}`)
+        .then(res => {
+            if (!res.ok) throw new Error('Failed to load source');
+            return res.text();
+        })
+        .then(source => {
+            const pre = document.getElementById('codeViewerContent');
+            const codeEl = document.getElementById('codeViewerCode');
+            codeEl.textContent = source;
+            hljs.highlightElement(codeEl);
+            document.getElementById('codeViewerLoading').style.display = 'none';
+            pre.style.display = 'block';
+        })
+        .catch(err => {
+            document.getElementById('codeViewerLoading').innerHTML =
+                `<div class="alert alert-danger m-3">Failed to load source code: ${err.message}</div>`;
+        });
+}
+
+// Copy algorithm code to clipboard
+function copyAlgorithmCode() {
+    const code = document.getElementById('codeViewerCode').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        const btn = document.getElementById('codeViewerCopy');
+        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i> Copy'; }, 2000);
+    });
+}
+
+// Download algorithm source file
+function downloadAlgorithmCode(name) {
+    fetch(`/api/algorithm/${name}`)
+        .then(r => r.text())
+        .then(source => {
+            const a = Object.assign(document.createElement('a'), {
+                href: URL.createObjectURL(new Blob([source], {type: 'text/plain'})),
+                download: name + '.py'
+            });
+            a.click();
+            URL.revokeObjectURL(a.href);
+        });
+}
+
+// Create New Algorithm (legacy stub)
 function createNewAlgorithm() {
-    alert('Algorithm builder coming soon! This will allow you to create custom trading algorithms.');
+    alert('Use the View Code buttons to explore existing algorithms.');
 }
 
 // Run Backtest

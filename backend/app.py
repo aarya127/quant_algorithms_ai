@@ -1132,7 +1132,7 @@ def get_diagnostics_notebook():
         # Path to the notebook
         notebook_path = os.path.join(
             os.path.dirname(__file__), 
-            '../quant_research/stochastic_volatility/diagnostics.ipynb'
+            '../algorithms/volatility_forecasting/research/diagnostics.ipynb'
         )
         
         if not os.path.exists(notebook_path):
@@ -1178,6 +1178,39 @@ def get_diagnostics_notebook():
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/algorithm/<name>')
+def get_algorithm_source(name):
+    """
+    Serve Python algorithm source code as plain text.
+    """
+    algo_map = {
+        'sabr_pricer':           '../algorithms/volatility_forecasting/volatility_models/sabr_pricer.py',
+        'sabr_calibration':      '../algorithms/volatility_forecasting/volatility_models/calibration/run_calibration.py',
+        'signal_generator':      '../algorithms/volatility_forecasting/volatility_models/signals/signal_generator.py',
+        'strategy_signals':      '../algorithms/volatility_forecasting/volatility_models/signals/strategy_signals.py',
+        'backtest_engine':       '../algorithms/volatility_forecasting/backtest_engine/engine.py',
+        'portfolio_constructor': '../algorithms/volatility_forecasting/portfolio_engine/portfolio_constructor.py',
+        'macd_strategy':         '../algorithms/macd_rsi/prototype.py',
+        'greeks_calculator':     '../algorithms/greeks/prototype.py',
+        'arima':                 '../algorithms/machine_learning_algorithms/time_series_models/arima.py',
+        'garch':                 '../algorithms/machine_learning_algorithms/time_series_models/garch.py',
+    }
+
+    if name not in algo_map:
+        return jsonify({'success': False, 'error': 'Algorithm not found'}), 404
+
+    file_path = os.path.join(os.path.dirname(__file__), algo_map[name])
+    if not os.path.exists(file_path):
+        return jsonify({'success': False, 'error': 'Source file not found'}), 404
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        return source, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/research/<paper_name>/markdown')
 def get_research_markdown(paper_name):
