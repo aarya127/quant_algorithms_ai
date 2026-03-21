@@ -2,4 +2,5 @@
 builder = "DOCKERFILE"
 
 [deploy]
+startCommand = "./entrypoint.sh"
 restartPolicyType = "ON_FAILURE"
