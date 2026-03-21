@@ -5,6 +5,7 @@ Fetches latest tweets from financial news accounts and market-related hashtags
 
 import tweepy
 import logging
+import os
 from datetime import datetime
 from typing import List, Dict
 
@@ -12,10 +13,10 @@ from typing import List, Dict
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Twitter API credentials
-API_KEY = "47a9sg2P51QWZ5dyTPKtrt5bw"
-API_SECRET = "JxTLFVGQ5dFcuUFZMpwGNPP9iHwZRLBbRUdpcrNnxw8klPjpGW"
-BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAFJd5gEAAAAAHDlDO2S7ydz3eJ6oMxxkHtYAAsI%3DDF5b4CUyYTslNFqLj83BFaPBEES9coi5NczEXoMXvS9EKhDJi7"
+# Twitter API credentials (set as environment variables in production)
+API_KEY = os.environ.get('TWITTER_API_KEY', '47a9sg2P51QWZ5dyTPKtrt5bw')
+API_SECRET = os.environ.get('TWITTER_API_SECRET', 'JxTLFVGQ5dFcuUFZMpwGNPP9iHwZRLBbRUdpcrNnxw8klPjpGW')
+BEARER_TOKEN = os.environ.get('TWITTER_BEARER_TOKEN', 'AAAAAAAAAAAAAAAAAAAAAFJd5gEAAAAAHDlDO2S7ydz3eJ6oMxxkHtYAAsI%3DDF5b4CUyYTslNFqLj83BFaPBEES9coi5NczEXoMXvS9EKhDJi7')
 
 # Market-influencing accounts to follow (reduces API calls significantly)
 INFLUENTIAL_ACCOUNTS = [

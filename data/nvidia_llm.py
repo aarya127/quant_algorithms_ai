@@ -8,20 +8,25 @@ import os
 
 # NVIDIA API Configuration
 def _get_nvidia_api_key():
-    """Read NVIDIA API key from keys.txt file"""
+    """Read NVIDIA API key from env var or keys.txt fallback"""
+    # Production: read from environment variable
+    key = os.environ.get('NVIDIA_API_KEY')
+    if key:
+        return key
+
+    # Local dev fallback: read from keys.txt
     try:
         keys_path = os.path.join(os.path.dirname(__file__), '..', 'keys.txt')
-        with open(keys_path, 'r') as f:
-            lines = f.readlines()
-            for i, line in enumerate(lines):
-                if 'nvidia llms' in line.lower():
-                    # Get the next non-empty line
-                    if i + 1 < len(lines):
-                        return lines[i + 1].strip()
-        return None
+        if os.path.exists(keys_path):
+            with open(keys_path, 'r') as f:
+                lines = f.readlines()
+                for i, line in enumerate(lines):
+                    if 'nvidia llms' in line.lower():
+                        if i + 1 < len(lines):
+                            return lines[i + 1].strip()
     except Exception as e:
         print(f"Error reading NVIDIA API key: {e}")
-        return None
+    return None
 
 NVIDIA_API_KEY = _get_nvidia_api_key()
 INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"

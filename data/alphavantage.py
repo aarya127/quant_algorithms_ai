@@ -11,16 +11,22 @@ class AlphaVantage:
         self.base_url = "https://www.alphavantage.co/query"
     
     def _load_api_key(self):
-        """Load API key from keys.txt file"""
+        """Load API key from env var or keys.txt fallback"""
+        # Production: read from environment variable
+        key = os.environ.get('ALPHAVANTAGE_API_KEY')
+        if key:
+            return key
+
+        # Local dev fallback: read from keys.txt
         keys_path = os.path.join(os.path.dirname(__file__), '..', 'keys.txt')
-        with open(keys_path, 'r') as f:
-            lines = f.readlines()
-            for i, line in enumerate(lines):
-                if 'alphavantage' in line.lower():
-                    # Get the next line which should contain the API key
-                    if i + 1 < len(lines):
-                        return lines[i + 1].strip()
-        raise ValueError("AlphaVantage API key not found in keys.txt")
+        if os.path.exists(keys_path):
+            with open(keys_path, 'r') as f:
+                lines = f.readlines()
+                for i, line in enumerate(lines):
+                    if 'alphavantage' in line.lower():
+                        if i + 1 < len(lines):
+                            return lines[i + 1].strip()
+        raise ValueError("AlphaVantage API key not found. Set ALPHAVANTAGE_API_KEY env var or add to keys.txt")
     
     def _make_request(self, params):
         """Helper method to make API requests"""

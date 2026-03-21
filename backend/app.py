@@ -1254,7 +1254,9 @@ def get_research_markdown(paper_name):
 
 if __name__ == '__main__':
     try:
-        app.run(debug=True, port=5001)
+        port = int(os.environ.get('PORT', 5001))
+        debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+        app.run(debug=debug, host='0.0.0.0', port=port)
     finally:
         # Clean up: stop the Alpaca news stream when app closes
         stop_news_stream()
