@@ -8,11 +8,20 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from data.finnhub import get_company_news, get_basic_financials, get_earnings_surprises
 
-# Initialize FinBERT
-print("Loading FinBERT model...")
-tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-print("Model loaded\n")
+# Lazy-loaded — model is not downloaded at import time.
+# This lets the web server start immediately; the model loads on first use.
+tokenizer = None
+model = None
+
+
+def _load_model():
+    """Load FinBERT model on first use."""
+    global tokenizer, model
+    if tokenizer is None or model is None:
+        print("Loading FinBERT model...")
+        tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+        model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
+        print("FinBERT model loaded")
 
 # Stock list - US stocks only (for Finnhub)
 # For Canadian stocks, use finbert_canadian.py with Alpha Vantage
@@ -31,7 +40,8 @@ def get_sentiment(text):
     """Analyze sentiment of financial text using FinBERT"""
     if not text or len(text.strip()) < 10:
         return None, None
-    
+
+    _load_model()
     inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
     outputs = model(**inputs)
     predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
