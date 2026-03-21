@@ -19,5 +19,7 @@ WORKDIR /app/backend
 EXPOSE 8080
 
 # Pre-flight: test that the app imports cleanly, surfacing any error in deploy logs.
-# Then start gunicorn. PORT is injected by Railway; default 8080 for local Docker runs.
-CMD ["sh", "-c", "python -c 'from app import app; print(\"[PREFLIGHT] app imported OK\")' && gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 1 --timeout 120"]
+COPY backend/entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+CMD ["./entrypoint.sh"]
