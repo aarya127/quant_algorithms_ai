@@ -32,7 +32,6 @@ from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_
 from data.twitter_feed import get_market_tweets, get_financial_news_feed
 from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
 from data.company_statistics import get_company_statistics, format_statistics_for_display
-from sentiment.finbert import get_sentiment
 from stock_analyzer import StockAnalyzer
 
 app = Flask(__name__)

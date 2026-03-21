@@ -1,5 +1,3 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import torch
 import datetime
 import sys
 import os
@@ -8,16 +6,19 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from data.finnhub import get_company_news, get_basic_financials, get_earnings_surprises
 
-# Lazy-loaded — model is not downloaded at import time.
-# This lets the web server start immediately; the model loads on first use.
+# torch and transformers are NOT imported at module level — they are heavy
+# (~5-15s to import) and would block gunicorn from starting. They are imported
+# lazily inside _load_model() the first time sentiment analysis is requested.
 tokenizer = None
 model = None
 
 
 def _load_model():
-    """Load FinBERT model on first use."""
+    """Import torch/transformers and load FinBERT on first use."""
     global tokenizer, model
     if tokenizer is None or model is None:
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
+        import torch  # noqa: F401 — loads torch into sys.modules
         print("Loading FinBERT model...")
         tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
         model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
@@ -42,17 +43,18 @@ def get_sentiment(text):
         return None, None
 
     _load_model()
+    import torch
     inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
     outputs = model(**inputs)
     predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
-    
+
     sentiment_score = predictions[0].tolist()
-    
+
     if hasattr(model.config, 'id2label'):
         labels = [model.config.id2label[i] for i in range(len(sentiment_score))]
     else:
         labels = ['positive', 'negative', 'neutral']
-    
+
     result = {labels[i]: sentiment_score[i] for i in range(len(labels))}
     dominant_sentiment = labels[torch.argmax(predictions[0]).item()]
     
