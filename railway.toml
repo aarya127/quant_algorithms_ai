@@ -3,4 +3,6 @@ builder = "DOCKERFILE"
 
 [deploy]
 startCommand = "./entrypoint.sh"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
