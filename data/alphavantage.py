@@ -26,7 +26,7 @@ class AlphaVantage:
                     if 'alphavantage' in line.lower():
                         if i + 1 < len(lines):
                             return lines[i + 1].strip()
-        raise ValueError("AlphaVantage API key not found. Set ALPHAVANTAGE_API_KEY env var or add to keys.txt")
+        return None  # API calls will fail gracefully rather than crashing at startup
     
     def _make_request(self, params):
         """Helper method to make API requests"""
