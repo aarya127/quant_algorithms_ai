@@ -697,7 +697,7 @@ body.dark-mode .list-group-item {
     position: relative;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 20px;
-    padding: 60px 40px;
+    padding: 25px 30px;
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(102, 126, 234, 0.3);
 }
@@ -710,14 +710,14 @@ body.dark-mode .list-group-item {
 }
 
 .quant-title {
-    font-size: 3rem;
+    font-size: 2rem;
     font-weight: 700;
-    margin-bottom: 15px;
+    margin-bottom: 8px;
     animation: fadeInDown 1s ease-out;
 }
 
 .quant-subtitle {
-    font-size: 1.3rem;
+    font-size: 1rem;
     opacity: 0.95;
     animation: fadeInUp 1s ease-out;
 }
@@ -822,7 +822,7 @@ body.dark-mode .list-group-item {
 
 /* Stats Cards */
 .quant-stats {
-    margin-top: -40px;
+    margin-top: -20px;
     position: relative;
     z-index: 10;
 }
@@ -1071,6 +1071,13 @@ body.dark-mode .list-group-item {
 .research-actions .btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Algorithm tab: AOS fade-up starts cards invisible inside a hidden tab-pane.
+   Override initial AOS state so cards appear immediately when the tab is shown. */
+#algorithms .research-card {
+    opacity: 1 !important;
+    transform: none !important;
 }
 
 /* Empty State */
