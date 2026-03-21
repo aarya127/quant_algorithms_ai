@@ -3,46 +3,56 @@ Invest.ai Web Application
 Comprehensive UI for stock analysis and predictions
 """
 
-from flask import Flask, render_template, jsonify, request, send_file
 import sys
 import os
 import datetime
 import json
-import yfinance as yf
 import subprocess
 import tempfile
 from pathlib import Path
+from flask import Flask, render_template, jsonify, request, send_file
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from data.finnhub import (
-    get_company_news,
-    get_basic_financials,
-    get_earnings_surprises,
-    get_insider_transactions,
-    get_insider_sentiment,
-    get_earnings_calendar,
-    get_company_profile,
-    get_stock_quote
-)
-from data.alphavantage import AlphaVantage
-from data.nvidia_llm import get_company_overview_llm
-from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data, get_technical_indicators
-from data.twitter_feed import get_market_tweets, get_financial_news_feed
-from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
-from data.company_statistics import get_company_statistics, format_statistics_for_display
-from stock_analyzer import StockAnalyzer
-
+# Create the Flask app first — this guarantees /health always responds even if
+# downstream data-module imports fail, preventing Railway healthcheck failures.
 app = Flask(__name__)
-av = AlphaVantage()
 
-# Alpaca news stream disabled - authentication issues and limited value
-# If you want to re-enable, uncomment below and verify credentials
-# try:
-#     start_news_stream()  # Subscribe to all news
-# except Exception as e:
-#     print(f"⚠️  Alpaca news stream not started: {e}")
+# ---------------------------------------------------------------------------
+# Data module imports — wrapped so a single bad import never crashes the server.
+# If something fails the error is printed to Railway's deploy logs, the server
+# still starts, the healthcheck passes, and affected API endpoints return 500.
+# ---------------------------------------------------------------------------
+_DATA_MODULES_LOADED = False
+av = None
+yf = None
+
+try:
+    import yfinance as yf
+    from data.finnhub import (
+        get_company_news,
+        get_basic_financials,
+        get_earnings_surprises,
+        get_insider_transactions,
+        get_insider_sentiment,
+        get_earnings_calendar,
+        get_company_profile,
+        get_stock_quote
+    )
+    from data.alphavantage import AlphaVantage
+    from data.nvidia_llm import get_company_overview_llm
+    from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data, get_technical_indicators
+    from data.twitter_feed import get_market_tweets, get_financial_news_feed
+    from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
+    from data.company_statistics import get_company_statistics, format_statistics_for_display
+    from stock_analyzer import StockAnalyzer
+    av = AlphaVantage()
+    _DATA_MODULES_LOADED = True
+    print("[STARTUP] All data modules loaded successfully.", flush=True)
+except Exception as _import_err:
+    import traceback as _tb
+    print(f"[STARTUP ERROR] One or more data modules failed to import:\n{_tb.format_exc()}", flush=True)
 
 # Configuration
 DEFAULT_STOCKS = ["NVDA", "TD", "ACDVF", "MSFT", "ENB", "RCI", "CVE", "HUBS", "MU", "CNSWF", "AMD"]
