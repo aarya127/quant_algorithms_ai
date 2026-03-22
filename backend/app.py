@@ -177,6 +177,36 @@ def search_stocks(query):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e), 'results': []})
 
+@app.route('/api/indices')
+def market_indices():
+    """Get live market indices: S&P 500, NASDAQ, TSX, Dow, Russell 2000, VIX"""
+    indices = [
+        ('^GSPC',   'S&P 500'),
+        ('^IXIC',   'NASDAQ'),
+        ('^DJI',    'Dow Jones'),
+        ('^GSPTSE', 'TSX'),
+        ('^RUT',    'Russell 2000'),
+        ('^VIX',    'VIX'),
+    ]
+    result = []
+    for symbol, name in indices:
+        try:
+            fi = yf.Ticker(symbol).fast_info
+            price = fi.last_price
+            prev  = fi.previous_close
+            change = round(price - prev, 2)
+            pct    = round((change / prev) * 100, 2) if prev else 0
+            result.append({
+                'symbol': symbol,
+                'name': name,
+                'price': round(price, 2),
+                'change': change,
+                'pct_change': pct,
+            })
+        except Exception:
+            pass
+    return jsonify({'success': True, 'indices': result})
+
 @app.route('/api/dashboard')
 def dashboard_data():
     """Get dashboard overview data"""

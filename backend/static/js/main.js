@@ -183,29 +183,50 @@ async function loadWatchlistPrices() {
     });
 }
 
-// Load dashboard with trending news
+// Load dashboard with market indices
 async function loadDashboard() {
     try {
-        const response = await fetch('/api/dashboard');
+        const response = await fetch('/api/indices');
         const data = await response.json();
-        
-        const container = document.getElementById('trendingNews');
-        container.innerHTML = '';
-        
-        if (data.trending_news && data.trending_news.length > 0) {
-            data.trending_news.forEach((news, index) => {
-                const newsCard = createNewsCard(news, index);
-                container.appendChild(newsCard);
-            });
+        const container = document.getElementById('marketIndices');
+
+        if (data.indices && data.indices.length > 0) {
+            container.innerHTML = data.indices.map(idx => {
+                const up = idx.pct_change >= 0;
+                const arrow = up ? '▲' : '▼';
+                const colorClass = up ? 'text-success' : 'text-danger';
+                const borderClass = up ? 'border-success' : 'border-danger';
+                const bgClass = up ? 'bg-success' : 'bg-danger';
+                // VIX doesn't have a conventional price display — show as-is
+                const priceStr = idx.symbol === '^VIX'
+                    ? idx.price.toFixed(2)
+                    : idx.price >= 1000
+                        ? idx.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+                        : idx.price.toFixed(2);
+                return `
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body p-3 text-center">
+                            <div class="small text-muted fw-semibold mb-1">${idx.name}</div>
+                            <div class="fs-5 fw-bold">${priceStr}</div>
+                            <div class="mt-1 ${colorClass} fw-semibold small">
+                                ${arrow} ${Math.abs(idx.pct_change).toFixed(2)}%
+                            </div>
+                            <div class="text-muted" style="font-size:0.72rem">
+                                ${up ? '+' : ''}${idx.change.toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
         } else {
-            container.innerHTML = '<div class="col-12"><p class="text-muted">No trending news available</p></div>';
+            container.innerHTML = '<div class="col-12"><p class="text-muted">Indices unavailable.</p></div>';
         }
-        
         updateLastUpdated();
     } catch (error) {
-        console.error('Error loading dashboard:', error);
-        document.getElementById('trendingNews').innerHTML = 
-            '<div class="col-12"><div class="alert alert-danger">Failed to load trending news</div></div>';
+        console.error('Error loading indices:', error);
+        document.getElementById('marketIndices').innerHTML =
+            '<div class="col-12"><div class="alert alert-danger">Failed to load market indices</div></div>';
     }
 }
 
