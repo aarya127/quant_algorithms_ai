@@ -1328,8 +1328,8 @@ def trading_chart():
     symbol   = data.get('symbol', 'NASDAQ:AAPL')
     interval = data.get('interval', '1D')
     style    = data.get('style', 'candle')
-    width    = int(data.get('width', 1200))
-    height   = int(data.get('height', 640))
+    width    = int(data.get('width', 800))
+    height   = int(data.get('height', 600))
     headers  = {'x-api-key': CHART_IMG_KEY, 'content-type': 'application/json'}
 
     # Convert study name strings to v2 object array.

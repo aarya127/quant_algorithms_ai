@@ -3018,7 +3018,7 @@ function loadTradingChart() {
     fetch('/api/trading/chart', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ symbol: symbol, interval: interval, style: style, studies: studies, width: 1200, height: 640 })
+        body:    JSON.stringify({ symbol: symbol, interval: interval, style: style, studies: studies, width: 800, height: 600 })
     })
     .then(function(resp) {
         if (!resp.ok) {
