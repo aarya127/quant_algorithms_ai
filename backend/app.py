@@ -1350,9 +1350,10 @@ def trading_chart():
     except Exception:
         pass
 
-    # v1 GET fallback (free plan)
+    # v1 GET fallback (free plan) — key passed as query param
     try:
         params = {
+            'key': CHART_IMG_KEY,
             'symbol': symbol, 'interval': interval,
             'chartStyle': chart_style, 'theme': 'dark',
             'studies': ','.join(studies) if studies else '',
@@ -1361,7 +1362,7 @@ def trading_chart():
         }
         resp = _req.get(
             'https://api.chart-img.com/v1/tradingview/advanced-chart',
-            params=params, headers=headers, timeout=30,
+            params=params, timeout=30,
         )
         if resp.status_code == 200:
             return Response(resp.content, mimetype='image/png')
