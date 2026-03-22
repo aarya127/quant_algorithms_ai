@@ -10,7 +10,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request, send_file, Response
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -1312,6 +1312,69 @@ def get_research_markdown(paper_name):
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/api/trading/chart', methods=['POST'])
+def trading_chart():
+    """Proxy chart-img.com TradingView chart image requests.
+    
+    Tries the v2 POST endpoint first (paid plan); falls back to v1 GET (free plan).
+    Auth header: x-api-key.  Set CHART_IMG_KEY env var to override the default key.
+    """
+    import requests as _req
+
+    CHART_IMG_KEY = os.environ.get('CHART_IMG_KEY', 'SyQSIw0Bmv3f7AkLnBYqy8sXw3nUNGO31wKTM92l')
+
+    data = request.get_json(force=True) or {}
+    symbol      = data.get('symbol', 'NASDAQ:AAPL')
+    interval    = data.get('interval', '1D')
+    chart_style = int(data.get('chartStyle', 1))
+    studies     = data.get('studies', [])
+    width       = int(data.get('width', 1000))
+    height      = int(data.get('height', 550))
+    headers     = {'x-api-key': CHART_IMG_KEY}
+
+    # v2 POST (paid / enterprise plan)
+    try:
+        payload = {
+            'symbol': symbol, 'interval': interval,
+            'chartStyle': chart_style, 'theme': 'dark',
+            'studies': studies, 'width': width, 'height': height,
+            'timezone': 'America/New_York',
+        }
+        resp = _req.post(
+            'https://api.chart-img.com/v2/tradingview/advanced-chart',
+            json=payload, headers=headers, timeout=30,
+        )
+        if resp.status_code == 200:
+            return Response(resp.content, mimetype='image/png')
+    except Exception:
+        pass
+
+    # v1 GET fallback (free plan)
+    try:
+        params = {
+            'symbol': symbol, 'interval': interval,
+            'chartStyle': chart_style, 'theme': 'dark',
+            'studies': ','.join(studies) if studies else '',
+            'width': width, 'height': height,
+            'timezone': 'America/New_York',
+        }
+        resp = _req.get(
+            'https://api.chart-img.com/v1/tradingview/advanced-chart',
+            params=params, headers=headers, timeout=30,
+        )
+        if resp.status_code == 200:
+            return Response(resp.content, mimetype='image/png')
+        status_msg = resp.text
+        http_code  = resp.status_code
+        if http_code == 403:
+            status_msg = 'Access denied — check your API key and plan quota (50 req/day limit).'
+        elif http_code == 429:
+            status_msg = 'Rate limit exceeded (1 req/sec, 50 req/day). Please wait and try again.'
+        return jsonify({'error': 'chart-img API error', 'status': http_code, 'details': status_msg}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     try:
