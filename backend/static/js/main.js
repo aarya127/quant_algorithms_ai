@@ -2991,76 +2991,69 @@ function renderPriceChartWithIndicators(data) {
     });
 }
 
-// ─── Trading Charts ──────────────────────────────────────────────────────────
+// ─── Trading Charts (TradingView Widget) ─────────────────────────────────────
+
+var _tvScriptLoaded = false;
+var _tvScriptLoading = false;
+var _tvScriptCallbacks = [];
+
+function _loadTVScript(cb) {
+    if (_tvScriptLoaded) { cb(); return; }
+    _tvScriptCallbacks.push(cb);
+    if (_tvScriptLoading) return;
+    _tvScriptLoading = true;
+    var s = document.createElement('script');
+    s.src = 'https://s3.tradingview.com/tv.js';
+    s.onload = function() {
+        _tvScriptLoaded = true;
+        _tvScriptLoading = false;
+        _tvScriptCallbacks.forEach(function(fn) { fn(); });
+        _tvScriptCallbacks = [];
+    };
+    document.head.appendChild(s);
+}
 
 function loadTradingChart() {
-    var exchange   = document.getElementById('tradingExchange').value;
-    var ticker     = document.getElementById('tradingSymbol').value.trim().toUpperCase();
+    var exchange = document.getElementById('tradingExchange').value;
+    var ticker   = document.getElementById('tradingSymbol').value.trim().toUpperCase();
     if (!ticker) { alert('Please enter a ticker symbol.'); return; }
 
     var symbol     = exchange + ':' + ticker;
     var interval   = document.getElementById('tradingInterval').value;
-    var chartStyle = parseInt(document.getElementById('tradingChartStyle').value, 10);
-    var sizeVal    = document.getElementById('tradingSize').value;
-    var sizeParts  = sizeVal.split('x');
-    var width      = parseInt(sizeParts[0], 10);
-    var height     = parseInt(sizeParts[1], 10);
+    var chartStyle = document.getElementById('tradingChartStyle').value;
 
     var studies = [];
     document.querySelectorAll('.trading-indicator:checked').forEach(function(cb) {
         studies.push(cb.value);
     });
 
-    document.getElementById('tradingChartPlaceholder').style.display = 'none';
-    document.getElementById('tradingChartResult').style.display      = 'none';
-    document.getElementById('tradingChartError').style.display       = 'none';
-    document.getElementById('tradingChartLoading').style.display     = 'block';
-    document.getElementById('tradingLoadBtn').disabled = true;
+    var btn = document.getElementById('tradingLoadBtn');
+    btn.disabled = true;
+    btn.textContent = 'Loading\u2026';
 
-    var dotCount = 0;
-    var dotInterval = setInterval(function() {
-        dotCount = (dotCount + 1) % 4;
-        var el = document.getElementById('tradingDots');
-        if (el) el.textContent = new Array((dotCount || 1) + 1).join('.');
-    }, 400);
+    _loadTVScript(function() {
+        var container = document.getElementById('tradingview_chart');
+        container.innerHTML = '';
 
-    fetch('/api/trading/chart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: symbol, interval: interval, chartStyle: chartStyle, studies: studies, width: width, height: height })
-    })
-    .then(function(resp) {
-        if (!resp.ok) {
-            return resp.json().then(function(d) {
-                throw new Error(d.details || d.error || 'HTTP ' + resp.status);
-            });
-        }
-        return resp.blob();
-    })
-    .then(function(blob) {
-        clearInterval(dotInterval);
-        var url = URL.createObjectURL(blob);
-        document.getElementById('tradingChartImg').src = url;
+        new TradingView.widget({
+            autosize:            true,
+            symbol:              symbol,
+            interval:            interval,
+            timezone:            'America/New_York',
+            theme:               'dark',
+            style:               chartStyle,
+            locale:              'en',
+            toolbar_bg:          '#0d0d0d',
+            enable_publishing:   false,
+            allow_symbol_change: false,
+            hide_legend:         false,
+            save_image:          true,
+            studies:             studies,
+            container_id:        'tradingview_chart'
+        });
 
-        var dl = document.getElementById('tradingChartDownload');
-        dl.href     = url;
-        dl.download = symbol.replace(':', '_') + '_' + interval + '.png';
-
-        var styleNames = { 0:'Bars', 1:'Candles', 2:'Line', 3:'Area', 4:'Heikin Ashi', 5:'Hollow Candles', 6:'Baseline', 8:'Hi-Lo' };
-        document.getElementById('tradingChartLabel').textContent =
-            symbol + ' \u00b7 ' + interval + ' \u00b7 ' + (styleNames[chartStyle] || 'Candles') + ' \u00b7 ' + studies.length + ' indicator(s)';
-
-        document.getElementById('tradingChartLoading').style.display = 'none';
-        document.getElementById('tradingChartResult').style.display  = 'block';
-    })
-    .catch(function(err) {
-        clearInterval(dotInterval);
-        document.getElementById('tradingChartLoading').style.display = 'none';
-        document.getElementById('tradingChartErrorMsg').textContent  = String(err);
-        document.getElementById('tradingChartError').style.display   = 'block';
-    })
-    .finally(function() {
-        document.getElementById('tradingLoadBtn').disabled = false;
+        btn.disabled = false;
+        btn.innerHTML = '&#9654; Load Chart';
     });
 }
 
