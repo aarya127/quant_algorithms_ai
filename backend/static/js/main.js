@@ -2991,68 +2991,61 @@ function renderPriceChartWithIndicators(data) {
     });
 }
 
-// ─── Trading Charts (TradingView Widget) ─────────────────────────────────────
-
-var _tvScriptLoaded = false;
-var _tvScriptLoading = false;
-var _tvScriptCallbacks = [];
-
-function _loadTVScript(cb) {
-    if (_tvScriptLoaded) { cb(); return; }
-    _tvScriptCallbacks.push(cb);
-    if (_tvScriptLoading) return;
-    _tvScriptLoading = true;
-    var s = document.createElement('script');
-    s.src = 'https://s3.tradingview.com/tv.js';
-    s.onload = function() {
-        _tvScriptLoaded = true;
-        _tvScriptLoading = false;
-        _tvScriptCallbacks.forEach(function(fn) { fn(); });
-        _tvScriptCallbacks = [];
-    };
-    document.head.appendChild(s);
-}
+// ─── Trading Charts (chart-img API) ──────────────────────────────────────────
 
 function loadTradingChart() {
     var exchange = document.getElementById('tradingExchange').value;
     var ticker   = document.getElementById('tradingSymbol').value.trim().toUpperCase();
     if (!ticker) { alert('Please enter a ticker symbol.'); return; }
 
-    var symbol     = exchange + ':' + ticker;
-    var interval   = document.getElementById('tradingInterval').value;
-    var chartStyle = document.getElementById('tradingChartStyle').value;
+    var symbol   = exchange + ':' + ticker;
+    var interval = document.getElementById('tradingInterval').value;
+    var style    = document.getElementById('tradingChartStyle').value;
 
     var studies = [];
     document.querySelectorAll('.trading-indicator:checked').forEach(function(cb) {
         studies.push(cb.value);
     });
 
+    document.getElementById('tradingChartPlaceholder').style.display = 'none';
+    document.getElementById('tradingChartResult').style.display      = 'none';
+    document.getElementById('tradingChartError').style.display       = 'none';
+    document.getElementById('tradingChartLoading').style.display     = 'block';
     var btn = document.getElementById('tradingLoadBtn');
-    btn.disabled = true;
+    btn.disabled   = true;
     btn.textContent = 'Loading\u2026';
 
-    _loadTVScript(function() {
-        var container = document.getElementById('tradingview_chart');
-        container.innerHTML = '';
-
-        new TradingView.widget({
-            autosize:            true,
-            symbol:              symbol,
-            interval:            interval,
-            timezone:            'America/New_York',
-            theme:               'dark',
-            style:               chartStyle,
-            locale:              'en',
-            toolbar_bg:          '#0d0d0d',
-            enable_publishing:   false,
-            allow_symbol_change: false,
-            hide_legend:         false,
-            save_image:          true,
-            studies:             studies,
-            container_id:        'tradingview_chart'
-        });
-
-        btn.disabled = false;
+    fetch('/api/trading/chart', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ symbol: symbol, interval: interval, style: style, studies: studies, width: 1200, height: 640 })
+    })
+    .then(function(resp) {
+        if (!resp.ok) {
+            return resp.json().then(function(d) {
+                throw new Error(d.details || d.error || 'HTTP ' + resp.status);
+            });
+        }
+        return resp.blob();
+    })
+    .then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        document.getElementById('tradingChartImg').src = url;
+        var dl = document.getElementById('tradingChartDownload');
+        dl.href     = url;
+        dl.download = symbol.replace(':', '_') + '_' + interval + '.png';
+        document.getElementById('tradingChartLabel').textContent =
+            symbol + ' \u00b7 ' + interval + ' \u00b7 ' + style + (studies.length ? ' \u00b7 ' + studies.length + ' indicator(s)' : '');
+        document.getElementById('tradingChartLoading').style.display = 'none';
+        document.getElementById('tradingChartResult').style.display  = 'block';
+    })
+    .catch(function(err) {
+        document.getElementById('tradingChartLoading').style.display = 'none';
+        document.getElementById('tradingChartErrorMsg').textContent  = String(err);
+        document.getElementById('tradingChartError').style.display   = 'block';
+    })
+    .finally(function() {
+        btn.disabled  = false;
         btn.innerHTML = '&#9654; Load Chart';
     });
 }

@@ -1292,7 +1292,7 @@
                         <div class="d-flex align-items-center justify-content-between mb-3">
                             <div>
                                 <h2 class="mb-0 text-white fw-bold">&#128200; Trading Charts</h2>
-                                <p class="text-secondary mb-0 small">Powered by TradingView &nbsp;&middot;&nbsp; interactive, free, real-time</p>
+                                <p class="text-secondary mb-0 small">Powered by chart-img &nbsp;&middot;&nbsp; real-time TradingView screenshots</p>
                             </div>
                         </div>
 
@@ -1325,15 +1325,15 @@
                                         <label class="form-label text-secondary small mb-1">Interval</label>
                                         <select class="form-select form-select-sm" id="tradingInterval"
                                             style="background:#1a1a1a; border-color:#333; color:#fff;">
-                                            <option value="1">1 min</option>
-                                            <option value="5">5 min</option>
-                                            <option value="15">15 min</option>
-                                            <option value="30">30 min</option>
-                                            <option value="60">1 hour</option>
-                                            <option value="240">4 hour</option>
-                                            <option value="D" selected>1 Day</option>
-                                            <option value="W">1 Week</option>
-                                            <option value="M">1 Month</option>
+                                            <option value="1m">1 min</option>
+                                            <option value="5m">5 min</option>
+                                            <option value="15m">15 min</option>
+                                            <option value="30m">30 min</option>
+                                            <option value="1h">1 hour</option>
+                                            <option value="4h">4 hour</option>
+                                            <option value="1D" selected>1 Day</option>
+                                            <option value="1W">1 Week</option>
+                                            <option value="1M">1 Month</option>
                                         </select>
                                     </div>
 
@@ -1342,14 +1342,14 @@
                                         <label class="form-label text-secondary small mb-1">Chart Style</label>
                                         <select class="form-select form-select-sm" id="tradingChartStyle"
                                             style="background:#1a1a1a; border-color:#333; color:#fff;">
-                                            <option value="1" selected>Candlesticks</option>
-                                            <option value="0">Bars</option>
-                                            <option value="2">Line</option>
-                                            <option value="3">Area</option>
-                                            <option value="4">Heikin Ashi</option>
-                                            <option value="5">Hollow Candles</option>
-                                            <option value="6">Baseline</option>
-                                            <option value="8">Hi-Lo</option>
+                                            <option value="candle" selected>Candlesticks</option>
+                                            <option value="bar">Bars</option>
+                                            <option value="line">Line</option>
+                                            <option value="area">Area</option>
+                                            <option value="heikinAshi">Heikin Ashi</option>
+                                            <option value="hollowCandle">Hollow Candles</option>
+                                            <option value="baseline">Baseline</option>
+                                            <option value="hiLo">Hi-Lo</option>
                                         </select>
                                     </div>
 
@@ -1366,51 +1366,51 @@
                                     <span class="text-secondary small me-2">Indicators:</span>
                                     <div class="d-inline-flex flex-wrap gap-2">
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indRSI" value="RSI@tv-basicstudies" checked>
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indRSI" value="Relative Strength Index" checked>
                                             <label class="form-check-label text-white small" for="indRSI">RSI</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indMACD" value="MACD@tv-basicstudies" checked>
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indMACD" value="MACD" checked>
                                             <label class="form-check-label text-white small" for="indMACD">MACD</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indBB" value="BB@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indBB" value="Bollinger Bands">
                                             <label class="form-check-label text-white small" for="indBB">Bollinger Bands</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indEMA20" value="MAExp@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indEMA20" value="EMA:20">
                                             <label class="form-check-label text-white small" for="indEMA20">EMA 20</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indEMA50" value="MAExp@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indEMA50" value="EMA:50">
                                             <label class="form-check-label text-white small" for="indEMA50">EMA 50</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indEMA200" value="MAExp@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indEMA200" value="EMA:200">
                                             <label class="form-check-label text-white small" for="indEMA200">EMA 200</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indVol" value="Volume@tv-basicstudies" checked>
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indVol" value="Volume" checked>
                                             <label class="form-check-label text-white small" for="indVol">Volume</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indStoch" value="Stochastic@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indStoch" value="Stochastic">
                                             <label class="form-check-label text-white small" for="indStoch">Stochastic</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indATR" value="ATR@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indATR" value="Average True Range">
                                             <label class="form-check-label text-white small" for="indATR">ATR</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indCCI" value="CCI@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indCCI" value="Commodity Channel Index">
                                             <label class="form-check-label text-white small" for="indCCI">CCI</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indAO" value="AwesomeOscillator@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indAO" value="Awesome Oscillator">
                                             <label class="form-check-label text-white small" for="indAO">Awesome Osc.</label>
                                         </div>
                                         <div class="form-check form-check-inline mb-0">
-                                            <input class="form-check-input trading-indicator" type="checkbox" id="indIchi" value="IchimokuCloud@tv-basicstudies">
+                                            <input class="form-check-input trading-indicator" type="checkbox" id="indIchi" value="Ichimoku Cloud">
                                             <label class="form-check-label text-white small" for="indIchi">Ichimoku</label>
                                         </div>
                                     </div>
@@ -1418,9 +1418,28 @@
                             </div>
                         </div>
 
-                        <!-- TradingView Widget Container -->
-                        <div style="border-radius:8px; overflow:hidden; border:1px solid #1a1a1a;">
-                            <div id="tradingview_chart" style="height:640px;"></div>
+                        <!-- Chart Display -->
+                        <div id="tradingChartPlaceholder" class="text-center py-5" style="background:#0d0d0d; border-radius:8px; border:1px solid #1a1a1a;">
+                            <div class="text-secondary" style="font-size:3rem;">&#128200;</div>
+                            <p class="text-secondary mt-2 mb-0">Select a symbol and click <strong class="text-white">Load Chart</strong></p>
+                        </div>
+                        <div id="tradingChartLoading" class="text-center py-5" style="display:none; background:#0d0d0d; border-radius:8px; border:1px solid #1a1a1a;">
+                            <div class="spinner-border text-success" role="status"></div>
+                            <p class="text-secondary mt-3 mb-0">Generating chart snapshot&hellip;</p>
+                        </div>
+                        <div id="tradingChartError" class="text-center py-5" style="display:none; background:#0d0d0d; border-radius:8px; border:1px solid #2a0000;">
+                            <div class="text-danger" style="font-size:2rem;">&#9888;</div>
+                            <p class="text-danger mt-2 mb-1">Failed to load chart</p>
+                            <p id="tradingChartErrorMsg" class="text-secondary small mb-0"></p>
+                        </div>
+                        <div id="tradingChartResult" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span id="tradingChartLabel" class="text-secondary small"></span>
+                                <a id="tradingChartDownload" class="btn btn-outline-secondary btn-sm" download>&#8659; Download PNG</a>
+                            </div>
+                            <div style="border-radius:8px; overflow:hidden;">
+                                <img id="tradingChartImg" src="" alt="Trading Chart" style="width:100%; display:block;">
+                            </div>
                         </div>
                     </div>
                 </section>
