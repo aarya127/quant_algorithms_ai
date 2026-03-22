@@ -207,6 +207,23 @@ def market_indices():
             pass
     return jsonify({'success': True, 'indices': result})
 
+@app.route('/api/indices/history')
+def indices_history():
+    """Return 30-day daily closes for each index for sparkline charts"""
+    symbols = ['^GSPC', '^IXIC', '^DJI', '^GSPTSE', '^RUT', '^VIX']
+    result = {}
+    for symbol in symbols:
+        try:
+            df = yf.Ticker(symbol).history(period='1mo', interval='1d')
+            if not df.empty:
+                result[symbol] = {
+                    'labels': [d.strftime('%b %d') for d in df.index],
+                    'closes': [round(float(v), 2) for v in df['Close']],
+                }
+        except Exception:
+            pass
+    return jsonify({'success': True, 'history': result})
+
 @app.route('/api/dashboard')
 def dashboard_data():
     """Get dashboard overview data"""

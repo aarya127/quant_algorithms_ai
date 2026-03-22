@@ -183,26 +183,26 @@ async function loadWatchlistPrices() {
     });
 }
 
-// Load dashboard with market indices
+// Load dashboard with market indices + 30-day charts
 async function loadDashboard() {
     try {
-        const response = await fetch('/api/indices');
-        const data = await response.json();
+        const [idxRes, histRes] = await Promise.all([
+            fetch('/api/indices'),
+            fetch('/api/indices/history')
+        ]);
+        const idxData  = await idxRes.json();
+        const histData = await histRes.json();
+
         const container = document.getElementById('marketIndices');
 
-        if (data.indices && data.indices.length > 0) {
-            container.innerHTML = data.indices.map(idx => {
+        if (idxData.indices && idxData.indices.length > 0) {
+            container.innerHTML = idxData.indices.map(idx => {
                 const up = idx.pct_change >= 0;
                 const arrow = up ? '▲' : '▼';
                 const colorClass = up ? 'text-success' : 'text-danger';
-                const borderClass = up ? 'border-success' : 'border-danger';
-                const bgClass = up ? 'bg-success' : 'bg-danger';
-                // VIX doesn't have a conventional price display — show as-is
-                const priceStr = idx.symbol === '^VIX'
-                    ? idx.price.toFixed(2)
-                    : idx.price >= 1000
-                        ? idx.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
-                        : idx.price.toFixed(2);
+                const priceStr = idx.price >= 1000
+                    ? idx.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+                    : idx.price.toFixed(2);
                 return `
                 <div class="col-6 col-md-4 col-lg-2">
                     <div class="card h-100 border-0 shadow-sm">
@@ -222,6 +222,68 @@ async function loadDashboard() {
         } else {
             container.innerHTML = '<div class="col-12"><p class="text-muted">Indices unavailable.</p></div>';
         }
+
+        // Draw 30-day line charts
+        if (histData.history && idxData.indices) {
+            const names = Object.fromEntries(idxData.indices.map(i => [i.symbol, i.name]));
+            const chartsRow = document.getElementById('indexCharts');
+            chartsRow.innerHTML = '';
+            let anyChart = false;
+
+            for (const [symbol, hist] of Object.entries(histData.history)) {
+                if (!hist.closes || hist.closes.length === 0) continue;
+                anyChart = true;
+                const up = hist.closes[hist.closes.length - 1] >= hist.closes[0];
+                const color = up ? '#198754' : '#dc3545';
+                const fillColor = up ? 'rgba(25,135,84,0.08)' : 'rgba(220,53,69,0.08)';
+
+                const col = document.createElement('div');
+                col.className = 'col-12 col-md-6 col-xl-4';
+                col.innerHTML = `
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-3">
+                            <div class="fw-semibold mb-2">${names[symbol] || symbol}</div>
+                            <canvas id="idxChart_${symbol.replace('^','')}" height="80"></canvas>
+                        </div>
+                    </div>`;
+                chartsRow.appendChild(col);
+
+                // Draw after DOM insertion
+                setTimeout(() => {
+                    const ctx = document.getElementById(`idxChart_${symbol.replace('^','')}`);
+                    if (!ctx) return;
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: hist.labels,
+                            datasets: [{
+                                data: hist.closes,
+                                borderColor: color,
+                                backgroundColor: fillColor,
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: true,
+                                tension: 0.3,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: { legend: { display: false }, tooltip: {
+                                callbacks: { label: ctx => ' ' + ctx.parsed.y.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) }
+                            }},
+                            scales: {
+                                x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+                                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 },
+                                    callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0) }}
+                            }
+                        }
+                    });
+                }, 0);
+            }
+
+            document.getElementById('indexChartsContainer').style.display = anyChart ? '' : 'none';
+        }
+
         updateLastUpdated();
     } catch (error) {
         console.error('Error loading indices:', error);
