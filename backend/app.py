@@ -10,7 +10,9 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, jsonify, request, send_file, Response
+from cachetools import TTLCache
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -18,6 +20,63 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 # Create the Flask app first — this guarantees /health always responds even if
 # downstream data-module imports fail, preventing Railway healthcheck failures.
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# TTL caches — keyed by symbol, thread-safe for concurrent requests.
+# Quotes: 30s  |  Profiles: 1h  |  Financials/news: 10min
+# ---------------------------------------------------------------------------
+_cache_lock = __import__('threading').Lock()
+_quote_cache    = TTLCache(maxsize=256, ttl=30)
+_profile_cache  = TTLCache(maxsize=256, ttl=3600)
+_fin_cache      = TTLCache(maxsize=256, ttl=600)
+_news_cache     = TTLCache(maxsize=256, ttl=600)
+_yf_info_cache  = TTLCache(maxsize=256, ttl=300)
+
+def _cached_get_stock_quote(symbol):
+    with _cache_lock:
+        if symbol in _quote_cache:
+            return _quote_cache[symbol]
+    result = get_stock_quote(symbol)
+    with _cache_lock:
+        _quote_cache[symbol] = result
+    return result
+
+def _cached_get_company_profile(symbol):
+    with _cache_lock:
+        if symbol in _profile_cache:
+            return _profile_cache[symbol]
+    result = get_company_profile(symbol)
+    with _cache_lock:
+        _profile_cache[symbol] = result
+    return result
+
+def _cached_get_basic_financials(symbol):
+    with _cache_lock:
+        if symbol in _fin_cache:
+            return _fin_cache[symbol]
+    result = get_basic_financials(symbol)
+    with _cache_lock:
+        _fin_cache[symbol] = result
+    return result
+
+def _cached_get_company_news(symbol, from_date, to_date):
+    key = f"{symbol}:{from_date}:{to_date}"
+    with _cache_lock:
+        if key in _news_cache:
+            return _news_cache[key]
+    result = get_company_news(symbol, from_date, to_date)
+    with _cache_lock:
+        _news_cache[key] = result
+    return result
+
+def _cached_yf_info(ticker_symbol):
+    with _cache_lock:
+        if ticker_symbol in _yf_info_cache:
+            return _yf_info_cache[ticker_symbol]
+    result = yf.Ticker(ticker_symbol).info
+    with _cache_lock:
+        _yf_info_cache[ticker_symbol] = result
+    return result
 
 # ---------------------------------------------------------------------------
 # Data module imports — wrapped so a single bad import never crashes the server.
@@ -260,15 +319,25 @@ def stock_details(symbol):
     """Get detailed stock information"""
     try:
         symbol_upper = symbol.upper()
-        
-        # For Canadian stocks, get quote from yfinance (in CAD) instead of Finnhub (in USD)
+        today = datetime.date.today()
+        from_date = (today - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+        to_date = today.strftime('%Y-%m-%d')
+
         if is_canadian_stock(symbol_upper):
             tsx_symbol = get_ticker_for_charts(symbol_upper)
-            stock = yf.Ticker(tsx_symbol)
-            info = stock.info
-            hist = stock.history(period='5d')
-            
-            # Build comprehensive company profile from yfinance
+
+            # Fetch yfinance info + history in parallel with news
+            def _fetch_yf():
+                info = _cached_yf_info(tsx_symbol)
+                hist = yf.Ticker(tsx_symbol).history(period='5d')
+                return info, hist
+
+            with ThreadPoolExecutor(max_workers=2) as ex:
+                future_yf   = ex.submit(_fetch_yf)
+                future_news = ex.submit(_cached_get_company_news, symbol_upper, from_date, to_date)
+                info, hist  = future_yf.result()
+                news        = future_news.result()
+
             company = {
                 'name': info.get('longName', info.get('shortName', symbol_upper)),
                 'ticker': symbol_upper,
@@ -282,7 +351,6 @@ def stock_details(symbol):
                 'phone': info.get('phone', ''),
                 'weburl': info.get('website', ''),
                 'finnhubIndustry': info.get('industry', ''),
-                # Enhanced fields
                 'sector': info.get('sector', ''),
                 'city': info.get('city', ''),
                 'state': info.get('state', ''),
@@ -297,31 +365,48 @@ def stock_details(symbol):
                 'priceToBook': info.get('priceToBook', 0),
                 'beta': info.get('beta', 0)
             }
-            
-            # Build quote from yfinance
+
             if not hist.empty:
                 latest = hist.iloc[-1]
                 prev = hist.iloc[-2] if len(hist) > 1 else latest
                 quote = {
-                    'c': round(latest['Close'], 2),  # current price
-                    'h': round(latest['High'], 2),   # high
-                    'l': round(latest['Low'], 2),    # low
-                    'o': round(latest['Open'], 2),   # open
-                    'pc': round(prev['Close'], 2),   # previous close
-                    'd': round(latest['Close'] - prev['Close'], 2),  # change
-                    'dp': round(((latest['Close'] - prev['Close']) / prev['Close'] * 100), 2)  # percent change
+                    'c': round(latest['Close'], 2),
+                    'h': round(latest['High'], 2),
+                    'l': round(latest['Low'], 2),
+                    'o': round(latest['Open'], 2),
+                    'pc': round(prev['Close'], 2),
+                    'd': round(latest['Close'] - prev['Close'], 2),
+                    'dp': round(((latest['Close'] - prev['Close']) / prev['Close'] * 100), 2)
                 }
             else:
                 quote = {}
+
+            # Financials fetched after the parallel block (Canadian: no Finnhub financials)
+            financials = _cached_get_basic_financials(symbol_upper)
+
         else:
-            # Company profile from Finnhub for US stocks
-            company = get_company_profile(symbol_upper)
-            
-            # Enhance with yfinance data for business summary and additional metrics
+            # US stocks: fire all 4 independent calls in parallel
+            def _fetch_profile():  return _cached_get_company_profile(symbol_upper)
+            def _fetch_quote():    return _cached_get_stock_quote(symbol_upper)
+            def _fetch_yf_info():  return _cached_yf_info(symbol_upper)
+            def _fetch_news():     return _cached_get_company_news(symbol_upper, from_date, to_date)
+            def _fetch_fins():     return _cached_get_basic_financials(symbol_upper)
+
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                f_profile = ex.submit(_fetch_profile)
+                f_quote   = ex.submit(_fetch_quote)
+                f_yf_info = ex.submit(_fetch_yf_info)
+                f_news    = ex.submit(_fetch_news)
+                f_fins    = ex.submit(_fetch_fins)
+
+                company    = f_profile.result()
+                quote      = f_quote.result()
+                info       = f_yf_info.result()
+                news       = f_news.result()
+                financials = f_fins.result()
+
+            # Merge yfinance supplemental fields into Finnhub profile
             try:
-                stock = yf.Ticker(symbol_upper)
-                info = stock.info
-                # Add business summary and other details to Finnhub data
                 company['longBusinessSummary'] = info.get('longBusinessSummary', '')
                 company['sector'] = info.get('sector', company.get('finnhubIndustry', ''))
                 company['fullTimeEmployees'] = info.get('fullTimeEmployees', 0)
@@ -336,57 +421,37 @@ def stock_details(symbol):
                 company['priceToBook'] = info.get('priceToBook', 0)
                 company['beta'] = info.get('beta', 0)
             except Exception as e:
-                print(f"Could not enhance Finnhub data with yfinance for {symbol_upper}: {e}")
-            
-            # Current quote from Finnhub
-            quote = get_stock_quote(symbol_upper)
-        
-        # Recent news - try Finnhub first, fallback to yfinance
-        today = datetime.date.today()
-        from_date = (today - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
-        to_date = today.strftime('%Y-%m-%d')
-        news = get_company_news(symbol_upper, from_date, to_date)
-        
-        # If Finnhub returns no news, try yfinance
+                print(f"Could not merge yfinance data for {symbol_upper}: {e}")
+
+        # yfinance news fallback (if Finnhub returned nothing)
         if not news or len(news) == 0:
             try:
-                # For Canadian stocks, use TSX symbol for news
                 news_symbol = get_ticker_for_charts(symbol_upper) if is_canadian_stock(symbol_upper) else symbol_upper
-                stock = yf.Ticker(news_symbol)
-                yf_news = stock.news
+                yf_news = yf.Ticker(news_symbol).news
                 if yf_news:
-                    # Convert yfinance format to Finnhub-like format
                     news = []
                     for item in yf_news[:10]:
-                        content = item.get('content', {})
-                        provider = content.get('provider', {})
+                        content      = item.get('content', {})
+                        provider     = content.get('provider', {})
                         canonical_url = content.get('canonicalUrl', {})
-                        
-                        # Parse the pubDate to unix timestamp
-                        pub_date = content.get('pubDate', '')
-                        timestamp = 0
+                        pub_date     = content.get('pubDate', '')
+                        timestamp    = 0
                         if pub_date:
                             try:
                                 from dateutil import parser
-                                dt = parser.parse(pub_date)
-                                timestamp = int(dt.timestamp())
-                            except:
-                                timestamp = 0
-                        
+                                timestamp = int(parser.parse(pub_date).timestamp())
+                            except Exception:
+                                pass
                         news.append({
                             'headline': content.get('title', 'N/A'),
-                            'summary': content.get('summary', '')[:300] if content.get('summary') else 'No summary available',
+                            'summary': (content.get('summary', '') or '')[:300] or 'No summary available',
                             'url': canonical_url.get('url', ''),
                             'datetime': timestamp,
                             'source': provider.get('displayName', 'Yahoo Finance')
                         })
             except Exception as e:
                 print(f"yfinance news fallback error for {symbol}: {e}")
-        
-        # Basic financials
-        financials = get_basic_financials(symbol_upper)
-        
-        # Return immediately without waiting for AI overview (load it separately)
+
         return jsonify({
             'success': True,
             'symbol': symbol_upper,
