@@ -90,10 +90,12 @@ class VolatilityStrategyBacktestEngine:
                 th = signed * t.theta / max(abs(t.contracts), 1)
 
                 # Greeks PnL decomposition (research approximation).
-                p_delta = d * contracts * dspot
-                p_gamma = 0.5 * g * contracts * (dspot ** 2)
+                # 100 = shares per equity option contract (standard multiplier).
+                # theta is already quoted in dollars/day so no /252 needed.
+                p_delta = d * contracts * dspot * 100.0
+                p_gamma = 0.5 * g * contracts * (dspot ** 2) * 100.0
                 p_vega = v * contracts * snap.iv_change_points
-                p_theta = th * contracts / 252.0
+                p_theta = th * contracts
                 pos_mtm = p_delta + p_gamma + p_vega + p_theta
 
                 delta_pnl += p_delta
@@ -117,23 +119,28 @@ class VolatilityStrategyBacktestEngine:
                 # Exit conditions: horizon or adverse regime flip.
                 # Keep edge-close optional by requiring near-zero IV move persistence.
                 lp.days_held += 1
-                regime_flip = snap.regime.lower() in {"stress", "crisis", "jump"}
+                regime_flip = (
+                    self.config.exit_on_regime_flip
+                    and snap.regime.lower() in {"stress", "crisis", "jump"}
+                )
                 edge_closed = (
                     abs(snap.iv_change_points) < self.config.edge_close_vol_points
                     and lp.days_held >= max(3, int(self.config.max_holding_days * 0.30))
                 )
                 if lp.days_held >= self.config.max_holding_days or edge_closed or regime_flip:
-                    exit_px = max(c.mid - self.config.spread_cross_fraction * max(c.ask - c.bid, 0.0), 0.0)
+                    # Fair-value exit at mid (no spread) to capture only entry slippage in pnl_real.
+                    # Exit spread crossing and commissions are tracked separately in transaction_costs.
                     gross_entry = lp.avg_entry_price * 100.0 * contracts
-                    gross_exit = exit_px * 100.0 * contracts
-                    pnl_real = (gross_exit - gross_entry) if t.side == "buy" else (gross_entry - gross_exit)
+                    gross_exit_mid = c.mid * 100.0 * contracts
+                    pnl_real = (gross_exit_mid - gross_entry) if t.side == "buy" else (gross_entry - gross_exit_mid)
 
+                    exit_spread_cost = contracts * max(c.ask - c.bid, 0.0) * 100.0 * self.config.spread_cross_fraction
                     fees = contracts * self.config.option_commission_per_contract * 2.0
-                    tc = contracts * max(c.ask - c.bid, 0.0) * 100.0 * self.config.spread_cross_fraction + fees
+                    tc = exit_spread_cost + fees
 
-                    realized_pnl += pnl_real - tc
-                    transaction_costs += tc
-                    turnover += gross_entry + gross_exit
+                    realized_pnl += pnl_real   # entry slippage only (no tc double-count)
+                    transaction_costs += tc    # exit spread + commissions
+                    turnover += gross_entry + gross_exit_mid
                     to_close.append(intent_id)
 
             for intent_id in to_close:
