@@ -1514,125 +1514,173 @@ function createNewAlgorithm() {
 
 // Run Backtest
 function runBacktest() {
-    const strategy = document.getElementById('backtestStrategy').value;
-    const asset = document.getElementById('backtestAsset').value;
-    const startDate = document.getElementById('backtestStartDate').value;
-    const endDate = document.getElementById('backtestEndDate').value;
-    
-    if (!strategy || strategy === 'Select a strategy...') {
-        alert('Please select a strategy');
-        return;
-    }
-    
-    if (!asset) {
-        alert('Please enter an asset symbol');
-        return;
-    }
-    
-    if (!startDate || !endDate) {
-        alert('Please select start and end dates');
-        return;
-    }
-    
-    // Show loading state
+    const strategy   = document.getElementById('backtestStrategy').value;
+    const asset      = document.getElementById('backtestAsset').value.trim().toUpperCase();
+    const startDate  = document.getElementById('backtestStartDate').value;
+    const endDate    = document.getElementById('backtestEndDate').value;
+    const capital    = parseFloat(document.getElementById('backtestCapital').value) || 250000;
+
+    if (!strategy) { alert('Please select a strategy'); return; }
+    if (!asset)     { alert('Please enter an asset symbol'); return; }
+    if (!startDate || !endDate) { alert('Please select start and end dates'); return; }
+
     const resultsDiv = document.getElementById('backtestResults');
+    document.getElementById('backtestAttributionPanel').style.display = 'none';
+    document.getElementById('backtestChart').style.display = 'none';
+    const _ph = document.getElementById('backtestChartPlaceholder');
+    if (_ph) _ph.style.display = 'flex';
     resultsDiv.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Running backtest...</p>';
-    
-    // Simulate backtest (replace with actual API call)
-    setTimeout(() => {
-        const mockResults = {
-            totalReturn: (Math.random() * 40 - 10).toFixed(2),
-            sharpeRatio: (Math.random() * 2 + 0.5).toFixed(2),
-            maxDrawdown: (Math.random() * 30 + 5).toFixed(2),
-            winRate: (Math.random() * 30 + 40).toFixed(2),
-            trades: Math.floor(Math.random() * 100 + 50)
-        };
-        
+
+    fetch('/api/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy, asset, start_date: startDate, end_date: endDate, capital })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            resultsDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+            return;
+        }
+
+        const s = data.summary;
+        const retColor = s.total_return_pct >= 0 ? 'text-success' : 'text-danger';
+        const pnlColor = s.total_pnl >= 0 ? 'text-success' : 'text-danger';
+
         resultsDiv.innerHTML = `
             <div class="metric-item">
                 <strong>Total Return:</strong>
-                <span class="${mockResults.totalReturn > 0 ? 'text-success' : 'text-danger'}">
-                    ${mockResults.totalReturn}%
-                </span>
+                <span class="${retColor}">${s.total_return_pct >= 0 ? '+' : ''}${s.total_return_pct}%</span>
+            </div>
+            <div class="metric-item">
+                <strong>Total PnL:</strong>
+                <span class="${pnlColor}">$${s.total_pnl.toLocaleString()}</span>
             </div>
             <div class="metric-item">
                 <strong>Sharpe Ratio:</strong>
-                <span>${mockResults.sharpeRatio}</span>
+                <span>${s.sharpe_ratio}</span>
             </div>
             <div class="metric-item">
                 <strong>Max Drawdown:</strong>
-                <span class="text-danger">-${mockResults.maxDrawdown}%</span>
+                <span class="text-danger">-${s.max_drawdown_pct}%</span>
             </div>
             <div class="metric-item">
-                <strong>Win Rate:</strong>
-                <span>${mockResults.winRate}%</span>
+                <strong>Total Costs:</strong>
+                <span class="text-warning">$${s.total_costs.toLocaleString()}</span>
             </div>
             <div class="metric-item">
-                <strong>Total Trades:</strong>
-                <span>${mockResults.trades}</span>
+                <strong>Avg Capital Used:</strong>
+                <span>${s.avg_capital_used_pct}%</span>
+            </div>
+            <div class="metric-item">
+                <strong>Days:</strong>
+                <span>${s.days}</span>
+            </div>
+            <div class="metric-item">
+                <strong>Spot: ${s.start_spot} → ${s.end_spot}</strong>
             </div>
         `;
-        
-        // Show chart
+
+        // Attribution panel
+        const attr = data.attribution;
+        const attrDiv = document.getElementById('backtestAttribution');
+        const regimeRows = Object.entries(attr.regime_performance)
+            .map(([r, v]) => `<div class="metric-item"><strong>${r}:</strong> <span class="${v >= 0 ? 'text-success' : 'text-danger'}">$${v.toLocaleString()}</span></div>`)
+            .join('');
+        attrDiv.innerHTML = `
+            <div class="metric-item"><strong>Delta hedge:</strong> <span>$${attr.delta_hedge_contribution.toLocaleString()}</span></div>
+            <div class="metric-item"><strong>Vega exposure:</strong> <span>$${attr.vega_exposure.toLocaleString()}</span></div>
+            <div class="metric-item"><strong>Theta carry:</strong> <span>$${attr.theta_carry.toLocaleString()}</span></div>
+            <div class="metric-item"><strong>Model edge:</strong> <span>$${attr.model_edge_capture.toLocaleString()}</span></div>
+            <div class="metric-item"><strong>Exec costs:</strong> <span class="text-danger">$${attr.execution_cost.toLocaleString()}</span></div>
+            <hr class="my-1"><small class="text-muted">By regime:</small>
+            ${regimeRows}
+        `;
+        document.getElementById('backtestAttributionPanel').style.display = 'block';
+
+        // Equity curve chart
         document.getElementById('backtestChart').style.display = 'block';
-        createBacktestChart();
-    }, 2000);
+        const _ph2 = document.getElementById('backtestChartPlaceholder');
+        if (_ph2) _ph2.style.display = 'none';
+        createBacktestChart(data.equity_curve, data.initial_capital);
+    })
+    .catch(err => {
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Request failed: ${err.message}</div>`;
+    });
 }
 
 // Create Backtest Chart
-function createBacktestChart() {
+function createBacktestChart(equityCurve, initialCapital) {
     const ctx = document.getElementById('backtestChartCanvas');
-    
+
     if (charts.backtest) {
         charts.backtest.destroy();
     }
-    
-    // Generate mock equity curve data
-    const labels = [];
-    const data = [];
-    let value = 10000;
-    
-    for (let i = 0; i < 100; i++) {
-        labels.push(`Day ${i + 1}`);
-        value += (Math.random() - 0.48) * 200;
-        data.push(value);
-    }
-    
+
+    const labels  = equityCurve.map(d => d.date);
+    // Show PnL relative to initial capital so $0 = breakeven and the
+    // final bar matches the "Total PnL" metric exactly.
+    const pnl     = equityCurve.map(d => +(d.equity - initialCapital).toFixed(2));
+    const dd      = equityCurve.map(d => -d.drawdown_pct);
+
+    // Colour points by regime
+    const regimeColors = equityCurve.map(d => {
+        if (d.regime === 'crisis') return 'rgba(220,53,69,0.8)';
+        if (d.regime === 'stress') return 'rgba(255,193,7,0.8)';
+        return 'rgba(102,126,234,0.0)';
+    });
+
     charts.backtest = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
-            datasets: [{
-                label: 'Portfolio Value',
-                data: data,
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                borderWidth: 3,
-                fill: true,
-                tension: 0.4
-            }]
+            labels,
+            datasets: [
+                {
+                    label: 'PnL ($)',
+                    data: pnl,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102,126,234,0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointBackgroundColor: regimeColors,
+                    pointRadius: 3,
+                    yAxisID: 'y',
+                },
+                {
+                    label: 'Drawdown (%)',
+                    data: dd,
+                    borderColor: 'rgba(220,53,69,0.7)',
+                    borderWidth: 1,
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    yAxisID: 'y2',
+                }
+            ]
         },
         options: {
             responsive: true,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                title: {
-                    display: true,
-                    text: 'Equity Curve',
-                    font: { size: 16, weight: 'bold' }
-                },
-                legend: {
-                    display: false
+                title: { display: true, text: 'Equity Curve & Drawdown', font: { size: 15, weight: 'bold' } },
+                legend: { display: true },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.dataset.label.startsWith('PnL')
+                            ? ` ${ctx.parsed.y >= 0 ? '+' : ''}$${ctx.parsed.y.toLocaleString()}`
+                            : ` ${ctx.parsed.y.toFixed(2)}%`
+                    }
                 }
             },
             scales: {
-                y: {
-                    beginAtZero: false,
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value.toFixed(0);
-                        }
-                    }
-                }
+                y:  {
+                    position: 'left',
+                    ticks: { callback: v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toLocaleString() },
+                    grid: { color: ctx2 => ctx2.tick.value === 0 ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.05)' }
+                },
+                y2: { position: 'right', grid: { drawOnChartArea: false },
+                      ticks: { callback: v => v.toFixed(1) + '%' } }
             }
         }
     });

@@ -17,6 +17,7 @@ class BacktestConfig:
 
     # Exit assumptions.
     edge_close_vol_points: float = 0.50
+    exit_on_regime_flip: bool = False   # if False, ride through stress days
 
     # Hedge assumptions.
     hedge_mode: HedgeMode = HedgeMode.THRESHOLD
