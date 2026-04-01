@@ -1,0 +1,1113 @@
+"""
+extractor.py — Single-file market data extraction layer.
+
+Primary source : yfinance (no key, no rate limit, comprehensive)
+Supplementary  : Finnhub    (60 req/min  — news, sentiment, profile enrichment)
+                 Fiscal.ai  (250 req/day — structured fundamentals & filings)
+                 Polygon    (5 req/min   — options chain with IV & greeks)
+                 Alpaca     (200 req/min — SIP-tape OHLCV, news, calendar via alpaca-py SDK)
+Excluded       : AlphaVantage (25 req/day shared — reserved for macro calls elsewhere)
+
+All public methods return pandas DataFrames.
+
+Quick start
+-----------
+    from algorithms.machine_learning_algorithms.data_pipelines.extractor import DataExtractor
+
+    ex = DataExtractor()
+    bars  = ex.ohlcv("AAPL", start="2024-01-01", end="2024-12-31")
+    news  = ex.news("AAPL", start="2024-01-01", end="2024-01-31")
+    funds = ex.fundamentals("AAPL")
+    opts  = ex.options("AAPL")
+
+    # Run live connectivity test
+    ex.test_apis("AAPL")
+
+Key resolution (env var takes priority over keys.txt):
+    FINNHUB_API_KEY
+    POLYGON_API_KEY
+    FISCAL_AI_API_KEY
+    ALPACA_API_KEY    — key ID (embedded in the comment line in keys.txt)
+    ALPACA_SECRET_KEY — must be set via env var (not stored in keys.txt)
+"""
+
+import datetime
+import logging
+import os
+import re
+import sys
+import time
+from pathlib import Path
+from typing import List, Optional
+
+import pandas as pd
+import requests
+import yfinance as yf
+
+# alpaca-py SDK — install with: pip install alpaca-py
+try:
+    from alpaca.data.historical import StockHistoricalDataClient, NewsClient
+    from alpaca.data.requests import StockBarsRequest, NewsRequest
+    from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.requests import GetCalendarRequest
+    _ALPACA_SDK_AVAILABLE = True
+except ImportError:
+    _ALPACA_SDK_AVAILABLE = False
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
+logger = logging.getLogger("DataExtractor")
+
+# ---------------------------------------------------------------------------
+# Key helpers
+# ---------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parents[3]   # quant_algorithms_ai/
+
+
+def _read_keys_txt() -> dict:
+    """
+    Parse keys.txt into a dict of {lower_label: value}.
+
+    Two formats are supported:
+      Format A — key on the line AFTER the comment (most providers):
+          # finnhub - 60 api calls/minute
+
+      Format B — key EMBEDDED in the comment line itself (Alpaca):
+          # alpaca code - <your-key-id> - 200 calls/min
+    """
+    keys: dict = {}
+    path = _REPO_ROOT / "keys.txt"
+    if not path.exists():
+        return keys
+    lines = path.read_text().splitlines()
+    # Regex for a UUID-like or long hex key embedded after the provider name in a comment
+    _embedded = re.compile(r'[\w.-]*alpaca[\w\s]*[-–]\s*([0-9a-f-]{20,})', re.I)
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("#"):
+            continue
+        label = stripped.lstrip("#").strip().lower()
+        # Format B: key embedded in comment (e.g. Alpaca key ID in the comment line itself)
+        m = _embedded.search(line)   # .search not .match — pattern may not start at pos 0
+        if m:
+            keys[label] = m.group(1).strip()
+            continue
+        # Format A: key on next line
+        if i + 1 < len(lines):
+            value = lines[i + 1].strip()
+            if value and not value.startswith("#"):
+                keys[label] = value
+    return keys
+
+
+_KEYS = _read_keys_txt()
+
+
+def _get_key(env_var: str, keys_label: str) -> str:
+    """Return key from env var first, then keys.txt, else empty string."""
+    return os.environ.get(env_var) or _KEYS.get(keys_label, "")
+
+
+# ---------------------------------------------------------------------------
+# Per-provider key resolution
+# ---------------------------------------------------------------------------
+def _finnhub_key() -> str:
+    return _get_key("FINNHUB_API_KEY", "finhub - 60 api calls/minute")
+
+def _polygon_key() -> str:
+    return _get_key("POLYGON_API_KEY", "massive")
+
+def _fiscal_ai_key() -> str:
+    return _get_key("FISCAL_AI_API_KEY", "fiscal.ai - 250 calls/day")
+
+def _alpaca_key() -> str:
+    val = os.environ.get("ALPACA_API_KEY")
+    if val:
+        return val
+    # Keys.txt stores the key ID embedded in the comment line; _read_keys_txt() handles both formats
+    for label, v in _KEYS.items():
+        if "alpaca" in label and "massive" not in label:
+            return v
+    return ""
+
+def _alpaca_secret() -> str:
+    return os.environ.get("ALPACA_SECRET_KEY", "")
+
+
+# ---------------------------------------------------------------------------
+# Fiscal.ai — free-tier supported companies (EXCHANGE_SYMBOL format)
+# Updated: v1.1.4 free plan, 250 calls/day
+# ---------------------------------------------------------------------------
+_FISCAL_AI_COMPANIES: dict = {
+    "MSFT": "NASDAQ_MSFT", "NVDA": "NASDAQ_NVDA", "AMZN": "NASDAQ_AMZN",
+    "GOOG": "NASDAQ_GOOG", "GOOGL": "NASDAQ_GOOG", "TSLA": "NASDAQ_TSLA",
+    "LLY":  "NYSE_LLY",    "AVGO": "NASDAQ_AVGO", "V":    "NYSE_V",
+    "MA":   "NYSE_MA",     "PG":   "NYSE_PG",     "NFLX": "NASDAQ_NFLX",
+    "MCD":  "NYSE_MCD",    "AMGN": "NASDAQ_AMGN", "CAT":  "NYSE_CAT",
+    "UBER": "NYSE_UBER",   "MDT":  "NYSE_MDT",    "DUK":  "NYSE_DUK",
+    "EQIX": "NASDAQ_EQIX", "BRO":  "NYSE_BRO",    "ZM":   "NASDAQ_ZM",
+    "MKC":  "NYSE_MKC",    "RYAN": "NYSE_RYAN",   "MOH":  "NYSE_MOH",
+    "CFG":  "NYSE_CFG",    "JPM":  "NYSE_JPM",
+}
+
+
+def _fiscal_ai_company_id(symbol: str) -> Optional[str]:
+    """Return the Fiscal.ai company identifier (EXCHANGE_SYMBOL) for a ticker.
+    Returns None if the symbol is not on the free-tier supported list.
+    """
+    return _FISCAL_AI_COMPANIES.get(symbol.upper())
+
+
+# ---------------------------------------------------------------------------
+# DataExtractor
+# ---------------------------------------------------------------------------
+class DataExtractor:
+    """
+    Unified data extraction interface.
+
+    yfinance is the backbone for every data type.  Where secondary sources
+    add richer data (options greeks, structured filings, company news) they
+    are merged on top of the yfinance result.  If a secondary source fails
+    (no key, rate limit, network error) the yfinance baseline is returned
+    unchanged — extraction never hard-fails.
+    """
+
+    # ------------------------------------------------------------------
+    # Lazy SDK client cache (one instance per process)
+    # ------------------------------------------------------------------
+    _stock_client: Optional["StockHistoricalDataClient"] = None
+    _news_client:  Optional["NewsClient"] = None
+    _trade_client: Optional["TradingClient"] = None
+
+    def _alpaca_clients(self):
+        """
+        Return (stock_client, news_client, trade_client) or (None, None, None)
+        if the SDK is not installed or credentials are missing.
+        """
+        if not _ALPACA_SDK_AVAILABLE:
+            return None, None, None
+        key    = _alpaca_key()
+        secret = _alpaca_secret()
+        if not key or not secret:
+            return None, None, None
+        if self._stock_client is None:
+            self._stock_client = StockHistoricalDataClient(api_key=key, secret_key=secret)
+        if self._news_client is None:
+            self._news_client = NewsClient(api_key=key, secret_key=secret)
+        if self._trade_client is None:
+            self._trade_client = TradingClient(api_key=key, secret_key=secret)
+        return self._stock_client, self._news_client, self._trade_client
+
+    # -----------------------------------------------------------------------
+    # OHLCV
+    # -----------------------------------------------------------------------
+
+    def ohlcv(
+        self,
+        symbol: str,
+        start: str = "",
+        end:   str = "",
+        period:   str = "1y",
+        interval: str = "1d",
+    ) -> pd.DataFrame:
+        """
+        OHLCV price bars.  Returns DataFrame with columns:
+        Open, High, Low, Close, Volume, Dividends, Stock Splits
+
+        Parameters
+        ----------
+        start / end  : 'YYYY-MM-DD' — if both supplied, used instead of period.
+        period       : yfinance period string ('1d','5d','1mo','3mo','6mo',
+                       '1y','2y','5y','10y','ytd','max') — used when start/end absent.
+        interval     : bar size ('1m','5m','15m','30m','60m','1h','1d','1wk','1mo').
+
+        Primary  : yfinance (adjusted, full history)
+        Fallback : Alpaca REST bars (SIP tape) — tried when ALPACA_SECRET_KEY set.
+        """
+        df = self._yf_ohlcv(symbol, start, end, period, interval)
+        if df is not None and not df.empty:
+            return df
+
+        logger.warning("yfinance OHLCV failed for %s, trying Polygon SIP tape", symbol)
+        if start and end:
+            try:
+                df = self._polygon_ohlcv_raw(symbol, start, end)
+                if df is not None and not df.empty:
+                    return df
+            except Exception:
+                pass
+
+        logger.warning("Polygon OHLCV failed for %s, trying Alpaca", symbol)
+        df = self._alpaca_ohlcv(symbol, start, end, interval)
+        if df is not None and not df.empty:
+            return df
+
+        return pd.DataFrame()
+
+    def _yf_ohlcv(self, symbol, start, end, period, interval) -> Optional[pd.DataFrame]:
+        try:
+            t = yf.Ticker(symbol)
+            if start and end:
+                df = t.history(start=start, end=end, interval=interval)
+            else:
+                df = t.history(period=period, interval=interval)
+            df.index = pd.to_datetime(df.index)
+            df.index.name = "Date"
+            return df
+        except Exception as exc:
+            logger.warning("yfinance OHLCV error for %s: %s", symbol, exc)
+            return None
+
+    def _alpaca_ohlcv(self, symbol, start, end, interval) -> Optional[pd.DataFrame]:
+        stock_client, _, _ = self._alpaca_clients()
+        if stock_client is None:
+            return None
+        _tf_map = {
+            "1d":    TimeFrame.Day,
+            "1h":    TimeFrame.Hour,
+            "1min":  TimeFrame.Minute,
+            "5min":  TimeFrame(5,  TimeFrameUnit.Minute),
+            "15min": TimeFrame(15, TimeFrameUnit.Minute),
+            "30min": TimeFrame(30, TimeFrameUnit.Minute),
+        }
+        tf = _tf_map.get(interval, TimeFrame.Day)
+        try:
+            from datetime import datetime as _dt
+            req = StockBarsRequest(
+                symbol_or_symbols=[symbol.upper()],
+                timeframe=tf,
+                start=_dt.fromisoformat(start),
+                end=_dt.fromisoformat(end),
+                adjustment="all",
+                feed="sip",
+            )
+            bars = stock_client.get_stock_bars(req)
+            df = bars.df
+            if df.empty:
+                return None
+            # SDK returns MultiIndex (symbol, timestamp) — drop symbol level
+            if isinstance(df.index, pd.MultiIndex):
+                df = df.droplevel(0)
+            df.index.name = "Date"
+            df.columns = [c.capitalize() for c in df.columns]
+            return df
+        except Exception as exc:
+            logger.warning("Alpaca SDK OHLCV error for %s: %s", symbol, exc)
+            return None
+
+    # -----------------------------------------------------------------------
+    # PROFILE
+    # -----------------------------------------------------------------------
+
+    def profile(self, symbol: str) -> pd.DataFrame:
+        """
+        Company profile metadata.  Returns 1-row DataFrame with columns:
+        name, sector, industry, country, exchange, market_cap, employees,
+        website, description, source_primary, finnhub_exchange (if enriched)
+
+        Primary  : yfinance (.info dict)
+        Enriched : Finnhub  (ipo_date, country, exchange details)
+        """
+        row = self._yf_profile(symbol)
+        fh  = self._finnhub_profile(symbol)
+        if fh:
+            # Fill any None fields with Finnhub values
+            for k, v in fh.items():
+                if row.get(k) is None and v:
+                    row[k] = v
+        row["symbol"] = symbol.upper()
+        return pd.DataFrame([row])
+
+    def _yf_profile(self, symbol) -> dict:
+        try:
+            info = yf.Ticker(symbol).info
+            return {
+                "name":        info.get("longName") or info.get("shortName"),
+                "sector":      info.get("sector"),
+                "industry":    info.get("industry"),
+                "country":     info.get("country"),
+                "exchange":    info.get("exchange"),
+                "market_cap":  info.get("marketCap"),
+                "employees":   info.get("fullTimeEmployees"),
+                "website":     info.get("website"),
+                "description": info.get("longBusinessSummary"),
+            }
+        except Exception as exc:
+            logger.warning("yfinance profile error for %s: %s", symbol, exc)
+            return {}
+
+    def _finnhub_profile(self, symbol) -> Optional[dict]:
+        key = _finnhub_key()
+        if not key:
+            return None
+        url = "https://finnhub.io/api/v1/stock/profile2"
+        try:
+            resp = requests.get(url, params={"symbol": symbol, "token": key}, timeout=10)
+            resp.raise_for_status()
+            d = resp.json()
+            return {
+                "name":             d.get("name"),
+                "country":          d.get("country"),
+                "finnhub_exchange":  d.get("exchange"),
+                "ipo_date":         d.get("ipo"),
+                "market_cap":       d.get("marketCapitalization"),
+                "employees":        d.get("employeeTotal"),
+                "finnhub_industry": d.get("finnhubIndustry"),
+                "website":          d.get("weburl"),
+            }
+        except Exception as exc:
+            logger.warning("Finnhub profile error for %s: %s", symbol, exc)
+            return None
+
+    # -----------------------------------------------------------------------
+    # FUNDAMENTALS
+    # -----------------------------------------------------------------------
+
+    def fundamentals(self, symbol: str) -> pd.DataFrame:
+        """
+        Financial ratios and key metrics.  Returns 1-row DataFrame.
+
+        Primary  : yfinance (.info dict — comprehensive, free)
+        Enriched : Finnhub basic_financials (ROIC, ROCE, multi-period metrics)
+        Enriched : Fiscal.ai (structured accounting signals — when key available)
+        """
+        row: dict = {"symbol": symbol.upper()}
+        row.update(self._yf_fundamentals(symbol))
+        row.update(self._finnhub_fundamentals(symbol) or {})
+        fiscal = self._fiscal_ai_fundamentals(symbol)
+        if fiscal:
+            for k, v in fiscal.items():
+                if row.get(k) is None:
+                    row[k] = v
+        return pd.DataFrame([row])
+
+    def _yf_fundamentals(self, symbol) -> dict:
+        try:
+            info = yf.Ticker(symbol).info
+            return {
+                # Valuation
+                "pe_ratio":          info.get("trailingPE"),
+                "forward_pe":        info.get("forwardPE"),
+                "pb_ratio":          info.get("priceToBook"),
+                "ps_ratio":          info.get("priceToSalesTrailing12Months"),
+                "peg_ratio":         info.get("pegRatio"),
+                "ev_to_ebitda":      info.get("enterpriseToEbitda"),
+                "ev_to_revenue":     info.get("enterpriseToRevenue"),
+                # Margins
+                "gross_margin":      info.get("grossMargins"),
+                "operating_margin":  info.get("operatingMargins"),
+                "net_margin":        info.get("profitMargins"),
+                "ebitda_margin":     info.get("ebitdaMargins"),
+                # Returns
+                "roe":               info.get("returnOnEquity"),
+                "roa":               info.get("returnOnAssets"),
+                # Financials
+                "revenue_ttm":       info.get("totalRevenue"),
+                "ebitda":            info.get("ebitda"),
+                "free_cash_flow":    info.get("freeCashflow"),
+                "total_cash":        info.get("totalCash"),
+                "total_debt":        info.get("totalDebt"),
+                "debt_to_equity":    info.get("debtToEquity"),
+                "current_ratio":     info.get("currentRatio"),
+                "quick_ratio":       info.get("quickRatio"),
+                # Growth
+                "revenue_growth":    info.get("revenueGrowth"),
+                "earnings_growth":   info.get("earningsGrowth"),
+                "earnings_quarterly_growth": info.get("earningsQuarterlyGrowth"),
+                # Dividends
+                "dividend_yield":    info.get("dividendYield"),
+                "payout_ratio":      info.get("payoutRatio"),
+                # Other
+                "beta":              info.get("beta"),
+                "shares_outstanding":info.get("sharesOutstanding"),
+                "short_ratio":       info.get("shortRatio"),
+            }
+        except Exception as exc:
+            logger.warning("yfinance fundamentals error for %s: %s", symbol, exc)
+            return {}
+
+    def _finnhub_fundamentals(self, symbol) -> Optional[dict]:
+        key = _finnhub_key()
+        if not key:
+            return None
+        url = "https://finnhub.io/api/v1/stock/metric"
+        try:
+            resp = requests.get(url, params={"symbol": symbol, "metric": "all", "token": key}, timeout=10)
+            resp.raise_for_status()
+            m = resp.json().get("metric") or {}
+            return {
+                "roic":                    m.get("roicTTM"),
+                "roce":                    m.get("roiTTM"),       # Finnhub exposes ROI ≈ ROCE
+                "ev_to_ebitda_finnhub":    m.get("evToEbitdaTTM"),
+                "revenue_3y_growth_pa":    m.get("revenueGrowth3Y"),
+                "eps_growth_3y_pa":        m.get("epsGrowth3Y"),
+                "gross_margin_5y_avg":     m.get("grossMargin5Y"),
+                "net_margin_5y_avg":       m.get("netMargin5Y"),
+                "current_ratio_annual":    m.get("currentRatioAnnual"),
+                "debt_to_equity_annual":   m.get("totalDebt/totalEquityAnnual"),
+                "revenue_per_share_ttm":   m.get("revenuePerShareTTM"),
+                "bookvalue_per_share":     m.get("bookValuePerShareAnnual"),
+                "52w_high":                m.get("52WeekHigh"),
+                "52w_low":                 m.get("52WeekLow"),
+            }
+        except Exception as exc:
+            logger.warning("Finnhub fundamentals error for %s: %s", symbol, exc)
+            return None
+
+    def _fiscal_ai_fundamentals(self, symbol) -> Optional[dict]:
+        key = _fiscal_ai_key()
+        if not key:
+            return None
+        company_id = _fiscal_ai_company_id(symbol)
+        if not company_id:
+            logger.debug("Fiscal.ai: %s not in free-tier company list — skipping", symbol)
+            return None
+        url = f"https://api.fiscal.ai/v1/company/{company_id}/financials"
+        headers = {"Authorization": f"Bearer {key}"}
+        try:
+            resp = requests.get(url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "fiscal_period":    data.get("period"),
+                "fiscal_revenue":   data.get("revenue"),
+                "fiscal_net_income":data.get("net_income"),
+                "fiscal_eps":       data.get("eps"),
+                "accruals_ratio":   data.get("accruals_ratio"),
+                "altman_z":         data.get("altman_z"),
+                "sloan_ratio":      data.get("sloan_ratio"),
+            }
+        except Exception as exc:
+            logger.warning("Fiscal.ai fundamentals error for %s: %s", symbol, exc)
+            return None
+
+    # -----------------------------------------------------------------------
+    # NEWS
+    # -----------------------------------------------------------------------
+
+    def news(
+        self,
+        symbol: str,
+        start:  str = "",
+        end:    str = "",
+        limit:  int = 50,
+    ) -> pd.DataFrame:
+        """
+        Company news articles.  Returns DataFrame with columns:
+        datetime, headline, summary, source, url, sentiment, provider
+
+        Primary  : Finnhub company_news  (most reliable company-specific feed)
+        Fallback : yfinance .news          (no date range; less structured)
+        Fallback : Alpaca news REST        (requires Alpaca secret key)
+        """
+        if not start:
+            start = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+        if not end:
+            end = datetime.date.today().isoformat()
+
+        df = self._finnhub_news(symbol, start, end, limit)
+        if df is not None and not df.empty:
+            return df
+
+        logger.warning("Finnhub news unavailable for %s, falling back to yfinance", symbol)
+        df = self._yf_news(symbol, limit)
+        if df is not None and not df.empty:
+            return df
+
+        logger.warning("yfinance news failed for %s, trying Alpaca", symbol)
+        return self._alpaca_news(symbol, start, end, limit) or pd.DataFrame()
+
+    def _finnhub_news(self, symbol, start, end, limit) -> Optional[pd.DataFrame]:
+        key = _finnhub_key()
+        if not key:
+            return None
+        url = "https://finnhub.io/api/v1/company-news"
+        try:
+            resp = requests.get(
+                url,
+                params={"symbol": symbol, "_from": start, "to": end, "token": key},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            articles = resp.json()[:limit]
+            if not articles:
+                return None
+            df = pd.DataFrame(articles)
+            df["datetime"] = pd.to_datetime(df["datetime"], unit="s", utc=True)
+            df = df.rename(columns={"summary": "summary", "headline": "headline",
+                                     "source": "source", "url": "url"})
+            df["provider"] = "finnhub"
+            cols = ["datetime", "headline", "summary", "source", "url", "provider"]
+            return df[[c for c in cols if c in df.columns]]
+        except Exception as exc:
+            logger.warning("Finnhub news error for %s: %s", symbol, exc)
+            return None
+
+    def _yf_news(self, symbol, limit) -> Optional[pd.DataFrame]:
+        try:
+            articles = yf.Ticker(symbol).news[:limit]
+            if not articles:
+                return None
+            rows = []
+            for a in articles:
+                rows.append({
+                    "datetime": pd.to_datetime(a.get("providerPublishTime"), unit="s", utc=True),
+                    "headline": a.get("title"),
+                    "summary":  None,
+                    "source":   a.get("publisher"),
+                    "url":      a.get("link"),
+                    "provider": "yfinance",
+                })
+            return pd.DataFrame(rows)
+        except Exception as exc:
+            logger.warning("yfinance news error for %s: %s", symbol, exc)
+            return None
+
+    def _alpaca_news(self, symbol, start, end, limit) -> Optional[pd.DataFrame]:
+        _, news_client, _ = self._alpaca_clients()
+        if news_client is None:
+            return None
+        try:
+            from datetime import datetime as _dt
+            req = NewsRequest(
+                symbols=[symbol.upper()],
+                start=_dt.fromisoformat(start),
+                end=_dt.fromisoformat(end),
+                limit=min(limit, 50),   # SDK max per page
+            )
+            result = news_client.get_news(req)
+            articles = result.news
+            if not articles:
+                return None
+            rows = [{
+                "datetime": pd.to_datetime(a.created_at),
+                "headline": a.headline,
+                "summary":  a.summary,
+                "source":   a.source,
+                "url":      a.url,
+                "provider": "alpaca",
+            } for a in articles]
+            return pd.DataFrame(rows)
+        except Exception as exc:
+            logger.warning("Alpaca SDK news error for %s: %s", symbol, exc)
+            return None
+
+    # -----------------------------------------------------------------------
+    # SENTIMENT (insider / short interest)
+    # -----------------------------------------------------------------------
+
+    def sentiment(
+        self,
+        symbol: str,
+        start:  str = "",
+        end:    str = "",
+    ) -> pd.DataFrame:
+        """
+        Monthly insider sentiment (net buy/sell).  Returns DataFrame with:
+        year, month, change (net insider buy volume), mspr (monthly share purchase ratio)
+
+        Source: Finnhub insider_sentiment
+        """
+        key = _finnhub_key()
+        if not key:
+            logger.warning("No Finnhub key — sentiment unavailable")
+            return pd.DataFrame()
+        if not start:
+            start = (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
+        if not end:
+            end = datetime.date.today().isoformat()
+        url = "https://finnhub.io/api/v1/stock/insider-sentiment"
+        try:
+            resp = requests.get(
+                url, params={"symbol": symbol, "_from": start, "to": end, "token": key},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data") or []
+            if not data:
+                return pd.DataFrame()
+            return pd.DataFrame(data)
+        except Exception as exc:
+            logger.warning("Finnhub sentiment error for %s: %s", symbol, exc)
+            return pd.DataFrame()
+
+    # -----------------------------------------------------------------------
+    # TECHNICALS (computed indicators via yfinance + pandas)
+    # -----------------------------------------------------------------------
+
+    def technicals(
+        self,
+        symbol:   str,
+        period:   str = "1y",
+        interval: str = "1d",
+    ) -> pd.DataFrame:
+        """
+        OHLCV bars enriched with common technical indicators.
+        Computed using pandas on top of yfinance data (no extra API calls).
+
+        Indicators added:
+        SMA_20, SMA_50, SMA_200, EMA_20,
+        RSI_14, MACD, MACD_signal, MACD_hist,
+        BB_upper, BB_mid, BB_lower,
+        ATR_14, OBV, VWAP (intraday), daily_return, log_return
+        """
+        df = self._yf_ohlcv(symbol, "", "", period, interval)
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        close  = df["Close"]
+        high   = df["High"]
+        low    = df["Low"]
+        volume = df["Volume"]
+
+        # Moving averages
+        df["SMA_20"]  = close.rolling(20).mean()
+        df["SMA_50"]  = close.rolling(50).mean()
+        df["SMA_200"] = close.rolling(200).mean()
+        df["EMA_20"]  = close.ewm(span=20, adjust=False).mean()
+
+        # RSI-14
+        delta = close.diff()
+        gain  = delta.clip(lower=0)
+        loss  = (-delta).clip(lower=0)
+        avg_gain = gain.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, float("nan"))
+        df["RSI_14"] = 100 - (100 / (1 + rs))
+
+        # MACD (12, 26, 9)
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
+        df["MACD"]         = ema12 - ema26
+        df["MACD_signal"]  = df["MACD"].ewm(span=9, adjust=False).mean()
+        df["MACD_hist"]    = df["MACD"] - df["MACD_signal"]
+
+        # Bollinger Bands (20, 2σ)
+        df["BB_mid"]   = close.rolling(20).mean()
+        bb_std         = close.rolling(20).std()
+        df["BB_upper"] = df["BB_mid"] + 2 * bb_std
+        df["BB_lower"] = df["BB_mid"] - 2 * bb_std
+
+        # ATR-14
+        tr = pd.concat([
+            high - low,
+            (high - close.shift()).abs(),
+            (low  - close.shift()).abs(),
+        ], axis=1).max(axis=1)
+        df["ATR_14"] = tr.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+
+        # OBV
+        direction  = close.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+        df["OBV"]  = (direction * volume).cumsum()
+
+        # Returns
+        df["daily_return"] = close.pct_change()
+        df["log_return"]   = (close / close.shift()).apply(
+            lambda x: float("nan") if x <= 0 else __import__("math").log(x)
+        )
+
+        return df
+
+    # -----------------------------------------------------------------------
+    # OPTIONS (options chain from yfinance; enriched with Polygon greeks)
+    # -----------------------------------------------------------------------
+
+    def options(
+        self,
+        symbol:          str,
+        expiration_date: Optional[str] = None,   # 'YYYY-MM-DD'; defaults to nearest expiry
+        contract_type:   str           = "both",  # 'call' | 'put' | 'both'
+        enrich_polygon:  bool          = True,
+    ) -> pd.DataFrame:
+        """
+        Options chain.  Returns DataFrame with standard option fields:
+        contractSymbol, strike, lastPrice, bid, ask, mid, impliedVolatility,
+        openInterest, volume, inTheMoney, expiration, optionType
+
+        Primary  : yfinance (free, basic surface — no live greeks on free)
+        Enriched : Polygon  (live greeks delta/gamma/theta/vega + IV — Starter+ plan)
+        """
+        df = self._yf_options(symbol, expiration_date, contract_type)
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        if enrich_polygon and _polygon_key():
+            df = self._enrich_with_polygon_greeks(df, symbol, expiration_date)
+
+        return df
+
+    def _yf_options(self, symbol, expiration_date, contract_type) -> Optional[pd.DataFrame]:
+        try:
+            t = yf.Ticker(symbol)
+            expiries = t.options
+            if not expiries:
+                return None
+            if expiration_date:
+                exp = expiration_date
+                if exp not in expiries:
+                    # pick nearest available
+                    exp = min(expiries, key=lambda d: abs(
+                        (datetime.date.fromisoformat(d) - datetime.date.fromisoformat(expiration_date)).days
+                    ))
+            else:
+                exp = expiries[0]
+
+            chain = t.option_chain(exp)
+            frames = []
+            if contract_type in ("call", "both"):
+                calls = chain.calls.copy()
+                calls["optionType"] = "call"
+                frames.append(calls)
+            if contract_type in ("put", "both"):
+                puts = chain.puts.copy()
+                puts["optionType"] = "put"
+                frames.append(puts)
+            df = pd.concat(frames, ignore_index=True)
+            df["expiration"] = exp
+            df["mid"] = (df["bid"] + df["ask"]) / 2
+            return df
+        except Exception as exc:
+            logger.warning("yfinance options error for %s: %s", symbol, exc)
+            return None
+
+    def _enrich_with_polygon_greeks(
+        self, df: pd.DataFrame, symbol: str, expiration_date: Optional[str]
+    ) -> pd.DataFrame:
+        """
+        Fetch Polygon snapshot for options and merge delta/gamma/theta/vega/IV.
+        Only available on Starter+ plan; gracefully returns df unchanged on error.
+        Rate limit: 5 req/min free tier.
+        """
+        key = _polygon_key()
+        if not key:
+            return df
+        url  = f"https://api.polygon.io/v3/snapshot/options/{symbol.upper()}"
+        params: dict = {"apiKey": key, "limit": 250, "order": "asc", "sort": "expiration_date"}
+        if expiration_date:
+            params["expiration_date"] = expiration_date
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            results = resp.json().get("results") or []
+            if not results:
+                return df
+            greek_rows = []
+            for r in results:
+                det  = r.get("details") or {}
+                grk  = r.get("greeks") or {}
+                day  = r.get("day") or {}
+                greek_rows.append({
+                    "contractSymbol": det.get("ticker", ""),
+                    "polygon_delta":  grk.get("delta"),
+                    "polygon_gamma":  grk.get("gamma"),
+                    "polygon_theta":  grk.get("theta"),
+                    "polygon_vega":   grk.get("vega"),
+                    "polygon_iv":     r.get("implied_volatility"),
+                    "polygon_oi":     r.get("open_interest"),
+                })
+            greeks_df = pd.DataFrame(greek_rows).drop_duplicates("contractSymbol")
+            if "contractSymbol" in df.columns:
+                df = df.merge(greeks_df, on="contractSymbol", how="left")
+        except Exception as exc:
+            logger.warning("Polygon greeks enrichment error for %s: %s", symbol, exc)
+        return df
+
+    # -----------------------------------------------------------------------
+    # FILINGS (Fiscal.ai — structured SEC filing data)
+    # -----------------------------------------------------------------------
+
+    def filings(
+        self,
+        symbol:    str,
+        form_type: str = "10-K",
+        limit:     int = 5,
+    ) -> pd.DataFrame:
+        """
+        Parsed SEC filings from Fiscal.ai.
+
+        Returns DataFrame — schema depends on Fiscal.ai response.
+        TODO: column mapping must be updated once Fiscal.ai API schema confirmed.
+
+        Parameters
+        ----------
+        form_type : '10-K' | '10-Q' | '8-K' | 'DEF 14A'
+        limit     : number of filings to return
+        """
+        key = _fiscal_ai_key()
+        if not key:
+            logger.warning("No FISCAL_AI_API_KEY — filings unavailable")
+            return pd.DataFrame()
+        company_id = _fiscal_ai_company_id(symbol)
+        if not company_id:
+            logger.debug("Fiscal.ai filings: %s not in free-tier company list — skipping", symbol)
+            return pd.DataFrame()
+        url = f"https://api.fiscal.ai/v1/company/{company_id}/filings"
+        headers = {"Authorization": f"Bearer {key}"}
+        try:
+            resp = requests.get(
+                url,
+                headers=headers,
+                params={"form_type": form_type, "limit": limit},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            data = resp.json().get("filings") or []
+            if not data:
+                return pd.DataFrame()
+            return pd.DataFrame(data)
+        except Exception as exc:
+            logger.warning("Fiscal.ai filings error for %s: %s", symbol, exc)
+            return pd.DataFrame()
+
+    # -----------------------------------------------------------------------
+    # CALENDAR (trading days + earnings dates)
+    # -----------------------------------------------------------------------
+
+    def calendar(
+        self,
+        start: str = "",
+        end:   str = "",
+    ) -> pd.DataFrame:
+        """
+        Market calendar: trading days + holidays.
+        Source: Alpaca market calendar (falls back to pandas_market_calendars if Alpaca unavailable).
+
+        Returns DataFrame with columns: date, open, close, session_open, session_close.
+        """
+        if not start:
+            start = datetime.date.today().isoformat()
+        if not end:
+            end = (datetime.date.today() + datetime.timedelta(days=90)).isoformat()
+
+        df = self._alpaca_calendar(start, end)
+        if df is not None and not df.empty:
+            return df
+
+        logger.warning("Alpaca calendar unavailable — generating from pandas_market_calendars")
+        return self._fallback_calendar(start, end)
+
+    def _alpaca_calendar(self, start, end) -> Optional[pd.DataFrame]:
+        _, _, trade_client = self._alpaca_clients()
+        if trade_client is None:
+            return None
+        try:
+            import datetime as _dt
+            req = GetCalendarRequest(
+                start=_dt.date.fromisoformat(start),
+                end=_dt.date.fromisoformat(end),
+            )
+            sessions = trade_client.get_calendar(req)
+            if not sessions:
+                return None
+            rows = [{
+                "date":  s.date,
+                "open":  str(s.open),
+                "close": str(s.close),
+            } for s in sessions]
+            df = pd.DataFrame(rows)
+            df["date"] = pd.to_datetime(df["date"])
+            return df
+        except Exception as exc:
+            logger.warning("Alpaca SDK calendar error: %s", exc)
+            return None
+
+    def _fallback_calendar(self, start, end) -> pd.DataFrame:
+        try:
+            import pandas_market_calendars as mcal
+            nyse = mcal.get_calendar("NYSE")
+            sched = nyse.schedule(start_date=start, end_date=end)
+            df = sched.reset_index()
+            df.columns = ["date", "open", "close"]
+            return df
+        except ImportError:
+            # Pure pandas fallback: business days only (approximate)
+            dates = pd.bdate_range(start=start, end=end)
+            return pd.DataFrame({"date": dates})
+        except Exception as exc:
+            logger.warning("Fallback calendar error: %s", exc)
+            return pd.DataFrame()
+
+    def earnings_calendar(self, symbol: str, limit: int = 8) -> pd.DataFrame:
+        """
+        Earnings dates + EPS estimate + actual for a specific symbol.
+        Source: Finnhub earnings_calendar → yfinance earnings_dates fallback.
+        """
+        key = _finnhub_key()
+        today = datetime.date.today()
+        start = (today - datetime.timedelta(days=365 * 2)).isoformat()
+        end   = (today + datetime.timedelta(days=365)).isoformat()
+
+        if key:
+            url = "https://finnhub.io/api/v1/calendar/earnings"
+            try:
+                resp = requests.get(
+                    url,
+                    params={"symbol": symbol, "_from": start, "to": end, "token": key},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                data = resp.json().get("earningsCalendar") or []
+                if data:
+                    return pd.DataFrame(data[:limit])
+            except Exception as exc:
+                logger.warning("Finnhub earnings calendar error for %s: %s", symbol, exc)
+
+        # yfinance fallback
+        try:
+            df = yf.Ticker(symbol).earnings_dates
+            if df is not None and not df.empty:
+                return df.head(limit).reset_index()
+        except Exception as exc:
+            logger.warning("yfinance earnings_dates error for %s: %s", symbol, exc)
+
+        return pd.DataFrame()
+
+    # -----------------------------------------------------------------------
+    # API CONNECTIVITY TEST
+    # -----------------------------------------------------------------------
+
+    def test_apis(self, symbol: str = "AAPL") -> pd.DataFrame:
+        """
+        Test each data source for live connectivity.
+        Returns a DataFrame summarising: provider, method, status, detail, latency_ms
+
+        Usage:
+            ex = DataExtractor()
+            results = ex.test_apis("AAPL")
+            print(results.to_string(index=False))
+        """
+        results = []
+
+        def _run(provider, method_name, call):
+            t0 = time.perf_counter()
+            try:
+                data = call()
+                ok   = data is not None and (
+                    (isinstance(data, pd.DataFrame) and not data.empty) or
+                    (isinstance(data, (dict, list)) and len(data) > 0)
+                )
+                latency = int((time.perf_counter() - t0) * 1000)
+                status  = "OK" if ok else "EMPTY"
+                detail  = f"{len(data)} rows" if isinstance(data, pd.DataFrame) else "non-empty"
+                if not ok:
+                    detail = "returned empty result"
+            except Exception as exc:
+                latency = int((time.perf_counter() - t0) * 1000)
+                status  = "FAIL"
+                detail  = str(exc)[:120]
+            results.append({
+                "provider":   provider,
+                "method":     method_name,
+                "status":     status,
+                "detail":     detail,
+                "latency_ms": latency,
+            })
+
+        today = datetime.date.today().isoformat()
+        month_ago = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+
+        # yfinance — backbone, should always pass
+        _run("yfinance", "ohlcv",         lambda: self._yf_ohlcv(symbol, "", "", "1mo", "1d"))
+        _run("yfinance", "profile",       lambda: pd.DataFrame([self._yf_profile(symbol)]))
+        _run("yfinance", "fundamentals",  lambda: pd.DataFrame([self._yf_fundamentals(symbol)]))
+        _run("yfinance", "news",          lambda: self._yf_news(symbol, 10))
+        _run("yfinance", "options",       lambda: self._yf_options(symbol, None, "call"))
+        _run("yfinance", "technicals",    lambda: self.technicals(symbol, period="3mo"))
+
+        # Finnhub
+        _run("finnhub",  "profile",       lambda: pd.DataFrame([self._finnhub_profile(symbol) or {}]))
+        _run("finnhub",  "fundamentals",  lambda: pd.DataFrame([self._finnhub_fundamentals(symbol) or {}]))
+        _run("finnhub",  "news",          lambda: self._finnhub_news(symbol, month_ago, today, 10))
+        _run("finnhub",  "sentiment",     lambda: self.sentiment(symbol, month_ago, today))
+        _run("finnhub",  "earnings_cal",  lambda: self.earnings_calendar(symbol))
+
+        # Fiscal.ai (stub — will FAIL until endpoint confirmed)
+        _run("fiscal_ai","fundamentals",  lambda: self._fiscal_ai_fundamentals(symbol) or {})
+        _run("fiscal_ai","filings",       lambda: self.filings(symbol, "10-K", 2))
+
+        # Polygon OHLCV — works on free tier (SIP tape, 15-min delayed)
+        _run("polygon",  "ohlcv",         lambda: self._polygon_ohlcv_raw(symbol, month_ago, today))
+        # Polygon options snapshot — requires Starter+ plan; 403 on free key
+        _run("polygon",  "options_chain", lambda: pd.DataFrame(self._polygon_options_raw(symbol)))
+
+        # Alpaca (requires ALPACA_SECRET_KEY in env — not in keys.txt)
+        _run("alpaca",   "ohlcv",         lambda: self._alpaca_ohlcv(symbol, month_ago, today, "1d"))
+        _run("alpaca",   "news",          lambda: self._alpaca_news(symbol, month_ago, today, 10))
+        _run("alpaca",   "calendar",      lambda: self._alpaca_calendar(month_ago, today))
+
+        df = pd.DataFrame(results)
+        _ok    = (df["status"] == "OK").sum()
+        _empty = (df["status"] == "EMPTY").sum()
+        _fail  = (df["status"] == "FAIL").sum()
+        print(f"\n{'─'*70}")
+        print(f"  API Test Results for {symbol}")
+        print(f"{'─'*70}")
+        print(df.to_string(index=False))
+        print(f"{'─'*70}")
+        print(f"  PASS: {_ok}   EMPTY: {_empty}   FAIL: {_fail}   Total: {len(df)}")
+        print(f"{'─'*70}\n")
+        return df
+
+    def _polygon_ohlcv_raw(self, symbol, start, end) -> pd.DataFrame:
+        """Polygon SIP-tape OHLCV — works on free tier (15-min delayed)."""
+        key = _polygon_key()
+        if not key:
+            return pd.DataFrame()
+        import datetime as _dt
+        url = f"https://api.polygon.io/v2/aggs/ticker/{symbol.upper()}/range/1/day/{start}/{end}"
+        resp = requests.get(url, params={"apiKey": key, "adjusted": "true",
+                                         "sort": "asc", "limit": 50000}, timeout=15)
+        resp.raise_for_status()
+        bars = resp.json().get("results") or []
+        if not bars:
+            return pd.DataFrame()
+        df = pd.DataFrame(bars)
+        df["Date"] = pd.to_datetime(df["t"], unit="ms", utc=True)
+        df = df.rename(columns={"o": "Open", "h": "High", "l": "Low",
+                                 "c": "Close", "v": "Volume", "vw": "VWAP"})
+        return df.set_index("Date")[["Open", "High", "Low", "Close", "Volume", "VWAP"]]
+
+    def _polygon_options_raw(self, symbol) -> list:
+        """Raw Polygon options call used by test_apis(). Requires Starter+ plan."""
+        key = _polygon_key()
+        if not key:
+            return []
+        url = f"https://api.polygon.io/v3/snapshot/options/{symbol.upper()}"
+        try:
+            resp = requests.get(url, params={"apiKey": key, "limit": 10}, timeout=15)
+            if resp.status_code == 403:
+                logger.warning("Polygon options snapshot requires Starter+ plan (403). "
+                               "OHLCV aggs (free tier) still works.")
+                return []
+            resp.raise_for_status()
+            return resp.json().get("results") or []
+        except Exception as exc:
+            logger.warning("Polygon options error: %s", exc)
+            return []
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point — python extractor.py [SYMBOL]
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    symbol = sys.argv[1] if len(sys.argv) > 1 else "AAPL"
+    ex = DataExtractor()
+
+    print(f"\n=== OHLCV (last 5 rows) ===")
+    bars = ex.ohlcv(symbol, period="1mo")
+    print(bars.tail(5).to_string())
+
+    print(f"\n=== PROFILE ===")
+    print(ex.profile(symbol).to_string(index=False))
+
+    print(f"\n=== FUNDAMENTALS (key ratios) ===")
+    funds = ex.fundamentals(symbol)
+    key_cols = ["pe_ratio", "forward_pe", "pb_ratio", "roe", "net_margin",
+                "ev_to_ebitda", "debt_to_equity", "revenue_growth", "beta"]
+    print(funds[[c for c in key_cols if c in funds.columns]].to_string(index=False))
+
+    print(f"\n=== API TEST ===")
+    ex.test_apis(symbol)

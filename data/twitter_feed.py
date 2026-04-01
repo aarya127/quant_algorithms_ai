@@ -13,10 +13,10 @@ from typing import List, Dict
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Twitter API credentials (set as environment variables in production)
-API_KEY = os.environ.get('TWITTER_API_KEY', '***REMOVED***')
-API_SECRET = os.environ.get('TWITTER_API_SECRET', '***REMOVED***')
-BEARER_TOKEN = os.environ.get('TWITTER_BEARER_TOKEN', '***REMOVED***')
+# Twitter API credentials — set via environment variables (never hardcode here)
+API_KEY = os.environ.get('TWITTER_API_KEY', '')
+API_SECRET = os.environ.get('TWITTER_API_SECRET', '')
+BEARER_TOKEN = os.environ.get('TWITTER_BEARER_TOKEN', '')
 
 # Market-influencing accounts to follow (reduces API calls significantly)
 INFLUENTIAL_ACCOUNTS = [
