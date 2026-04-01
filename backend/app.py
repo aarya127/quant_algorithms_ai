@@ -1430,7 +1430,7 @@ def trading_chart():
     """
     import requests as _req
 
-    CHART_IMG_KEY = os.environ.get('CHART_IMG_KEY', 'fdEQVw213N2wvVd4tojIR9QduFLti89H3uIQUtZO')
+    CHART_IMG_KEY = os.environ.get('CHART_IMG_KEY', '')
 
     data = request.get_json(force=True) or {}
     symbol   = data.get('symbol', 'NASDAQ:AAPL')

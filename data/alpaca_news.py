@@ -16,9 +16,9 @@ from collections import deque
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Alpaca API credentials
-ALPACA_API_KEY = "0bbeda09-dbf4-4834-9ec1-f1fe99f1ed73"
-ALPACA_SECRET_KEY = "0xdCjEkgJ_g8RMrlnGgoO8bm5PYUpUO6"
+# Alpaca API credentials — set via environment variables (never hardcode here)
+ALPACA_API_KEY = os.environ.get("ALPACA_API_KEY", "")
+ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
 
 # WebSocket URLs
 ALPACA_NEWS_URL = "wss://stream.data.alpaca.markets/v1beta1/news"
