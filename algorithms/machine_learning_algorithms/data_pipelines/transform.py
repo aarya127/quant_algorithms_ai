@@ -7,20 +7,21 @@ feature ready for model consumption.
 
 Merge strategy
 --------------
-  Spine          : technicals()        — OHLCV + computed indicators (daily)
-  Derived        : computed in-place   — %B, price/SMA ratios, volume z-score
-  Broadcast      : fundamentals()      — financial ratios repeated across dates
-  Aggregated     : news()              — daily article count
-  Resampled      : sentiment()         — monthly insider MSPR forward-filled
-  Snapshot       : options()           — ATM-IV, P/C-OI ratio, max-pain
-  Event flags    : earnings_calendar() — proximity & binary earnings flags
+  Spine          : technicals()               — OHLCV + computed indicators (daily)
+  Derived        : computed in-place          — %B, price/SMA ratios, volume z-score
+  Point-in-time  : historical_fundamentals()  — quarterly financials via merge_asof
+  Aggregated     : news()                     — daily article count
+  Resampled      : sentiment()                — monthly insider MSPR forward-filled
+  Snapshot       : options()                  — ATM-IV, P/C-OI ratio, max-pain
+  Event flags    : earnings_calendar()        — proximity & binary earnings flags
 
 Point-in-time note
 ------------------
-Fundamentals and options snapshot columns reflect today's values and are
-broadcast statically.  This is safe for live inference / ranking.
-For a rigorous backtest, replace these with a point-in-time fundamental
-database (e.g. Compustat / WRDS) before training.
+Fundamental columns are computed from yfinance quarterly statements (income,
+balance sheet, cash flow) and joined via pd.merge_asof(direction="backward") so
+every trading day sees only the most recently filed quarterly values — no
+look-ahead bias for time-series model training.  The options snapshot is still
+today's surface and should be treated as a live-only feature.
 
 Quick start
 -----------
@@ -78,42 +79,31 @@ _COL_DESC: dict = {
     "volume_zscore":   "Volume z-score over rolling 20-day window (spikes = unusual activity)",
     "high_low_range":  "Intraday range = (High − Low) / Close",
     "overnight_gap":   "Overnight gap = Open_t / Close_{t-1} − 1",
-    # Fundamentals (broadcast, point-in-time caveat)
-    "fund_pe_ratio":         "Trailing P/E ratio",
-    "fund_forward_pe":       "Forward P/E ratio",
-    "fund_pb_ratio":         "Price-to-book ratio",
-    "fund_ps_ratio":         "Price-to-sales (TTM)",
-    "fund_peg_ratio":        "PEG ratio (PE / EPS growth)",
-    "fund_ev_to_ebitda":     "Enterprise value / EBITDA",
-    "fund_ev_to_revenue":    "Enterprise value / Revenue",
-    "fund_gross_margin":     "Gross margin (0–1)",
-    "fund_operating_margin": "Operating margin",
-    "fund_net_margin":       "Net profit margin",
-    "fund_ebitda_margin":    "EBITDA margin",
-    "fund_roe":              "Return on equity",
-    "fund_roa":              "Return on assets",
-    "fund_revenue_ttm":      "Trailing 12-month revenue",
-    "fund_ebitda":           "EBITDA",
-    "fund_free_cash_flow":   "Free cash flow",
-    "fund_total_cash":       "Cash and equivalents",
-    "fund_total_debt":       "Total debt",
-    "fund_debt_to_equity":   "Debt-to-equity ratio",
-    "fund_current_ratio":    "Current ratio (liquidity)",
-    "fund_quick_ratio":      "Quick ratio",
-    "fund_revenue_growth":   "YoY revenue growth (TTM)",
-    "fund_earnings_growth":  "YoY earnings growth",
-    "fund_dividend_yield":   "Dividend yield",
-    "fund_beta":             "Beta vs market index",
-    "fund_roic":             "Return on invested capital (Finnhub)",
-    "fund_roce":             "Return on capital employed (Finnhub)",
-    "fund_52w_high":         "52-week high price",
-    "fund_52w_low":          "52-week low price",
-    "fund_as_of":            "Date the fundamentals snapshot was taken",
+    # Fundamentals (point-in-time quarterly — merged via merge_asof, no look-ahead)
+    "fund_rev_ttm":          "TTM total revenue (sum of 4 most recent quarters)",
+    "fund_gross_profit_ttm": "TTM gross profit",
+    "fund_net_income_ttm":   "TTM net income",
+    "fund_eps_ttm":          "TTM diluted EPS",
+    "fund_fcf_ttm":          "TTM free cash flow (operating CF + capex)",
+    "fund_gross_margin":     "Gross margin = gross_profit_ttm / rev_ttm",
+    "fund_operating_margin": "Operating margin = op_income_ttm / rev_ttm",
+    "fund_net_margin":       "Net margin = net_income_ttm / rev_ttm",
+    "fund_roe":              "Return on equity = net_income_ttm / stockholders_equity",
+    "fund_roa":              "Return on assets = net_income_ttm / total_assets",
+    "fund_debt_to_equity":   "Debt-to-equity = total_debt / stockholders_equity",
+    "fund_current_ratio":    "Current ratio = current_assets / current_liabilities",
+    "fund_total_assets":     "Point-in-time total assets (balance sheet snapshot)",
+    "fund_total_debt":       "Point-in-time total debt (balance sheet snapshot)",
+    "fund_cash":             "Point-in-time cash and equivalents",
+    "fund_rev_growth_yoy":   "YoY TTM revenue growth (pct change vs 4 quarters prior)",
+    "fund_quarter_end":      "Quarter-end date this row's fundamentals were reported",
     # News
-    "news_count":     "Number of news articles indexed on this trading day",
+    "news_count":       "Number of news articles indexed on this trading day",
+    "news_sent_score":  "Daily mean sentiment score from Polygon/AV/Finnhub (-1=bearish, 0=neutral, +1=bullish)",
+    "news_sent_7d":     "7-trading-day rolling mean of news_sent_score (smoothed signal)",
     # Insider sentiment (monthly, forward-filled to daily)
-    "insdr_change":   "Net insider buy/sell volume for the month (Finnhub)",
-    "insdr_mspr":     "Monthly Share Purchase Ratio — MSPR (Finnhub); negative = net selling",
+    "insdr_change":   "Net insider shares (bought − sold) for the month; positive = net buying",
+    "insdr_mspr":     "Buy ratio = bought_shares / (bought + sold); 0.5 = neutral, >0.5 = net buying",
     # Options snapshot (current chain, static broadcast)
     "opt_atm_iv":     "Implied volatility of the ATM call (nearest strike to last close)",
     "opt_put_call_oi":"Put OI / Call OI for front expiry (>1 = bearish positioning)",
@@ -298,22 +288,30 @@ class DataTransformer:
         return df
 
     def _merge_fundamentals(self, df: pd.DataFrame, sym: str) -> pd.DataFrame:
-        """Broadcast all fundamental ratios as constant columns across the spine."""
+        """
+        Point-in-time merge of quarterly fundamentals onto the daily spine.
+
+        Uses pd.merge_asof(direction='backward') so each trading day only sees
+        the most recently filed quarterly report — zero look-ahead bias.
+        """
         try:
-            fund = self.ex.fundamentals(sym)
+            fund = self.ex.historical_fundamentals(sym)
             if fund is None or fund.empty:
                 return df
 
-            # Drop metadata / non-numeric columns that don't belong in the matrix
-            _drop = {"symbol", "fiscal_period", "fiscal_revenue", "fiscal_net_income",
-                     "fiscal_eps", "accruals_ratio", "altman_z", "sloan_ratio",
-                     "finnhub_industry", "finnhub_exchange"}
-            fund = fund.drop(columns=[c for c in _drop if c in fund.columns], errors="ignore")
+            # merge_asof requires both keys sorted ascending
+            spine_reset = df.reset_index()          # Date column
+            fund_reset  = fund.reset_index()        # Date column
 
-            for col in fund.columns:
-                df[f"fund_{col}"] = fund[col].iloc[0]
-
-            df["fund_as_of"] = datetime.date.today().isoformat()
+            merged = pd.merge_asof(
+                spine_reset.sort_values("Date"),
+                fund_reset.sort_values("Date"),
+                on="Date",
+                direction="backward",
+            )
+            merged = merged.set_index("Date")
+            # Restore original row order
+            df = merged.reindex(df.index)
 
         except Exception as exc:
             logger.warning("Fundamentals merge failed for %s: %s", sym, exc)
@@ -322,25 +320,57 @@ class DataTransformer:
     def _merge_news(
         self, df: pd.DataFrame, sym: str, start: str, end: str
     ) -> pd.DataFrame:
-        """Left-join daily article counts to the spine (0 on missing days)."""
-        try:
-            news = self.ex.news(sym, start=start, end=end, limit=500)
-            if news is None or news.empty:
-                df["news_count"] = 0
-                return df
+        """Merge daily article count + sentiment scores into the spine.
 
-            dates = (
-                pd.to_datetime(news["datetime"])
-                .dt.tz_localize(None)
-                .dt.normalize()
-            )
-            daily = dates.value_counts().rename_axis("Date").rename("news_count").sort_index()
-            df = df.join(daily, how="left")
-            df["news_count"] = df["news_count"].fillna(0).astype(int)
+        Adds three columns:
+            news_count       — articles published on each trading day
+            news_sent_score  — mean sentiment score that day (-1 to +1)
+            news_sent_7d     — 7-trading-day rolling mean of sent_score
+
+        Source priority (handled inside extractor):
+            1. Polygon /v3/reference/news  (AI insights per ticker)
+            2. Alpha Vantage NEWS_SENTIMENT (relevance-weighted scores)
+            3. Finnhub company news         (count only, score = NaN)
+        """
+        try:
+            daily = self.ex.news_sentiment_history(sym, start=start, end=end)
+
+            if daily is not None and not daily.empty:
+                daily.index = pd.to_datetime(daily.index).tz_localize(None)
+                df = df.join(daily[["news_sent_score", "news_articles"]], how="left")
+                df = df.rename(columns={"news_articles": "news_count"})
+                df["news_count"]      = df["news_count"].fillna(0).astype(int)
+                # 7-day rolling mean — only over days with actual scores
+                df["news_sent_7d"] = (
+                    df["news_sent_score"]
+                    .rolling(7, min_periods=1)
+                    .mean()
+                )
+            else:
+                # Fallback: raw article count from the simple news() method
+                news = self.ex.news(sym, start=start, end=end, limit=500)
+                if news is not None and not news.empty:
+                    dates = (
+                        pd.to_datetime(news["datetime"])
+                        .dt.tz_localize(None)
+                        .dt.normalize()
+                    )
+                    daily_ct = (
+                        dates.value_counts()
+                        .rename_axis("Date")
+                        .rename("news_count")
+                        .sort_index()
+                    )
+                    df = df.join(daily_ct, how="left")
+                df["news_count"]     = df.get("news_count", 0).fillna(0).astype(int)
+                df["news_sent_score"] = float("nan")
+                df["news_sent_7d"]    = float("nan")
 
         except Exception as exc:
             logger.warning("News merge failed for %s: %s", sym, exc)
-            df["news_count"] = 0
+            df["news_count"]      = 0
+            df["news_sent_score"] = float("nan")
+            df["news_sent_7d"]    = float("nan")
         return df
 
     def _merge_sentiment(self, df: pd.DataFrame, sym: str) -> pd.DataFrame:
@@ -357,14 +387,26 @@ class DataTransformer:
                 + monthly["month"].astype(str).str.zfill(2)
             )
             monthly = (
-                monthly.set_index("Date")[["change", "mspr"]]
+                monthly[["Date", "change", "mspr"]]
                 .rename(columns={"change": "insdr_change", "mspr": "insdr_mspr"})
+                .sort_values("Date")
             )
+            # Align datetime precision to the trading spine (yfinance → datetime64[us])
+            monthly["Date"] = monthly["Date"].astype("datetime64[us]")
 
-            # Join monthly points onto daily spine, then forward-fill within months
-            combined = pd.DataFrame(index=df.index).join(monthly, how="left").ffill()
-            df["insdr_change"] = combined["insdr_change"]
-            df["insdr_mspr"]   = combined["insdr_mspr"]
+            # merge_asof (backward) handles month-starts that fall on weekends/holidays:
+            # each trading day gets the most recently published monthly figure.
+            # Strip timezone (yfinance returns tz-aware index) and normalize to us precision
+            raw_idx = df.index.tz_localize(None) if df.index.tz is None else df.index.tz_convert(None)
+            spine = pd.DataFrame({"Date": raw_idx.astype("datetime64[us]")})
+            combined = pd.merge_asof(
+                spine,
+                monthly,
+                on="Date",
+                direction="backward",
+            ).set_index("Date")
+            df["insdr_change"] = combined["insdr_change"].values
+            df["insdr_mspr"]   = combined["insdr_mspr"].values
 
         except Exception as exc:
             logger.warning("Sentiment merge failed for %s: %s", sym, exc)
@@ -372,14 +414,18 @@ class DataTransformer:
 
     def _merge_options_snapshot(self, df: pd.DataFrame, sym: str) -> pd.DataFrame:
         """
-        Derive four options-surface scalars from the front-expiry chain and
+        Derive four options-surface scalars from the nearest liquid expiry and
         broadcast them as constant columns across the spine.
+
+        Expiry selection: the first expiry with total OI > 0; falls back to
+        the second-nearest expiry when the front expiry has zero OI (e.g.
+        same-day / next-day expiries that have already settled).
 
         Metrics
         -------
         opt_atm_iv      — IV of the call with strike nearest to last close
         opt_put_call_oi — put OI / call OI (bearish positioning > 1)
-        opt_total_oi    — total OI across all strikes in front expiry
+        opt_total_oi    — total OI across all strikes in chosen expiry
         opt_max_pain    — strike that minimises total OI-weighted intrinsic payout
                           to option buyers (widely watched by MM desks)
         """
@@ -389,7 +435,18 @@ class DataTransformer:
                 return df
 
             last_close = float(df["Close"].iloc[-1])
-            front_exp  = opts["expiration"].min() if "expiration" in opts.columns else None
+
+            # Pick the expiry with the most total OI — skips zero-OI same-day expiries
+            if "expiration" in opts.columns and "openInterest" in opts.columns:
+                oi_by_exp = (
+                    opts.groupby("expiration")["openInterest"]
+                    .sum()
+                    .sort_index()
+                )
+                liquid = oi_by_exp[oi_by_exp > 0]
+                front_exp = liquid.index[0] if not liquid.empty else oi_by_exp.index[0]
+            else:
+                front_exp = opts["expiration"].min() if "expiration" in opts.columns else None
 
             atm_iv = put_call_oi = total_oi = max_pain = float("nan")
 
@@ -398,19 +455,29 @@ class DataTransformer:
                 calls  = front[front["optionType"] == "call"].copy()
                 puts   = front[front["optionType"] == "put"].copy()
 
-                # ATM IV — nearest call to current price
+                # ATM IV — nearest call with a meaningful IV (>= 15% threshold)
+                # yfinance returns degenerate IV (exact binary fractions: 1/16, 1/8…)
+                # when bid=ask=0 (after-hours / market-closed). No individual stock
+                # option has genuine IV below 15%, so we discard those rows.
+                _MIN_IV = 0.15   # 15% — below this the IV is synthesis artefact
                 if not calls.empty and "strike" in calls.columns and "impliedVolatility" in calls.columns:
-                    nearest_idx = (calls["strike"] - last_close).abs().idxmin()
-                    atm_iv = float(calls.loc[nearest_idx, "impliedVolatility"])
+                    valid_calls = calls[calls["impliedVolatility"] >= _MIN_IV]
+                    if not valid_calls.empty:
+                        nearest_idx = (valid_calls["strike"] - last_close).abs().idxmin()
+                        atm_iv = float(valid_calls.loc[nearest_idx, "impliedVolatility"])
+                    # else: atm_iv stays NaN — data unavailable
 
-                # Put / call OI ratio
+                # Put / call OI ratio — NaN when total OI is 0 (not yet settled)
                 call_oi = float(calls["openInterest"].fillna(0).sum()) if "openInterest" in calls.columns else 0
                 put_oi  = float(puts["openInterest"].fillna(0).sum())  if "openInterest" in puts.columns  else 0
                 total_oi    = int(call_oi + put_oi)
                 put_call_oi = round(put_oi / call_oi, 4) if call_oi > 0 else float("nan")
+                if total_oi == 0:
+                    total_oi = float("nan")  # distinguish "no data" from genuine 0
+                    atm_iv   = float("nan")  # OI=0 means data is stale/unsettled
 
-                # Max-pain: iterate strikes, find minimum aggregate intrinsic loss to buyers
-                if "openInterest" in front.columns:
+                # Max-pain: only meaningful when OI > 0
+                if "openInterest" in front.columns and total_oi > 0:
                     strikes = sorted(front["strike"].unique())
                     pain    = {}
                     c_oi = calls.set_index("strike")["openInterest"].fillna(0)

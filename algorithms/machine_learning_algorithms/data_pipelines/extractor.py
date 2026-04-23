@@ -123,6 +123,9 @@ def _polygon_key() -> str:
 def _fiscal_ai_key() -> str:
     return _get_key("FISCAL_AI_API_KEY", "fiscal.ai - 250 calls/day")
 
+def _alphavantage_key() -> str:
+    return _get_key("ALPHAVANTAGE_API_KEY", "alphavantage - 25 requests per day")
+
 def _alpaca_key() -> str:
     val = os.environ.get("ALPACA_API_KEY")
     if val:
@@ -485,6 +488,199 @@ class DataExtractor:
             return None
 
     # -----------------------------------------------------------------------
+    # HISTORICAL FUNDAMENTALS  (point-in-time quarterly time series)
+    # -----------------------------------------------------------------------
+
+    def historical_fundamentals(self, symbol: str) -> pd.DataFrame:
+        """
+        Historical fundamental metrics derived from yfinance financial statements.
+
+        Strategy (two tiers, merged so quarterly overrides annual):
+          • Quarterly (4–5 quarters back) — income/CF metrics are TTM-summed;
+            balance-sheet metrics use the closest quarterly snapshot.
+          • Annual (4 fiscal years back) — fills dates before quarterly data
+            begins; each annual value is broadcast across the whole fiscal year.
+
+        Every row carries the exact same column set so merge_asof in transform
+        simply matches each trading day to the most recently available filing.
+
+        Returns
+        -------
+        pd.DataFrame
+            DatetimeIndex (period-end, tz-naive, ascending, ~20–25 rows total)
+            Columns: fund_rev_ttm, fund_gross_profit_ttm, fund_net_income_ttm,
+                     fund_eps_ttm, fund_fcf_ttm, fund_gross_margin,
+                     fund_operating_margin, fund_net_margin, fund_roe, fund_roa,
+                     fund_debt_to_equity, fund_current_ratio,
+                     fund_total_assets, fund_total_debt, fund_cash,
+                     fund_rev_growth_yoy, fund_quarter_end
+        """
+        try:
+            t = yf.Ticker(symbol)
+            q_inc = t.quarterly_income_stmt
+            q_bal = t.quarterly_balance_sheet
+            q_cf  = t.quarterly_cashflow
+            a_inc = t.income_stmt
+            a_bal = t.balance_sheet
+            a_cf  = t.cashflow
+
+            def _safe(val) -> float:
+                try:
+                    v = float(val)
+                    return v if not pd.isna(v) else float("nan")
+                except (TypeError, ValueError):
+                    return float("nan")
+
+            def _ratio(num, den) -> float:
+                n, d = _safe(num), _safe(den)
+                if pd.isna(n) or pd.isna(d) or d == 0:
+                    return float("nan")
+                return n / d
+
+            def _first_col(frame: pd.DataFrame, *names) -> "pd.Series":
+                for name in names:
+                    if name in frame.columns:
+                        return frame[name]
+                return pd.Series(float("nan"), index=frame.index)
+
+            def _prep(raw) -> pd.DataFrame:
+                """Transpose raw yfinance statement → rows=dates, cols=metrics."""
+                if raw is None or raw.empty:
+                    return pd.DataFrame()
+                return raw.T.sort_index()
+
+            def _build_rows(inc, bal, cf, ttm_window: int) -> list:
+                """
+                Build one metrics-dict per period row.
+
+                ttm_window=4  → quarterly (sum 4 quarters)
+                ttm_window=1  → annual    (one year = full period)
+                """
+                rows = []
+                for i, date in enumerate(inc.index):
+                    w_inc = inc.iloc[max(0, i - (ttm_window - 1)): i + 1]
+                    w_cf  = cf.iloc[max(0, i - (ttm_window - 1)): i + 1] if not cf.empty else pd.DataFrame()
+                    bal_row = (
+                        bal.loc[date]
+                        if not bal.empty and date in bal.index
+                        else pd.Series(dtype=float)
+                    )
+
+                    def ttm(*names) -> float:
+                        col  = _first_col(w_inc, *names)
+                        vals = col.dropna()
+                        return float(vals.sum()) if not vals.empty else float("nan")
+
+                    def cf_ttm(*names) -> float:
+                        col  = _first_col(w_cf, *names)
+                        vals = col.dropna()
+                        return float(vals.sum()) if not vals.empty else float("nan")
+
+                    def bs(*names) -> float:
+                        if bal_row.empty:
+                            return float("nan")
+                        for name in names:
+                            if name in bal_row.index:
+                                return _safe(bal_row[name])
+                        return float("nan")
+
+                    rev     = ttm("Total Revenue",       "TotalRevenue")
+                    gross   = ttm("Gross Profit",        "GrossProfit")
+                    op_inc  = ttm("Operating Income",    "OperatingIncome", "EBIT")
+                    net_inc = ttm("Net Income",          "NetIncome")
+                    eps     = ttm("Diluted EPS",         "Basic EPS",
+                                  "EPS Diluted",         "DilutedEPS")
+                    op_cf   = cf_ttm("Operating Cash Flow",  "OperatingCashFlow",
+                                     "Total Cash From Operating Activities")
+                    capex   = cf_ttm("Capital Expenditure",  "CapitalExpenditure",
+                                     "Capital Expenditures")
+                    equity  = bs("Stockholders Equity",  "StockholdersEquity",
+                                 "Total Equity Gross Minority Interest")
+                    assets  = bs("Total Assets",         "TotalAssets")
+                    debt    = bs("Total Debt",           "TotalDebt",
+                                 "Long Term Debt",       "LongTermDebt")
+                    cash    = bs("Cash And Cash Equivalents", "CashAndCashEquivalents",
+                                 "Cash",                 "Cash Equivalents")
+                    curr_a  = bs("Current Assets",       "TotalCurrentAssets",
+                                 "Total Current Assets")
+                    curr_l  = bs("Current Liabilities",  "TotalCurrentLiabilities",
+                                 "Total Current Liabilities")
+
+                    fcf = (
+                        (op_cf + capex)
+                        if not (pd.isna(op_cf) or pd.isna(capex))
+                        else float("nan")
+                    )
+
+                    rows.append({
+                        "fund_rev_ttm":          rev,
+                        "fund_gross_profit_ttm": gross,
+                        "fund_net_income_ttm":   net_inc,
+                        "fund_eps_ttm":          eps,
+                        "fund_fcf_ttm":          fcf,
+                        "fund_gross_margin":     _ratio(gross,   rev),
+                        "fund_operating_margin": _ratio(op_inc,  rev),
+                        "fund_net_margin":       _ratio(net_inc, rev),
+                        "fund_roe":              _ratio(net_inc, equity),
+                        "fund_roa":              _ratio(net_inc, assets),
+                        "fund_debt_to_equity":   _ratio(debt,    equity),
+                        "fund_current_ratio":    _ratio(curr_a,  curr_l),
+                        "fund_total_assets":     assets,
+                        "fund_total_debt":       debt,
+                        "fund_cash":             cash,
+                        "fund_quarter_end":      (
+                            str(date.date()) if hasattr(date, "date") else str(date)
+                        ),
+                    })
+                return rows
+
+            def _to_timed_df(rows: list, index) -> pd.DataFrame:
+                if not rows:
+                    return pd.DataFrame()
+                df = pd.DataFrame(rows, index=index)
+                df.index = pd.to_datetime(df.index).tz_localize(None)
+                df.index.name = "Date"
+                return df
+
+            # ── Quarterly tier ────────────────────────────────────────────
+            q_rows = pd.DataFrame()
+            q_prep = _prep(q_inc)
+            if not q_prep.empty:
+                rows = _build_rows(q_prep, _prep(q_bal), _prep(q_cf), ttm_window=4)
+                q_rows = _to_timed_df(rows, q_prep.index)
+                if not q_rows.empty:
+                    q_rows["fund_rev_growth_yoy"] = (
+                        q_rows["fund_rev_ttm"]
+                        .pct_change(4)
+                        .replace([float("inf"), float("-inf")], float("nan"))
+                    )
+
+            # ── Annual tier (fills earlier dates) ─────────────────────────
+            a_rows = pd.DataFrame()
+            a_prep = _prep(a_inc)
+            if not a_prep.empty:
+                rows = _build_rows(a_prep, _prep(a_bal), _prep(a_cf), ttm_window=1)
+                a_rows = _to_timed_df(rows, a_prep.index)
+                if not a_rows.empty:
+                    a_rows["fund_rev_growth_yoy"] = (
+                        a_rows["fund_rev_ttm"]
+                        .pct_change(1)
+                        .replace([float("inf"), float("-inf")], float("nan"))
+                    )
+
+            if q_rows.empty and a_rows.empty:
+                return pd.DataFrame()
+
+            # Merge: quarterly wins for overlapping dates
+            combined = pd.concat([a_rows, q_rows])
+            combined = combined[~combined.index.duplicated(keep="last")]
+            return combined.sort_index()
+
+        except Exception as exc:
+            logger.warning("historical_fundamentals error for %s: %s", symbol, exc)
+            return pd.DataFrame()
+
+    # -----------------------------------------------------------------------
     # NEWS
     # -----------------------------------------------------------------------
 
@@ -596,7 +792,242 @@ class DataExtractor:
             return None
 
     # -----------------------------------------------------------------------
-    # SENTIMENT (insider / short interest)
+    # NEWS SENTIMENT HISTORY  (multi-source, daily aggregation)
+    # -----------------------------------------------------------------------
+
+    def news_sentiment_history(
+        self,
+        symbol: str,
+        start:  str = "",
+        end:    str = "",
+    ) -> pd.DataFrame:
+        """
+        Daily news sentiment scores aggregated from multiple sources.
+
+        Returns a DataFrame indexed by date with columns:
+            news_sent_score   — mean daily sentiment score (-1 to +1)
+            news_articles     — article count for that day
+
+        Source priority
+        ---------------
+        1. Polygon /v3/reference/news — AI-scored ``insights`` per ticker
+           (labeled "massive" in keys.txt — the key starting with 0x...)
+        2. Alpha Vantage NEWS_SENTIMENT — ticker-level scores + relevance weights
+        3. Finnhub company-news — article count only (no pre-scored sentiment)
+        """
+        if not start:
+            start = (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
+        if not end:
+            end = datetime.date.today().isoformat()
+
+        frames: list[pd.DataFrame] = []
+
+        poly = self._polygon_news_sentiment(symbol, start, end)
+        if poly is not None and not poly.empty:
+            frames.append(poly)
+            logger.info("Polygon news sentiment: %d articles for %s", len(poly), symbol)
+
+        av = self._av_news_sentiment(symbol, start, end)
+        if av is not None and not av.empty:
+            frames.append(av)
+            logger.info("AlphaVantage news sentiment: %d articles for %s", len(av), symbol)
+
+        if not frames:
+            # Fallback: Finnhub — count only, score = NaN
+            fh = self._finnhub_news(symbol, start, end, limit=500)
+            if fh is not None and not fh.empty:
+                fh["date"] = pd.to_datetime(fh["datetime"]).dt.tz_localize(None).dt.normalize()
+                fh["sent_score"] = float("nan")
+                fh["weight"]     = 1.0
+                frames.append(fh[["date", "sent_score", "weight"]])
+
+        if not frames:
+            return pd.DataFrame()
+
+        combined = pd.concat(frames, ignore_index=True)
+
+        # De-duplicate by (date, headline) if headline col exists
+        if "headline" in combined.columns:
+            combined = combined.drop_duplicates(subset=["date", "headline"])
+
+        # Daily aggregation: weighted mean score + article count
+        def _agg(g: pd.DataFrame) -> pd.Series:
+            valid = g["sent_score"].notna()
+            if valid.any():
+                w = g.loc[valid, "weight"].fillna(1.0)
+                s = g.loc[valid, "sent_score"]
+                score = float((s * w).sum() / w.sum())
+            else:
+                score = float("nan")
+            return pd.Series({"news_sent_score": score, "news_articles": len(g)})
+
+        daily = (
+            combined.groupby("date")
+            .apply(_agg)
+            .reset_index()
+        )
+        daily["date"] = pd.to_datetime(daily["date"])
+        daily = daily.set_index("date").sort_index()
+        return daily
+
+    def _polygon_news_sentiment(
+        self,
+        symbol: str,
+        start:  str,
+        end:    str,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Polygon /v3/reference/news with AI insights.
+        Each article may contain per-ticker sentiment + sentiment_reasoning.
+        Labeled "massive" in keys.txt (key starts with 0x...).
+        Pagination is handled via the ``next_url`` cursor field.
+        """
+        key = _polygon_key()
+        if not key:
+            return None
+
+        rows: list[dict] = []
+        url    = "https://api.polygon.io/v3/reference/news"
+        params: dict = {
+            "ticker":               symbol.upper(),
+            "published_utc.gte":    start,
+            "published_utc.lte":    end,
+            "order":                "asc",
+            "limit":                1000,
+            "apiKey":               key,
+        }
+
+        try:
+            while url:
+                resp = requests.get(url, params=params, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+
+                for article in data.get("results", []):
+                    pub      = article.get("published_utc", "")
+                    insights = article.get("insights") or []
+                    headline = article.get("title", "")
+
+                    # Find insights matching this ticker (case-insensitive)
+                    ticker_insights = [
+                        i for i in insights
+                        if str(i.get("ticker", "")).upper() == symbol.upper()
+                    ]
+
+                    if ticker_insights:
+                        raw_sent = ticker_insights[0].get("sentiment", "neutral").lower()
+                    else:
+                        # Article mentions ticker (in tickers list) but no per-ticker insight
+                        # Use the most common insight sentiment as a proxy, if any
+                        if insights:
+                            from collections import Counter
+                            raw_sent = Counter(
+                                i.get("sentiment", "neutral").lower() for i in insights
+                            ).most_common(1)[0][0]
+                        else:
+                            raw_sent = "neutral"
+
+                    score_map = {"positive": 1.0, "negative": -1.0, "neutral": 0.0,
+                                 "bullish": 1.0, "bearish": -1.0}
+                    score = score_map.get(raw_sent, 0.0)
+
+                    rows.append({
+                        "date":       pd.to_datetime(pub).tz_localize(None).normalize(),
+                        "headline":   headline,
+                        "sent_score": score,
+                        "weight":     1.0,
+                    })
+
+                next_url = data.get("next_url")
+                if next_url:
+                    url    = next_url
+                    params = {}          # next_url already encodes all params
+                else:
+                    break
+
+        except Exception as exc:
+            logger.warning("Polygon news sentiment error for %s: %s", symbol, exc)
+            return None
+
+        return pd.DataFrame(rows) if rows else None
+
+    def _av_news_sentiment(
+        self,
+        symbol: str,
+        start:  str,
+        end:    str,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Alpha Vantage NEWS_SENTIMENT endpoint.
+        Returns ticker-specific sentiment score (-1 to +1) weighted by relevance.
+        Rate limit: 25 calls/day on free tier — use sparingly.
+        """
+        key = _alphavantage_key()
+        if not key:
+            return None
+
+        # AV uses YYYYMMDDTHHMM format
+        time_from = start.replace("-", "") + "T0000"
+        time_to   = end.replace("-", "")   + "T2359"
+
+        try:
+            resp = requests.get(
+                "https://www.alphavantage.co/query",
+                params={
+                    "function":  "NEWS_SENTIMENT",
+                    "tickers":   symbol.upper(),
+                    "time_from": time_from,
+                    "time_to":   time_to,
+                    "sort":      "EARLIEST",
+                    "limit":     1000,
+                    "apikey":    key,
+                },
+                timeout=20,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            if "Information" in data or "Note" in data:
+                # Rate-limit message
+                logger.warning("AlphaVantage rate-limited for %s news sentiment", symbol)
+                return None
+
+            rows: list[dict] = []
+            for article in data.get("feed", []):
+                pub_raw = article.get("time_published", "")
+                headline = article.get("title", "")
+                try:
+                    dt = datetime.datetime.strptime(pub_raw, "%Y%m%dT%H%M%S")
+                except ValueError:
+                    continue
+
+                # Find ticker-specific sentiment (relevance-weighted)
+                ticker_sents = [
+                    ts for ts in article.get("ticker_sentiment", [])
+                    if str(ts.get("ticker", "")).upper() == symbol.upper()
+                ]
+                if not ticker_sents:
+                    continue
+
+                ts        = ticker_sents[0]
+                score     = float(ts.get("ticker_sentiment_score", 0.0))
+                relevance = max(float(ts.get("relevance_score", 0.5)), 0.1)
+
+                rows.append({
+                    "date":       pd.Timestamp(dt).normalize(),
+                    "headline":   headline,
+                    "sent_score": score,
+                    "weight":     relevance,
+                })
+
+            return pd.DataFrame(rows) if rows else None
+
+        except Exception as exc:
+            logger.warning("AlphaVantage news sentiment error for %s: %s", symbol, exc)
+            return None
+
+    # -----------------------------------------------------------------------
+    # SENTIMENT (insider transactions)
     # -----------------------------------------------------------------------
 
     def sentiment(
@@ -607,13 +1038,68 @@ class DataExtractor:
     ) -> pd.DataFrame:
         """
         Monthly insider sentiment (net buy/sell).  Returns DataFrame with:
-        year, month, change (net insider buy volume), mspr (monthly share purchase ratio)
+        year, month, change (net insider shares), mspr (buy ratio 0-1)
 
-        Source: Finnhub insider_sentiment
+        Primary  : yfinance insider_transactions (free, ~12 months of history)
+        Fallback : Finnhub insider_sentiment     (requires premium plan)
         """
+        df = self._yf_insider_sentiment(symbol)
+        if df is not None and not df.empty:
+            return df
+
+        return self._finnhub_insider_sentiment(symbol, start, end)
+
+    def _yf_insider_sentiment(self, symbol: str) -> Optional[pd.DataFrame]:
+        """
+        Build monthly insider sentiment from yfinance insider_transactions.
+        Columns: year, month, change (net shares bought), mspr (buy_vol / total_vol).
+        """
+        try:
+            t   = yf.Ticker(symbol)
+            txn = t.insider_transactions
+            if txn is None or txn.empty:
+                return None
+
+            df = txn.copy()
+
+            # Parse date
+            date_col = "Start Date" if "Start Date" in df.columns else df.columns[0]
+            df["date"] = pd.to_datetime(df[date_col], errors="coerce").dt.tz_localize(None)
+            df = df.dropna(subset=["date"])
+
+            # Parse transaction type from text
+            txt = df["Text"].fillna("").str.lower() if "Text" in df.columns else pd.Series("", index=df.index)
+            is_buy  = txt.str.contains(r"purchase|award|grant", regex=True)
+            is_sell = txt.str.contains(r"sale|sell",            regex=True)
+
+            shares = pd.to_numeric(df["Shares"], errors="coerce").fillna(0)
+
+            df["bought"] = shares.where(is_buy,  0)
+            df["sold"]   = shares.where(is_sell, 0)
+
+            df["year"]  = df["date"].dt.year
+            df["month"] = df["date"].dt.month
+
+            monthly = (
+                df.groupby(["year", "month"])
+                .agg(bought=("bought", "sum"), sold=("sold", "sum"))
+                .reset_index()
+            )
+            monthly["change"] = monthly["bought"] - monthly["sold"]
+            total = monthly["bought"] + monthly["sold"]
+            monthly["mspr"] = (monthly["bought"] / total.replace(0, float("nan"))).round(4)
+
+            return monthly[["year", "month", "change", "mspr"]]
+
+        except Exception as exc:
+            logger.warning("yfinance insider sentiment error for %s: %s", symbol, exc)
+            return None
+
+    def _finnhub_insider_sentiment(
+        self, symbol: str, start: str = "", end: str = ""
+    ) -> pd.DataFrame:
         key = _finnhub_key()
         if not key:
-            logger.warning("No Finnhub key — sentiment unavailable")
             return pd.DataFrame()
         if not start:
             start = (datetime.date.today() - datetime.timedelta(days=365)).isoformat()
@@ -753,7 +1239,13 @@ class DataExtractor:
                         (datetime.date.fromisoformat(d) - datetime.date.fromisoformat(expiration_date)).days
                     ))
             else:
-                exp = expiries[0]
+                today = datetime.date.today()
+                # Skip expiries that are today or already past; prefer ≥7 days out
+                future = [e for e in expiries
+                          if datetime.date.fromisoformat(e) > today]
+                week_plus = [e for e in future
+                             if (datetime.date.fromisoformat(e) - today).days >= 7]
+                exp = week_plus[0] if week_plus else (future[0] if future else expiries[0])
 
             chain = t.option_chain(exp)
             frames = []

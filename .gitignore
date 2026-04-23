@@ -193,3 +193,7 @@ performance/go_services/pkg/
 *.test
 *.out
 go.sum
+
+# Data files
+*.csv
+
