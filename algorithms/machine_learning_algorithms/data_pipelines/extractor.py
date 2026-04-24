@@ -118,7 +118,19 @@ def _finnhub_key() -> str:
     return _get_key("FINNHUB_API_KEY", "finhub - 60 api calls/minute")
 
 def _polygon_key() -> str:
-    return _get_key("POLYGON_API_KEY", "massive")
+    # Polygon and Massive share the same secret key (0xdCjEkgJ_g8RMrlnGgoO8bm5PYUpUO6)
+    # Rate limit: 5 calls/minute (12s between requests)
+    return _get_key("POLYGON_API_KEY", "massive - 5 api calls/minute")
+
+def _massive_s3_creds() -> tuple[str, str]:
+    """Return (access_key_id, secret_access_key) for Massive S3 flatfiles bucket.
+
+    Activate dataset subscriptions at massive.com portal before calling get_object.
+    Rate limit shared with Polygon: 5 calls/minute.
+    """
+    key_id = _get_key("MASSIVE_ACCESS_KEY_ID", "massive - 5 api calls/minute")
+    secret  = _get_key("MASSIVE_SECRET_KEY",    "massive - 5 api calls/minute")
+    return key_id, secret
 
 def _fiscal_ai_key() -> str:
     return _get_key("FISCAL_AI_API_KEY", "fiscal.ai - 250 calls/day")
@@ -797,9 +809,10 @@ class DataExtractor:
 
     def news_sentiment_history(
         self,
-        symbol: str,
-        start:  str = "",
-        end:    str = "",
+        symbol:      str,
+        start:       str = "",
+        end:         str = "",
+        use_finbert: bool = False,
     ) -> pd.DataFrame:
         """
         Daily news sentiment scores aggregated from multiple sources.
@@ -808,9 +821,21 @@ class DataExtractor:
             news_sent_score   — mean daily sentiment score (-1 to +1)
             news_articles     — article count for that day
 
-        Source priority
-        ---------------
-        1. Polygon /v3/reference/news — AI-scored ``insights`` per ticker
+        Parameters
+        ----------
+        use_finbert : bool, default False
+            When True, fetch raw article text from all sources and run
+            ProsusAI/finbert on each headline+summary.  Score =
+            P(positive) - P(negative).  Requires ``transformers`` and
+            ``torch`` to be installed.  Adds ~5-15 s model load time and
+            ~0.1 s per article; use for offline / research runs.
+
+            When False (default), use API pre-scores from Polygon insights
+            and Alpha Vantage — fast, no extra dependencies.
+
+        Source priority (use_finbert=False)
+        ------------------------------------
+        1. Polygon /v2/reference/news — AI-scored ``insights`` per ticker
            (labeled "massive" in keys.txt — the key starting with 0x...)
         2. Alpha Vantage NEWS_SENTIMENT — ticker-level scores + relevance weights
         3. Finnhub company-news — article count only (no pre-scored sentiment)
@@ -820,6 +845,29 @@ class DataExtractor:
         if not end:
             end = datetime.date.today().isoformat()
 
+        # ------------------------------------------------------------------
+        # Fast path: FinBERT NLP on raw text from all sources
+        # ------------------------------------------------------------------
+        if use_finbert:
+            try:
+                from sentiment.finbert import FinBertAnalyzer
+                daily_fb = FinBertAnalyzer().analyze(symbol, start, end)
+                if daily_fb is not None and not daily_fb.empty:
+                    # Rename to match the expected downstream schema
+                    daily_fb = daily_fb.rename(columns={
+                        "finbert_score": "news_sent_score",
+                        "article_count": "news_articles",
+                    })
+                    logger.info("FinBERT sentiment: %d trading days for %s", len(daily_fb), symbol)
+                    return daily_fb[["news_sent_score", "news_articles"]]
+            except ImportError:
+                logger.warning("use_finbert=True but 'transformers' not installed — falling back to API scores")
+            except Exception as exc:
+                logger.warning("FinBERT sentiment error for %s: %s — falling back", symbol, exc)
+
+        # ------------------------------------------------------------------
+        # Default path: API pre-scores (fast, no ML inference)
+        # ------------------------------------------------------------------
         frames: list[pd.DataFrame] = []
 
         poly = self._polygon_news_sentiment(symbol, start, end)
@@ -831,6 +879,11 @@ class DataExtractor:
         if av is not None and not av.empty:
             frames.append(av)
             logger.info("AlphaVantage news sentiment: %d articles for %s", len(av), symbol)
+
+        alp = self._alpaca_news_sentiment(symbol, start, end)
+        if alp is not None and not alp.empty:
+            frames.append(alp)
+            logger.info("Alpaca news sentiment (insights): %d articles for %s", len(alp), symbol)
 
         if not frames:
             # Fallback: Finnhub — count only, score = NaN
@@ -870,6 +923,9 @@ class DataExtractor:
         daily = daily.set_index("date").sort_index()
         return daily
 
+    # Minimum seconds between Polygon API calls (5 req/min plan)
+    _POLYGON_RATE_LIMIT_S: float = 12.0
+
     def _polygon_news_sentiment(
         self,
         symbol: str,
@@ -877,17 +933,18 @@ class DataExtractor:
         end:    str,
     ) -> Optional[pd.DataFrame]:
         """
-        Polygon /v3/reference/news with AI insights.
+        Polygon /v2/reference/news with AI insights.
         Each article may contain per-ticker sentiment + sentiment_reasoning.
         Labeled "massive" in keys.txt (key starts with 0x...).
         Pagination is handled via the ``next_url`` cursor field.
+        Rate limit: 5 calls/minute — sleeps 12 s between pages.
         """
         key = _polygon_key()
         if not key:
             return None
 
         rows: list[dict] = []
-        url    = "https://api.polygon.io/v3/reference/news"
+        url    = "https://api.polygon.io/v2/reference/news"
         params: dict = {
             "ticker":               symbol.upper(),
             "published_utc.gte":    start,
@@ -932,7 +989,7 @@ class DataExtractor:
                     score = score_map.get(raw_sent, 0.0)
 
                     rows.append({
-                        "date":       pd.to_datetime(pub).tz_localize(None).normalize(),
+                        "date":       pd.to_datetime(pub, utc=True).tz_convert(None).normalize(),
                         "headline":   headline,
                         "sent_score": score,
                         "weight":     1.0,
@@ -940,8 +997,11 @@ class DataExtractor:
 
                 next_url = data.get("next_url")
                 if next_url:
-                    url    = next_url
-                    params = {}          # next_url already encodes all params
+                    # Re-append apiKey — cursor URLs drop auth params
+                    url    = next_url + ("&" if "?" in next_url else "?") + f"apiKey={key}"
+                    params = {}          # next_url already encodes all other params
+                    logger.info("Polygon news: sleeping 12s for rate limit before next page")
+                    time.sleep(self._POLYGON_RATE_LIMIT_S)
                 else:
                     break
 
@@ -1025,6 +1085,99 @@ class DataExtractor:
         except Exception as exc:
             logger.warning("AlphaVantage news sentiment error for %s: %s", symbol, exc)
             return None
+
+    def _alpaca_news_sentiment(
+        self,
+        symbol: str,
+        start:  str,
+        end:    str,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Alpaca REST news API (data.alpaca.markets/v1beta1/news).
+        Returns per-ticker AI ``insights`` with sentiment + sentiment_reasoning,
+        plus keywords — this is the 'Massive'-style structured sentiment data.
+
+        Auth: uses the Alpaca API key/secret stored in keys.txt under "massive"
+        or standard ALPACA_API_KEY / ALPACA_SECRET_KEY environment variables.
+
+        Pagination handled via ``next_page_token``.
+        Rate limit: ~200 req/min on free tier.
+        """
+        # Try the 'massive' key as the Alpaca secret, std key ID as header
+        api_key    = _alpaca_key() or _get_key("ALPACA_API_KEY", "alpaca code")
+        secret_key = _get_key("ALPACA_SECRET_KEY", "massive")   # massive label = Alpaca secret
+        if not api_key and not secret_key:
+            return None
+
+        rows: list[dict] = []
+        url     = "https://data.alpaca.markets/v1beta1/news"
+        headers = {
+            "APCA-API-KEY-ID":     api_key,
+            "APCA-API-SECRET-KEY": secret_key,
+        }
+        params: dict = {
+            "symbols":         symbol.upper(),
+            "start":           start,
+            "end":             end,
+            "limit":           50,           # max per page for REST news
+            "include_content": "false",
+            "sort":            "asc",
+        }
+
+        try:
+            while True:
+                resp = requests.get(url, headers=headers, params=params, timeout=15)
+                if resp.status_code in (401, 403):
+                    logger.warning("Alpaca news sentiment: unauthorised (key issue) for %s", symbol)
+                    break
+                resp.raise_for_status()
+                data = resp.json()
+
+                for article in data.get("news", []):
+                    pub      = article.get("created_at", "")
+                    headline = article.get("headline", "")
+                    insights = article.get("insights") or []
+
+                    ticker_insights = [
+                        i for i in insights
+                        if str(i.get("ticker", "")).upper() == symbol.upper()
+                    ]
+
+                    if ticker_insights:
+                        raw_sent = ticker_insights[0].get("sentiment", "neutral").lower()
+                    elif insights:
+                        from collections import Counter
+                        raw_sent = Counter(
+                            i.get("sentiment", "neutral").lower() for i in insights
+                        ).most_common(1)[0][0]
+                    else:
+                        raw_sent = "neutral"
+
+                    score_map = {
+                        "positive": 1.0, "negative": -1.0, "neutral": 0.0,
+                        "bullish":  1.0, "bearish":  -1.0,
+                    }
+                    score = score_map.get(raw_sent, 0.0)
+
+                    rows.append({
+                        "date":       pd.to_datetime(pub).tz_localize(None).normalize()
+                                      if pd.to_datetime(pub).tzinfo is None
+                                      else pd.to_datetime(pub).tz_convert(None).normalize(),
+                        "headline":   headline,
+                        "sent_score": score,
+                        "weight":     1.0,
+                    })
+
+                token = data.get("next_page_token")
+                if not token:
+                    break
+                params["page_token"] = token
+
+        except Exception as exc:
+            logger.warning("Alpaca news sentiment error for %s: %s", symbol, exc)
+            return None
+
+        return pd.DataFrame(rows) if rows else None
 
     # -----------------------------------------------------------------------
     # SENTIMENT (insider transactions)
