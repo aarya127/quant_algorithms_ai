@@ -337,9 +337,25 @@ class DataTransformer:
 
             if daily is not None and not daily.empty:
                 daily.index = pd.to_datetime(daily.index).tz_localize(None)
-                df = df.join(daily[["news_sent_score", "news_articles"]], how="left")
-                df = df.rename(columns={"news_articles": "news_count"})
-                df["news_count"]      = df["news_count"].fillna(0).astype(int)
+
+                # Articles published on weekends/holidays need to roll forward to
+                # the next trading day. Use merge_asof(direction="forward") so each
+                # calendar-date entry attaches to the nearest future trading day.
+                spine_dates = df.index.to_frame(index=False).rename(columns={"Date": "trade_date"})
+                daily_reset = daily.reset_index().rename(columns={"date": "trade_date"})
+                daily_reset["trade_date"] = daily_reset["trade_date"].astype("datetime64[us]")
+                spine_dates["trade_date"] = spine_dates["trade_date"].astype("datetime64[us]")
+
+                merged = pd.merge_asof(
+                    spine_dates.sort_values("trade_date"),
+                    daily_reset.sort_values("trade_date"),
+                    on="trade_date",
+                    direction="nearest",   # snap weekend articles to nearest trading day
+                    tolerance=pd.Timedelta("4d"),  # max 4 calendar days gap
+                ).set_index("trade_date")
+
+                df["news_sent_score"] = merged["news_sent_score"].values
+                df["news_count"]      = merged["news_articles"].fillna(0).astype(int).values
                 # 7-day rolling mean — only over days with actual scores
                 df["news_sent_7d"] = (
                     df["news_sent_score"]
