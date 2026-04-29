@@ -923,6 +923,79 @@ class DataExtractor:
         daily = daily.set_index("date").sort_index()
         return daily
 
+    def news_with_scores(
+        self,
+        symbol:       str,
+        start:        str = "",
+        end:          str = "",
+        max_articles: int = 100,
+    ) -> pd.DataFrame:
+        """
+        Article-level news with pre-computed sentiment scores.
+
+        Returns a DataFrame with columns:
+            date        — publication date (normalized, no tz)
+            headline    — article title
+            source      — publisher name
+            provider    — 'alphavantage' | 'finnhub'
+            sent_score  — score ∈ [-1, +1]; positive > 0, negative < 0
+            label       — 'positive' | 'negative' | 'neutral'
+            url         — article URL (if available)
+
+        Sources used (API-limit-safe for UI calls)
+        -------------------------------------------
+        • Alpha Vantage NEWS_SENTIMENT (1 call, 25/day limit)
+        • Finnhub company-news         (1 call, 60/min limit)
+        Polygon is intentionally skipped here to preserve the 5 req/min
+        budget for the data pipeline.
+        """
+        if not start:
+            start = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+        if not end:
+            end = datetime.date.today().isoformat()
+
+        rows: list[dict] = []
+
+        # --- Alpha Vantage (ticker-specific scored sentiment) ---
+        av_df = self._av_news_sentiment(symbol, start, end)
+        if av_df is not None and not av_df.empty:
+            for _, r in av_df.iterrows():
+                score = float(r.get("sent_score", 0.0))
+                rows.append({
+                    "date":       r["date"],
+                    "headline":   r.get("headline", ""),
+                    "source":     "Alpha Vantage",
+                    "provider":   "alphavantage",
+                    "sent_score": score,
+                    "label":      "positive" if score > 0.05 else ("negative" if score < -0.05 else "neutral"),
+                    "url":        r.get("url", ""),
+                })
+
+        # --- Finnhub (no pre-score, derive from article content if available) ---
+        fh_df = self._finnhub_news(symbol, start, end, limit=200)
+        if fh_df is not None and not fh_df.empty:
+            for _, r in fh_df.iterrows():
+                dt = r.get("datetime", pd.NaT)
+                date = pd.Timestamp(dt).tz_localize(None).normalize() if dt is not pd.NaT else pd.NaT
+                rows.append({
+                    "date":       date,
+                    "headline":   r.get("headline", ""),
+                    "source":     str(r.get("source", "Finnhub")),
+                    "provider":   "finnhub",
+                    "sent_score": float("nan"),   # no pre-score from Finnhub
+                    "label":      "neutral",
+                    "url":        r.get("url", ""),
+                })
+
+        if not rows:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(rows)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.sort_values("date", ascending=False)
+        df = df.drop_duplicates(subset=["date", "headline"])
+        return df.head(max_articles).reset_index(drop=True)
+
     # Minimum seconds between Polygon API calls (5 req/min plan)
     _POLYGON_RATE_LIMIT_S: float = 12.0
 

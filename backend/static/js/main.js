@@ -619,139 +619,192 @@ function handleTabChange(target, symbol) {
 function setupSentimentButton(symbol) {
     const button = document.getElementById('analyzeSentimentBtn');
     const container = document.getElementById('sentimentAnalysis');
-    
+
     if (button) {
-        // Remove any existing listeners
         const newButton = button.cloneNode(true);
         button.parentNode.replaceChild(newButton, button);
-        
-        // Add click handler
+
         newButton.addEventListener('click', async function() {
             newButton.disabled = true;
             newButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
-            
-            await loadSentiment(symbol);
-            
+            const days = document.getElementById('sentimentWindowSelect')?.value || 30;
+            await loadSentiment(symbol, days);
             newButton.disabled = false;
-            newButton.innerHTML = '<i class="fas fa-brain"></i> Refresh Analysis';
+            newButton.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
         });
     }
 }
 
 // Load sentiment analysis with dedicated API call
-async function loadSentiment(symbol) {
-    console.log(`🧠 API CALL: /api/sentiment/${symbol}`);
-    
+async function loadSentiment(symbol, days = 30) {
+    console.log(`🧠 API CALL: /api/sentiment/news/${symbol}?days=${days}`);
+
     const container = document.getElementById('sentimentAnalysis');
+    const banner    = document.getElementById('sentimentBanner');
+    const chartWrap = document.getElementById('sentimentChartWrap');
+
     container.innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-3">Analyzing sentiment from multiple sources...</p>
-            <p class="text-muted"><small>This may take 20-30 seconds as we analyze FinBERT, Alpha Vantage, and Insider Trading data</small></p>
-        </div>
-    `;
-    
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3 mb-1">Fetching news from Alpha Vantage & Finnhub…</p>
+            <p class="text-muted small">Uses 1 AV call (25/day budget) + 1 Finnhub call</p>
+        </div>`;
+    banner?.classList.add('d-none');
+    chartWrap?.classList.add('d-none');
+
     try {
-        // Dedicated sentiment API call for this stock
-        const startTime = Date.now();
-        const response = await fetch(`/api/sentiment/${symbol}`);
-        const data = await response.json();
-        const endTime = Date.now();
-        
-        console.log(`✓ ${symbol} sentiment loaded in ${(endTime - startTime)/1000}s`);
-        console.log(`  Sources:`, data.sources?.map(s => s.name).join(', '));
-        
+        const resp = await fetch(`/api/sentiment/news/${symbol}?days=${days}`);
+        const data = await resp.json();
+
         if (!data.success) {
-            container.innerHTML = `<div class="alert alert-warning">${data.error || 'Failed to load sentiment'}</div>`;
+            container.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${data.error || 'Failed to load sentiment'}</div>`;
             return;
         }
-        
-        const overall = data.overall_sentiment;
-        const sentimentClass = overall === 'positive' ? 'positive' : overall === 'negative' ? 'negative' : 'neutral';
-        
-        // Build sources comparison HTML
-        let sourcesHTML = '';
-        if (data.sources && data.sources.length > 0) {
-            sourcesHTML = `
-                <div class="mt-4">
-                    <h6>📊 Source Comparison</h6>
-                    <div class="row">
-            `;
-            
-            data.sources.forEach(source => {
-                const sourceClass = source.sentiment === 'positive' ? 'success' : 
-                                  source.sentiment === 'negative' ? 'danger' : 'secondary';
-                sourcesHTML += `
-                    <div class="col-md-6 mb-3">
-                        <div class="card">
-                            <div class="card-body">
-                                <h6 class="card-title">${source.provider}</h6>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span class="badge bg-${sourceClass}">${source.sentiment.toUpperCase()}</span>
-                                    <strong>${source.score.toFixed(1)}/100</strong>
-                                </div>
-                                <p class="mt-2 mb-0"><small>${source.articles_analyzed || 0} articles analyzed</small></p>
-                                ${source.confidence ? `<p class="mb-0"><small>Confidence: ${(source.confidence * 100).toFixed(1)}%</small></p>` : ''}
-                                ${source.mspr !== undefined ? `<p class="mb-0"><small>MSPR: ${source.mspr.toFixed(2)} (${source.insider_signal})</small></p>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            sourcesHTML += '</div></div>';
+
+        // ---------- banner ----------
+        const scoreEl    = document.getElementById('sentimentScoreVal');
+        const badgeEl    = document.getElementById('sentimentLabelBadge');
+        const scoreCard  = document.getElementById('sentimentScoreCard');
+        const posEl      = document.getElementById('sentPosCount');
+        const negEl      = document.getElementById('sentNegCount');
+        const neuEl      = document.getElementById('sentNeuCount');
+        const srcEl      = document.getElementById('sentSourceCounts');
+        const totalEl    = document.getElementById('sentArticlesTotal');
+
+        const score = data.overall_score;
+        const label = data.overall_label;
+        const colorClass = label === 'positive' ? 'success' : label === 'negative' ? 'danger' : 'secondary';
+
+        if (scoreEl)   scoreEl.textContent = (score >= 0 ? '+' : '') + score.toFixed(3);
+        if (badgeEl) {
+            badgeEl.textContent = label.toUpperCase();
+            badgeEl.className   = `badge mt-2 fs-6 bg-${colorClass}`;
         }
-        
+        if (scoreCard) scoreCard.classList.add(`border-${colorClass}`);
+        if (posEl)   posEl.textContent   = data.positive_count + ' articles';
+        if (negEl)   negEl.textContent   = data.negative_count + ' articles';
+        if (neuEl)   neuEl.textContent   = data.neutral_count  + ' articles (unscored)';
+        if (totalEl) totalEl.textContent = `${data.articles_total} total · ${data.scored_total} scored`;
+
+        if (srcEl && data.source_counts) {
+            srcEl.innerHTML = Object.entries(data.source_counts)
+                .map(([src, n]) => `<div><span class="badge bg-light text-dark me-1">${src}</span>${n} articles</div>`)
+                .join('');
+        }
+
+        banner?.classList.remove('d-none');
+
+        // ---------- trend chart ----------
+        const titleEl = document.getElementById('sentimentChartTitle');
+        if (titleEl) titleEl.textContent = `${data.window_days}-Day Sentiment Trend`;
+
+        if (data.daily && data.daily.length > 0 && chartWrap) {
+            chartWrap.classList.remove('d-none');
+            const labels = data.daily.map(d => d.date);
+            const scores = data.daily.map(d => d.score);
+            const counts = data.daily.map(d => d.count);
+
+            const ctx = document.getElementById('sentimentTrendChart').getContext('2d');
+            if (window._sentTrendChart) window._sentTrendChart.destroy();
+            window._sentTrendChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Sentiment Score',
+                            data: scores,
+                            type: 'line',
+                            borderColor: scores.map(s => s == null ? 'transparent' : (s > 0 ? '#198754' : '#dc3545')),
+                            backgroundColor: 'transparent',
+                            pointBackgroundColor: scores.map(s => s == null ? 'transparent' : (s > 0.05 ? '#198754' : s < -0.05 ? '#dc3545' : '#6c757d')),
+                            borderWidth: 2,
+                            tension: 0.3,
+                            yAxisID: 'yScore',
+                            spanGaps: true,
+                        },
+                        {
+                            label: 'Article Count',
+                            data: counts,
+                            backgroundColor: 'rgba(13, 110, 253, 0.15)',
+                            borderColor: 'rgba(13, 110, 253, 0.4)',
+                            borderWidth: 1,
+                            yAxisID: 'yCount',
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        yScore: {
+                            type: 'linear', position: 'left',
+                            min: -1, max: 1,
+                            title: { display: true, text: 'Score' },
+                            grid: { color: ctx => ctx.tick.value === 0 ? '#aaa' : 'rgba(0,0,0,0.05)' }
+                        },
+                        yCount: {
+                            type: 'linear', position: 'right',
+                            title: { display: true, text: 'Articles' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ---------- article feed ----------
+        if (!data.articles || data.articles.length === 0) {
+            container.innerHTML = '<p class="text-muted">No articles found for the last 30 days.</p>';
+            return;
+        }
+
+        const rows = data.articles.map(a => {
+            const sc     = a.score;
+            const lbl    = a.label;
+            const cls    = lbl === 'positive' ? 'success' : lbl === 'negative' ? 'danger' : 'secondary';
+            const bar    = sc != null ? `<div class="progress mt-1" style="height:4px">
+                <div class="progress-bar bg-${cls}" style="width:${Math.abs(sc)*100}%"></div>
+            </div>` : '';
+            const scoreStr = sc != null ? (sc >= 0 ? '+' : '') + sc.toFixed(3) : '—';
+            const urlStr   = a.url
+                ? `<a href="${a.url}" target="_blank" rel="noopener" class="stretched-link text-decoration-none">${a.headline}</a>`
+                : a.headline;
+            return `
+            <tr>
+                <td class="text-muted small">${a.date}</td>
+                <td class="position-relative small">${urlStr}${bar}</td>
+                <td class="small text-muted">${a.source}</td>
+                <td class="text-center">
+                    ${sc != null
+                        ? `<span class="badge bg-${cls}" title="${scoreStr}">${lbl.toUpperCase()}</span>`
+                        : `<span class="badge bg-light text-muted">—</span>`}
+                </td>
+            </tr>`;
+        }).join('');
+
         container.innerHTML = `
-            <div class="sentiment-container">
-                <div class="sentiment-score ${sentimentClass}">
-                    <div>
-                        <small>Overall Consensus</small>
-                        <h2>${overall.toUpperCase()}</h2>
-                        <p>Confidence: ${(data.confidence * 100).toFixed(1)}%</p>
-                        <p>Agreement: ${data.agreement_level.toUpperCase()}</p>
-                    </div>
-                </div>
-                
-                <div class="alert alert-info">
-                    <strong>Multi-Source Analysis:</strong> ${data.summary}
-                </div>
-                
-                ${sourcesHTML}
-                
-                <div class="sentiment-breakdown">
-                    <div class="sentiment-item">
-                        <i class="fas fa-smile text-success"></i>
-                        <h4>${(data.positive_ratio * 100).toFixed(1)}%</h4>
-                        <small>Positive Sources</small>
-                    </div>
-                    <div class="sentiment-item">
-                        <i class="fas fa-meh text-secondary"></i>
-                        <h4>${(data.neutral_ratio * 100).toFixed(1)}%</h4>
-                        <small>Neutral Sources</small>
-                    </div>
-                    <div class="sentiment-item">
-                        <i class="fas fa-frown text-danger"></i>
-                        <h4>${(data.negative_ratio * 100).toFixed(1)}%</h4>
-                        <small>Negative Sources</small>
-                    </div>
-                </div>
-                
-                <div class="mt-4">
-                    <small class="text-muted">
-                        Total articles: ${data.articles_analyzed || 0} | 
-                        Consensus score: ${data.consensus_score.toFixed(1)}/100 |
-                        Variance: ${data.score_variance.toFixed(1)}
-                    </small>
-                </div>
+            <div class="small text-muted mb-2">
+                Showing ${data.articles.length} articles · Scored articles use Alpha Vantage relevance-weighted scores ∈ [−1, +1]
             </div>
-        `;
-        
-    } catch (error) {
-        console.error(`✗ Error loading sentiment for ${symbol}:`, error);
-        container.innerHTML = '<div class="alert alert-danger">Failed to load sentiment analysis. Please try again.</div>';
+            <div class="table-responsive" style="max-height:480px;overflow-y:auto">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="sticky-top bg-white">
+                        <tr>
+                            <th style="width:90px">Date</th>
+                            <th>Headline</th>
+                            <th style="width:110px">Source</th>
+                            <th style="width:90px" class="text-center">Sentiment</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+
+    } catch (err) {
+        console.error(`✗ Sentiment error for ${symbol}:`, err);
+        container.innerHTML = '<div class="alert alert-danger">Failed to load sentiment. Please try again.</div>';
     }
 }
 

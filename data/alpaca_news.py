@@ -7,6 +7,7 @@ import asyncio
 import websockets
 import json
 import logging
+import os
 from datetime import datetime
 from typing import List, Dict, Callable
 import threading
