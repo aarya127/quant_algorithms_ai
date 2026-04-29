@@ -268,12 +268,24 @@ class FinBertAnalyzer:
         api_key = _key("POLYGON_API_KEY", "massive - 5 api calls/minute")
         if not api_key:
             return []
+
+        # Polygon Starter has a ~2-day publication lag on news.
+        # Clamp end to (today - 3 days) so we stay outside the lag window.
+        lag_cutoff = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
+        effective_end = min(end, lag_cutoff)          # don't request data inside lag
+        effective_start = start                        # caller's start is always fine
+
+        if effective_end < effective_start:
+            # Entire requested range is inside the lag — nothing to fetch
+            logger.debug("Polygon: requested window %s–%s is inside publication lag; skipping", start, end)
+            return []
+
         articles: list[dict] = []
         url    = "https://api.polygon.io/v2/reference/news"
         params: dict = {
             "ticker":            symbol.upper(),
-            "published_utc.gte": start,
-            "published_utc.lte": end,
+            "published_utc.gte": effective_start,
+            "published_utc.lte": effective_end,
             "order":             "asc",
             "limit":             1000,
             "apiKey":            api_key,
@@ -281,7 +293,7 @@ class FinBertAnalyzer:
         fetched = 0
         try:
             while url and fetched < self.max_articles:
-                resp = requests.get(url, params=params, timeout=15)
+                resp = requests.get(url, params=params, timeout=(5, 15))  # (connect, read)
                 resp.raise_for_status()
                 data = resp.json()
                 for article in data.get("results", []):
@@ -360,7 +372,7 @@ class FinBertAnalyzer:
                     "to":     end,
                     "token":  api_key,
                 },
-                timeout=15,
+                timeout=(5, 15),   # (connect, read) — prevents DNS hangs
             )
             resp.raise_for_status()
             for item in resp.json():

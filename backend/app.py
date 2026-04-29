@@ -671,6 +671,100 @@ def sentiment_analysis(symbol):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/sentiment/news/<symbol>')
+def sentiment_news(symbol):
+    """
+    Article-level sentiment feed + daily trend for the Sentiment tab.
+
+    Query params:
+        days  — lookback window in calendar days (default 30, max 365)
+
+    Returns up to 150 articles (AV + Finnhub) with pre-computed scores,
+    plus a daily aggregate series for charting.
+    API budget: 1 AV call (25/day) + 1 Finnhub call (60/min).
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+        from algorithms.machine_learning_algorithms.data_pipelines.extractor import DataExtractor
+
+        sym      = symbol.upper()
+        days     = min(int(request.args.get('days', 30)), 365)
+        end      = datetime.date.today().isoformat()
+        start    = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+
+        ex = DataExtractor()
+
+        # Article-level feed (AV scored + Finnhub unscored); larger cap for longer windows
+        max_art = 150 if days > 30 else 100
+        art_df = ex.news_with_scores(sym, start=start, end=end, max_articles=max_art)
+
+        # Daily aggregate trend (uses the same sources + weights)
+        daily_df = ex.news_sentiment_history(sym, start=start, end=end, use_finbert=False)
+
+        # --- Build articles list ---
+        articles = []
+        if not art_df.empty:
+            for _, r in art_df.iterrows():
+                score = r.get("sent_score")
+                score_val = float(score) if score == score else None  # NaN → None
+                articles.append({
+                    "date":      str(r["date"])[:10],
+                    "headline":  str(r.get("headline", "")),
+                    "source":    str(r.get("source", "")),
+                    "provider":  str(r.get("provider", "")),
+                    "score":     score_val,
+                    "label":     str(r.get("label", "neutral")),
+                    "url":       str(r.get("url", "") or ""),
+                })
+
+        # --- Build daily trend ---
+        daily = []
+        if not daily_df.empty:
+            for dt, row in daily_df.iterrows():
+                sc = row.get("news_sent_score")
+                daily.append({
+                    "date":  str(dt)[:10],
+                    "score": float(sc) if sc == sc else None,
+                    "count": int(row.get("news_articles", 0)),
+                })
+
+        # --- Overall summary (from AV-scored articles only) ---
+        scored = [a for a in articles if a["score"] is not None]
+        if scored:
+            mean_score = sum(a["score"] for a in scored) / len(scored)
+            overall_label = "positive" if mean_score > 0.05 else ("negative" if mean_score < -0.05 else "neutral")
+            pos = sum(1 for a in scored if a["label"] == "positive")
+            neg = sum(1 for a in scored if a["label"] == "negative")
+            neu = sum(1 for a in scored if a["label"] == "neutral")
+        else:
+            mean_score = 0.0
+            overall_label = "neutral"
+            pos = neg = neu = 0
+
+        source_counts = {}
+        for a in articles:
+            source_counts[a["provider"]] = source_counts.get(a["provider"], 0) + 1
+
+        return jsonify({
+            "success":        True,
+            "symbol":         sym,
+            "window_days":    days,
+            "overall_score":  round(mean_score, 3),
+            "overall_label":  overall_label,
+            "articles_total": len(articles),
+            "scored_total":   len(scored),
+            "positive_count": pos,
+            "negative_count": neg,
+            "neutral_count":  neu,
+            "source_counts":  source_counts,
+            "daily":          daily,
+            "articles":       articles,
+        })
+    except Exception as exc:
+        import traceback
+        return jsonify({"success": False, "error": str(exc), "traceback": traceback.format_exc()})
+
+
 @app.route('/api/scenarios/<symbol>')
 def scenario_analysis(symbol):
     """Generate bull/base/bear scenarios using comprehensive data"""
