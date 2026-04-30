@@ -170,7 +170,36 @@ class DataTransformer:
         logger.info("Building feature matrix for %s (period=%s)", sym, period)
 
         # ── 1. Spine: OHLCV + computed technical indicators ─────────────
-        spine = self.ex.technicals(sym, period=period, interval=interval)
+        # Longest rolling window is SMA_200 (200 trading days ≈ 285 calendar
+        # days). Fetch a warmup buffer before the requested start so that the
+        # first bar in the output period has fully-warmed indicators instead
+        # of NaN. We trim the warmup rows back out before returning.
+        _WARMUP_CALENDAR_DAYS = 300   # conservative: covers SMA_200 + ATR/RSI tails
+
+        # Map period strings to approximate calendar-day counts
+        _PERIOD_DAYS: dict = {
+            "1d": 1, "5d": 5, "1mo": 30, "3mo": 91, "6mo": 182,
+            "1y": 365, "2y": 730, "5y": 1825, "10y": 3650,
+        }
+
+        today = datetime.date.today()
+
+        if start and end:
+            # Explicit date range supplied — extend start backward for warmup
+            requested_start = datetime.date.fromisoformat(start)
+            warmup_start    = requested_start - datetime.timedelta(days=_WARMUP_CALENDAR_DAYS)
+            spine = self.ex.technicals(sym, start=warmup_start.isoformat(),
+                                       end=end, interval=interval)
+        elif period in _PERIOD_DAYS:
+            requested_start = today - datetime.timedelta(days=_PERIOD_DAYS[period])
+            warmup_start    = requested_start - datetime.timedelta(days=_WARMUP_CALENDAR_DAYS)
+            spine = self.ex.technicals(sym, start=warmup_start.isoformat(),
+                                       end=today.isoformat(), interval=interval)
+        else:
+            # Unknown period (e.g. 'ytd', 'max') — no warmup logic, use as-is
+            requested_start = None
+            spine = self.ex.technicals(sym, period=period, interval=interval)
+
         if spine is None or spine.empty:
             logger.error("No OHLCV data for %s — aborting", sym)
             return pd.DataFrame()
@@ -180,27 +209,49 @@ class DataTransformer:
         spine.index.name = "Date"
         spine["symbol"] = sym
 
+        # ── Trim warmup rows: keep only the originally-requested date range ──
+        if requested_start is not None:
+            cutoff = pd.Timestamp(requested_start)
+            spine = spine[spine.index >= cutoff]
+
         # Determine date bounds from spine (used for ranged sub-queries)
         start_str = spine.index.min().date().isoformat()
         end_str   = spine.index.max().date().isoformat()
+        logger.info("[1/7] Spine ready: %d trading days  %s → %s", len(spine), start_str, end_str)
 
         # ── 2. Derived price / volatility ratios ────────────────────────
         spine = self._add_derived_features(spine)
+        logger.info("[2/7] Derived features added: %d cols", len(spine.columns))
 
         # ── 3. Fundamentals (broadcast across all dates) ─────────────────
         spine = self._merge_fundamentals(spine, sym)
+        fund_cols = [c for c in spine.columns if c.startswith('fund_')]
+        logger.info("[3/7] Fundamentals merged: %d fund_ cols, first valid: %s",
+                    len(fund_cols),
+                    spine[fund_cols[0]].first_valid_index() if fund_cols else 'N/A')
 
-        # ── 4. News — daily article count ────────────────────────────────
+        # ── 4. News — daily article count + sentiment ────────────────────
         spine = self._merge_news(spine, sym, start_str, end_str)
+        for _nc in ('news_sent_av', 'news_sent_polygon', 'news_sent_finnhub', 'news_sent_score'):
+            if _nc in spine.columns:
+                _n = spine[_nc].notna().sum()
+                logger.info("[4/7] %-24s: %d/%d rows filled (%.0f%%)",
+                            _nc, _n, len(spine), _n / len(spine) * 100)
 
         # ── 5. Insider sentiment (monthly → daily by forward-fill) ───────
         spine = self._merge_sentiment(spine, sym)
+        insdr_cols = [c for c in spine.columns if c.startswith('insdr_')]
+        logger.info("[5/7] Insider sentiment: %d insdr_ cols", len(insdr_cols))
 
         # ── 6. Options snapshot — surface metrics ─────────────────────────
         spine = self._merge_options_snapshot(spine, sym)
+        opt_cols = [c for c in spine.columns if c.startswith('opt_')]
+        logger.info("[6/7] Options snapshot: %d opt_ cols", len(opt_cols))
 
         # ── 7. Earnings calendar proximity flags ─────────────────────────
         spine = self._merge_earnings(spine, sym)
+        earn_cols = [c for c in spine.columns if c.startswith('earn_')]
+        logger.info("[7/7] Earnings flags: %d earn_ cols", len(earn_cols))
 
         # ── 8. Column ordering: symbol first, then chronological groups ──
         group_order = (
@@ -322,10 +373,16 @@ class DataTransformer:
     ) -> pd.DataFrame:
         """Merge daily article count + sentiment scores into the spine.
 
-        Adds three columns:
-            news_count       — articles published on each trading day
-            news_sent_score  — mean sentiment score that day (-1 to +1)
-            news_sent_7d     — 7-trading-day rolling mean of sent_score
+        Adds eight columns:
+            news_count            — articles published on each trading day (all sources)
+            news_sent_score       — blended mean sentiment score (-1 to +1)
+            news_sent_av          — Alpha Vantage daily weighted-mean score (-1 to +1)
+            news_sent_polygon     — Polygon / Alpaca AI-insight daily score (-1 to +1)
+            news_sent_finnhub     — Finnhub headlines scored by FinBERT (-1 to +1)
+            news_sent_7d          — 7-trading-day rolling mean of blended score
+            news_sent_av_7d       — 7-trading-day rolling mean of AV score
+            news_sent_polygon_7d  — 7-trading-day rolling mean of Polygon score
+            news_sent_finnhub_7d  — 7-trading-day rolling mean of Finnhub FinBERT score
 
         Source priority (handled inside extractor):
             1. Polygon /v3/reference/news  (AI insights per ticker)
@@ -337,10 +394,16 @@ class DataTransformer:
 
             if daily is not None and not daily.empty:
                 daily.index = pd.to_datetime(daily.index).tz_localize(None)
+                logger.info("  news_sentiment_history returned %d article-days  %s → %s",
+                            len(daily), daily.index.min().date(), daily.index.max().date())
+                for _src_col in ('news_sent_av', 'news_sent_polygon', 'news_sent_finnhub'):
+                    if _src_col in daily.columns:
+                        _n = daily[_src_col].notna().sum()
+                        logger.info("  %-24s: %d/%d article-days with scores", _src_col, _n, len(daily))
 
                 # Articles published on weekends/holidays need to roll forward to
-                # the next trading day. Use merge_asof(direction="forward") so each
-                # calendar-date entry attaches to the nearest future trading day.
+                # the next trading day. Use merge_asof(direction="nearest") so each
+                # calendar-date entry attaches to the nearest trading day.
                 spine_dates = df.index.to_frame(index=False).rename(columns={"Date": "trade_date"})
                 daily_reset = daily.reset_index().rename(columns={"date": "trade_date"})
                 daily_reset["trade_date"] = daily_reset["trade_date"].astype("datetime64[us]")
@@ -354,13 +417,41 @@ class DataTransformer:
                     tolerance=pd.Timedelta("4d"),  # max 4 calendar days gap
                 ).set_index("trade_date")
 
-                df["news_sent_score"] = merged["news_sent_score"].values
-                df["news_count"]      = merged["news_articles"].fillna(0).astype(int).values
-                # 7-day rolling mean — only over days with actual scores
+                df["news_sent_score"]   = merged["news_sent_score"].values
+                df["news_sent_av"]      = merged["news_sent_av"].values if "news_sent_av" in merged.columns else float("nan")
+                df["news_sent_polygon"] = merged["news_sent_polygon"].values if "news_sent_polygon" in merged.columns else float("nan")
+                df["news_sent_finnhub"] = merged["news_sent_finnhub"].values if "news_sent_finnhub" in merged.columns else float("nan")
+                df["news_count"]        = merged["news_articles"].fillna(0).astype(int).values
+
+                logger.info("  After merge_asof (tol=4d): news_sent_av filled %d/%d trading days",
+                            df["news_sent_av"].notna().sum(), len(df))
+
+                # Forward-fill sentiment scores: carry the last known score into
+                # days with no articles (no look-ahead bias — scores are based
+                # on already-published articles).  Cap at 20 trading days (~4 weeks)
+                # so a stale signal doesn't propagate across an extended quiet spell.
+                # Back-fill covers the very start of the window where no prior
+                # article may exist yet (limited to 5 days to avoid large back-smear).
+                _FFILL_LIMIT = 20  # trading days
+                _BFILL_LIMIT = 5   # trading days (start-of-window only)
+                for _sc in ("news_sent_score", "news_sent_av", "news_sent_polygon", "news_sent_finnhub"):
+                    df[_sc] = df[_sc].ffill(limit=_FFILL_LIMIT).bfill(limit=_BFILL_LIMIT)
+
+                logger.info("  After ffill(%d)/bfill(%d): news_sent_av filled %d/%d trading days",
+                            _FFILL_LIMIT, _BFILL_LIMIT, df["news_sent_av"].notna().sum(), len(df))
+
+                # 7-day rolling means for each score column
                 df["news_sent_7d"] = (
-                    df["news_sent_score"]
-                    .rolling(7, min_periods=1)
-                    .mean()
+                    df["news_sent_score"].rolling(7, min_periods=1).mean()
+                )
+                df["news_sent_av_7d"] = (
+                    df["news_sent_av"].rolling(7, min_periods=1).mean()
+                )
+                df["news_sent_polygon_7d"] = (
+                    df["news_sent_polygon"].rolling(7, min_periods=1).mean()
+                )
+                df["news_sent_finnhub_7d"] = (
+                    df["news_sent_finnhub"].rolling(7, min_periods=1).mean()
                 )
             else:
                 # Fallback: raw article count from the simple news() method
@@ -378,15 +469,27 @@ class DataTransformer:
                         .sort_index()
                     )
                     df = df.join(daily_ct, how="left")
-                df["news_count"]     = df.get("news_count", 0).fillna(0).astype(int)
-                df["news_sent_score"] = float("nan")
-                df["news_sent_7d"]    = float("nan")
+                df["news_count"]        = df.get("news_count", 0).fillna(0).astype(int)
+                df["news_sent_score"]   = float("nan")
+                df["news_sent_av"]      = float("nan")
+                df["news_sent_polygon"] = float("nan")
+                df["news_sent_finnhub"] = float("nan")
+                df["news_sent_7d"]         = float("nan")
+                df["news_sent_av_7d"]      = float("nan")
+                df["news_sent_polygon_7d"] = float("nan")
+                df["news_sent_finnhub_7d"] = float("nan")
 
         except Exception as exc:
             logger.warning("News merge failed for %s: %s", sym, exc)
-            df["news_count"]      = 0
-            df["news_sent_score"] = float("nan")
-            df["news_sent_7d"]    = float("nan")
+            df["news_count"]        = 0
+            df["news_sent_score"]   = float("nan")
+            df["news_sent_av"]      = float("nan")
+            df["news_sent_polygon"] = float("nan")
+            df["news_sent_finnhub"] = float("nan")
+            df["news_sent_7d"]         = float("nan")
+            df["news_sent_av_7d"]      = float("nan")
+            df["news_sent_polygon_7d"] = float("nan")
+            df["news_sent_finnhub_7d"] = float("nan")
         return df
 
     def _merge_sentiment(self, df: pd.DataFrame, sym: str) -> pd.DataFrame:

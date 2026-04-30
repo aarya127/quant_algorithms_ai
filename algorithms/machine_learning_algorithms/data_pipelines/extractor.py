@@ -732,24 +732,50 @@ class DataExtractor:
         key = _finnhub_key()
         if not key:
             return None
+
+        import pickle
+        _CACHE_DIR  = Path(__file__).parent / ".pipeline_cache"
+        _CACHE_DIR.mkdir(exist_ok=True)
+        _cache_path = _CACHE_DIR / f"fh_news_{symbol.upper()}_{start}_{end}.pkl"
+        _now        = time.time()
+        if _cache_path.exists() and (_now - _cache_path.stat().st_mtime) < 86400:
+            try:
+                cached = pickle.loads(_cache_path.read_bytes())
+                if cached is not None:
+                    logger.debug("Finnhub cache hit: %s (%s → %s)", symbol, start, end)
+                    return cached
+            except Exception:
+                pass
+
         url = "https://finnhub.io/api/v1/company-news"
         try:
             resp = requests.get(
                 url,
-                params={"symbol": symbol, "_from": start, "to": end, "token": key},
+                # "from" is a Python reserved word so pass params as a dict literal
+                params={"symbol": symbol, "from": start, "to": end, "token": key},
                 timeout=10,
             )
             resp.raise_for_status()
-            articles = resp.json()[:limit]
+            articles = resp.json()
             if not articles:
                 return None
+            # Filter strictly to the requested date range before applying limit
             df = pd.DataFrame(articles)
             df["datetime"] = pd.to_datetime(df["datetime"], unit="s", utc=True)
-            df = df.rename(columns={"summary": "summary", "headline": "headline",
-                                     "source": "source", "url": "url"})
+            start_ts = pd.Timestamp(start, tz="UTC")
+            end_ts   = pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)
+            df = df[(df["datetime"] >= start_ts) & (df["datetime"] < end_ts)]
+            df = df.head(limit)
+            if df.empty:
+                return None
             df["provider"] = "finnhub"
             cols = ["datetime", "headline", "summary", "source", "url", "provider"]
-            return df[[c for c in cols if c in df.columns]]
+            result = df[[c for c in cols if c in df.columns]]
+            try:
+                _cache_path.write_bytes(pickle.dumps(result))
+            except Exception:
+                pass
+            return result
         except Exception as exc:
             logger.warning("Finnhub news error for %s: %s", symbol, exc)
             return None
@@ -818,8 +844,11 @@ class DataExtractor:
         Daily news sentiment scores aggregated from multiple sources.
 
         Returns a DataFrame indexed by date with columns:
-            news_sent_score   — mean daily sentiment score (-1 to +1)
-            news_articles     — article count for that day
+            news_sent_score    — blended daily sentiment score (-1 to +1) across all scored sources
+            news_sent_av       — Alpha Vantage relevance-weighted daily score (-1 to +1)
+            news_sent_polygon  — Polygon / Alpaca AI-insight daily score (-1 to +1)
+            news_sent_finnhub  — Finnhub headlines scored by FinBERT P(pos)-P(neg) (-1 to +1)
+            news_articles      — total article count for that day (all sources)
 
         Parameters
         ----------
@@ -867,61 +896,162 @@ class DataExtractor:
 
         # ------------------------------------------------------------------
         # Default path: API pre-scores (fast, no ML inference)
+        # Per-source frames kept separate to produce per-source columns.
         # ------------------------------------------------------------------
-        frames: list[pd.DataFrame] = []
+        poly_frames: list[pd.DataFrame] = []   # Polygon + Alpaca AI insights
+        av_frames:   list[pd.DataFrame] = []   # Alpha Vantage relevance-weighted
 
         poly = self._polygon_news_sentiment(symbol, start, end)
         if poly is not None and not poly.empty:
-            frames.append(poly)
+            poly_frames.append(poly)
             logger.info("Polygon news sentiment: %d articles for %s", len(poly), symbol)
 
-        av = self._av_news_sentiment(symbol, start, end)
-        if av is not None and not av.empty:
-            frames.append(av)
-            logger.info("AlphaVantage news sentiment: %d articles for %s", len(av), symbol)
+        # AV caps results at 1000 per call. For windows > 90 days, batch by
+        # 90-day chunks so high-volume tickers (NVDA: ~10 articles/day) stay
+        # under the 1000-article cap and get full per-batch coverage.
+        # Stop early if rate-limited so we don't waste quota on subsequent batches.
+        _av_start_dt = datetime.date.fromisoformat(start)
+        _av_end_dt   = datetime.date.fromisoformat(end)
+        _av_window   = 30  # days per batch — keeps NVDA (≈11 articles/day) under AV's 1000-article cap
+        _av_cursor   = _av_start_dt
+        _av_total    = 0
+        _av_batches  = 0
+        _av_rl_hit   = False
+        while _av_cursor < _av_end_dt:
+            _b_end   = min(_av_cursor + datetime.timedelta(days=_av_window - 1), _av_end_dt)
+            _av_batches += 1
+            # Pass allow_stale=True so a rate-limited call still returns cached data
+            av_batch = self._av_news_sentiment(symbol, _av_cursor.isoformat(), _b_end.isoformat(),
+                                               allow_stale=True)
+            if av_batch is not None and not av_batch.empty:
+                av_frames.append(av_batch)
+                _av_total += len(av_batch)
+                logger.info("  AV batch %d (%s → %s): %d articles",
+                            _av_batches, _av_cursor, _b_end, len(av_batch))
+            elif av_batch is None and not _av_rl_hit:
+                # None with no cache available → live rate-limit, no fallback
+                _av_rl_hit = True
+                logger.warning("AlphaVantage rate-limit reached after %d batches, no cache available — skipping batch",
+                               _av_batches)
+            _av_cursor = _b_end + datetime.timedelta(days=1)
+        if _av_total:
+            logger.info("AlphaVantage news sentiment: %d articles for %s (%d batches)",
+                        _av_total, symbol, _av_batches)
 
         alp = self._alpaca_news_sentiment(symbol, start, end)
         if alp is not None and not alp.empty:
-            frames.append(alp)
+            poly_frames.append(alp)  # same AI-insight format as Polygon
             logger.info("Alpaca news sentiment (insights): %d articles for %s", len(alp), symbol)
 
-        if not frames:
-            # Fallback: Finnhub — count only, score = NaN
-            fh = self._finnhub_news(symbol, start, end, limit=500)
-            if fh is not None and not fh.empty:
-                fh["date"] = pd.to_datetime(fh["datetime"]).dt.tz_localize(None).dt.normalize()
-                fh["sent_score"] = float("nan")
-                fh["weight"]     = 1.0
-                frames.append(fh[["date", "sent_score", "weight"]])
+        # Finnhub: fetch articles then score headlines with FinBERT
+        fh_frames:  list[pd.DataFrame] = []   # for article count (all FH articles)
+        fhb_frames: list[pd.DataFrame] = []   # FinBERT-scored FH articles
+        fh = self._finnhub_news(symbol, start, end, limit=500)
+        if fh is not None and not fh.empty:
+            fh_prep = fh.copy()
+            fh_prep["date"]       = pd.to_datetime(fh_prep["datetime"]).dt.tz_localize(None).dt.normalize()
+            fh_prep["sent_score"] = float("nan")
+            fh_prep["weight"]     = 1.0
 
-        if not frames:
+            # Run FinBERT on each Finnhub headline to get a proper sentiment score
+            try:
+                from sentiment.finbert import FinBertAnalyzer, _load_model
+                _load_model()   # load once
+                analyzer = FinBertAnalyzer()
+                fb_rows: list[dict] = []
+                for _, row in fh_prep.iterrows():
+                    text = str(row.get("headline", "") or "")
+                    summary = str(row.get("summary", "") or "")
+                    full_text = (text + " " + summary).strip()
+                    _, probs = analyzer.get_sentiment(full_text)
+                    if probs:
+                        score = probs.get("positive", 0.0) - probs.get("negative", 0.0)
+                        fb_rows.append({"date": row["date"], "headline": text,
+                                        "sent_score": score, "weight": 1.0})
+                if fb_rows:
+                    fhb_frames.append(pd.DataFrame(fb_rows))
+                    logger.info("Finnhub FinBERT scored: %d articles for %s", len(fb_rows), symbol)
+            except ImportError:
+                logger.warning("FinBERT not installed — Finnhub articles unscored")
+            except Exception as exc:
+                logger.warning("Finnhub FinBERT scoring error for %s: %s", symbol, exc)
+
+            keep_cols = ["date", "sent_score", "weight"]
+            if "headline" in fh_prep.columns:
+                keep_cols.insert(1, "headline")
+            fh_frames.append(fh_prep[keep_cols])
+            logger.info("Finnhub news count: %d articles for %s", len(fh_prep), symbol)
+
+        all_frames = poly_frames + av_frames + fh_frames
+        if not all_frames:
             return pd.DataFrame()
 
-        combined = pd.concat(frames, ignore_index=True)
+        def _agg_daily(frames: list, score_col: str) -> pd.DataFrame:
+            """Weighted-mean daily sentiment + article count from *frames*."""
+            if not frames:
+                return pd.DataFrame()
+            combined = pd.concat(frames, ignore_index=True)
+            if "headline" in combined.columns:
+                combined = combined.drop_duplicates(subset=["date", "headline"])
 
-        # De-duplicate by (date, headline) if headline col exists
-        if "headline" in combined.columns:
-            combined = combined.drop_duplicates(subset=["date", "headline"])
+            def _agg(g: pd.DataFrame) -> pd.Series:
+                valid = g["sent_score"].notna()
+                if valid.any():
+                    w = g.loc[valid, "weight"].fillna(1.0)
+                    s = g.loc[valid, "sent_score"]
+                    score = float((s * w).sum() / w.sum())
+                else:
+                    score = float("nan")
+                return pd.Series({score_col: score, "news_articles": len(g)})
 
-        # Daily aggregation: weighted mean score + article count
-        def _agg(g: pd.DataFrame) -> pd.Series:
-            valid = g["sent_score"].notna()
-            if valid.any():
-                w = g.loc[valid, "weight"].fillna(1.0)
-                s = g.loc[valid, "sent_score"]
-                score = float((s * w).sum() / w.sum())
-            else:
-                score = float("nan")
-            return pd.Series({"news_sent_score": score, "news_articles": len(g)})
+            agg = combined.groupby("date").apply(_agg).reset_index()
+            agg["date"] = pd.to_datetime(agg["date"])
+            return agg.set_index("date").sort_index()
 
-        daily = (
-            combined.groupby("date")
-            .apply(_agg)
-            .reset_index()
+        # Per-source daily aggregations
+        poly_daily = _agg_daily(poly_frames, "news_sent_polygon")
+        av_daily   = _agg_daily(av_frames,   "news_sent_av")
+        fhb_daily  = _agg_daily(fhb_frames,  "news_sent_finnhub")
+
+        # Blended score across all scored sources (API scores + FinBERT-scored Finnhub)
+        scored_frames = poly_frames + av_frames + fhb_frames
+        blended_daily = _agg_daily(scored_frames if scored_frames else fh_frames, "news_sent_score")
+
+        # Total article count across all sources (including Finnhub)
+        total_daily = _agg_daily(all_frames, "_unused")
+
+        if blended_daily.empty and total_daily.empty:
+            return pd.DataFrame()
+
+        # Build a unified daily index from the union of all source dates
+        all_dates = total_daily.index if not total_daily.empty else blended_daily.index
+        daily = pd.DataFrame(index=all_dates)
+        daily.index.name = "date"
+
+        if not blended_daily.empty:
+            daily = daily.join(blended_daily[["news_sent_score"]], how="left")
+        else:
+            daily["news_sent_score"] = float("nan")
+
+        if not poly_daily.empty:
+            daily = daily.join(poly_daily[["news_sent_polygon"]], how="left")
+        else:
+            daily["news_sent_polygon"] = float("nan")
+
+        if not av_daily.empty:
+            daily = daily.join(av_daily[["news_sent_av"]], how="left")
+        else:
+            daily["news_sent_av"] = float("nan")
+
+        if not fhb_daily.empty:
+            daily = daily.join(fhb_daily[["news_sent_finnhub"]], how="left")
+        else:
+            daily["news_sent_finnhub"] = float("nan")
+
+        daily["news_articles"] = (
+            total_daily["news_articles"].reindex(daily.index).fillna(0).astype(int)
         )
-        daily["date"] = pd.to_datetime(daily["date"])
-        daily = daily.set_index("date").sort_index()
-        return daily
+        return daily.sort_index()
 
     def news_with_scores(
         self,
@@ -1089,12 +1219,38 @@ class DataExtractor:
         symbol: str,
         start:  str,
         end:    str,
+        allow_stale: bool = True,
     ) -> Optional[pd.DataFrame]:
         """
         Alpha Vantage NEWS_SENTIMENT endpoint.
         Returns ticker-specific sentiment score (-1 to +1) weighted by relevance.
-        Rate limit: 25 calls/day on free tier — use sparingly.
+        Rate limit: 25 calls/day on free tier — results are cached to disk for
+        24 hours so repeated pipeline runs within a day never re-fetch.
+
+        allow_stale : when True, return a stale (>24h) cache entry rather than
+                      None when a live call is rate-limited.  This ensures
+                      subsequent pipeline runs on the same day always return
+                      data even after the quota is exhausted.
         """
+        import pickle
+
+        # --- Cache paths ---
+        _CACHE_DIR = Path(__file__).parent / ".pipeline_cache"
+        _CACHE_DIR.mkdir(exist_ok=True)
+        _cache_key  = f"av_news_{symbol.upper()}_{start}_{end}.pkl"
+        _cache_path = _CACHE_DIR / _cache_key
+        _now        = time.time()
+
+        # --- Fresh cache (< 24 h) ---
+        if _cache_path.exists() and (_now - _cache_path.stat().st_mtime) < 86400:
+            try:
+                cached = pickle.loads(_cache_path.read_bytes())
+                if cached is not None:   # don't return a cached failure
+                    logger.debug("AV cache hit (fresh): %s (%s → %s)", symbol, start, end)
+                    return cached
+            except Exception:
+                pass
+
         key = _alphavantage_key()
         if not key:
             return None
@@ -1121,8 +1277,16 @@ class DataExtractor:
             data = resp.json()
 
             if "Information" in data or "Note" in data:
-                # Rate-limit message
+                # Rate-limit hit — return stale cache if available, else None
                 logger.warning("AlphaVantage rate-limited for %s news sentiment", symbol)
+                if allow_stale and _cache_path.exists():
+                    try:
+                        stale = pickle.loads(_cache_path.read_bytes())
+                        if stale is not None:
+                            logger.info("AV cache fallback (stale): %s (%s → %s)", symbol, start, end)
+                            return stale
+                    except Exception:
+                        pass
                 return None
 
             rows: list[dict] = []
@@ -1153,7 +1317,14 @@ class DataExtractor:
                     "weight":     relevance,
                 })
 
-            return pd.DataFrame(rows) if rows else None
+            result = pd.DataFrame(rows) if rows else pd.DataFrame()
+            # Cache successful result (DataFrame, possibly empty — not None)
+            try:
+                _cache_path.write_bytes(pickle.dumps(result))
+                logger.debug("AV cache written: %s (%s → %s) %d rows", symbol, start, end, len(result))
+            except Exception:
+                pass
+            return result if not result.empty else None
 
         except Exception as exc:
             logger.warning("AlphaVantage news sentiment error for %s: %s", symbol, exc)
@@ -1355,6 +1526,8 @@ class DataExtractor:
         symbol:   str,
         period:   str = "1y",
         interval: str = "1d",
+        start:    str = "",
+        end:      str = "",
     ) -> pd.DataFrame:
         """
         OHLCV bars enriched with common technical indicators.
@@ -1365,8 +1538,14 @@ class DataExtractor:
         RSI_14, MACD, MACD_signal, MACD_hist,
         BB_upper, BB_mid, BB_lower,
         ATR_14, OBV, VWAP (intraday), daily_return, log_return
+
+        Parameters
+        ----------
+        start / end : 'YYYY-MM-DD' — if both supplied, used instead of period.
+                      Pass a start that is earlier than you need to warm up
+                      rolling indicators; the caller trims back afterward.
         """
-        df = self._yf_ohlcv(symbol, "", "", period, interval)
+        df = self._yf_ohlcv(symbol, start, end, period, interval)
         if df is None or df.empty:
             return pd.DataFrame()
 
