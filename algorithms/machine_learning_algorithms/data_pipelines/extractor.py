@@ -1241,15 +1241,15 @@ class DataExtractor:
         _cache_path = _CACHE_DIR / _cache_key
         _now        = time.time()
 
-        # --- Fresh cache (< 24 h) ---
-        if _cache_path.exists() and (_now - _cache_path.stat().st_mtime) < 86400:
+        # --- Cache: use any existing valid entry, never re-fetch if data is present ---
+        if _cache_path.exists():
             try:
                 cached = pickle.loads(_cache_path.read_bytes())
-                if cached is not None:   # don't return a cached failure
-                    logger.debug("AV cache hit (fresh): %s (%s → %s)", symbol, start, end)
+                if cached is not None:
+                    logger.debug("AV cache hit: %s (%s → %s)", symbol, start, end)
                     return cached
             except Exception:
-                pass
+                pass  # corrupt cache — fall through to live fetch
 
         key = _alphavantage_key()
         if not key:
