@@ -238,15 +238,19 @@ class DataTransformer:
         spine.index.name = "Date"
         spine["symbol"] = sym
 
-        # ── Trim warmup rows: keep only the originally-requested date range ──
+        # Determine requested date bounds (used for ranged sub-queries).
+        # Keep the warmup rows in spine during feature computation so that
+        # shift()-based indicators (momentum_12m needs shift(257)) are
+        # fully warmed. Trim back to the requested window at the very end.
         if requested_start is not None:
-            cutoff = pd.Timestamp(requested_start)
-            spine = spine[spine.index >= cutoff]
-
-        # Determine date bounds from spine (used for ranged sub-queries)
-        start_str = spine.index.min().date().isoformat()
-        end_str   = spine.index.max().date().isoformat()
-        logger.info("[1/7] Spine ready: %d trading days  %s → %s", len(spine), start_str, end_str)
+            _trim_cutoff = pd.Timestamp(requested_start)
+            start_str = requested_start.isoformat()
+        else:
+            _trim_cutoff = None
+            start_str = spine.index.min().date().isoformat()
+        end_str = spine.index.max().date().isoformat()
+        logger.info("[1/11] Spine ready: %d trading days (incl. warmup)  %s → %s",
+                    len(spine), spine.index.min().date(), spine.index.max().date())
 
         # ── 2. Derived price / volatility ratios ────────────────────────
         spine = self._add_derived_features(spine)
@@ -310,7 +314,13 @@ class DataTransformer:
         earn_cols = [c for c in spine.columns if c.startswith('earn_')]
         logger.info("[11/11] Earnings flags: %d earn_ cols", len(earn_cols))
 
-        # ── 12. Column ordering: symbol first, then chronological groups ──
+        # ── 12. Trim warmup rows now that all indicators are fully warmed ──
+        if _trim_cutoff is not None:
+            spine = spine[spine.index >= _trim_cutoff]
+        logger.info("Trimmed to requested window: %d trading days  %s → %s",
+                    len(spine), spine.index.min().date(), spine.index.max().date())
+
+        # ── 13. Column ordering: symbol first, then chronological groups ──
         group_order = (
             ["symbol"]
             + [c for c in spine.columns if c in ("Open","High","Low","Close","Volume")]
