@@ -79,6 +79,35 @@ _COL_DESC: dict = {
     "volume_zscore":   "Volume z-score over rolling 20-day window (spikes = unusual activity)",
     "high_low_range":  "Intraday range = (High − Low) / Close",
     "overnight_gap":   "Overnight gap = Open_t / Close_{t-1} − 1",
+    # Volatility & risk
+    "realized_vol_20d":   "Annualised 20-day realised volatility (rolling std of log_return × √252)",
+    "realized_vol_60d":   "Annualised 60-day realised volatility",
+    "vol_of_vol":         "Rolling 20-day std of realized_vol_20d (vol-of-vol / vol regime indicator)",
+    "skewness_20d":       "20-day rolling skewness of log returns (negative = fat left tail)",
+    "kurtosis_20d":       "20-day rolling excess kurtosis of log returns (>3 = fat tails)",
+    "downside_deviation": "20-day annualised semi-deviation using only negative log returns",
+    "max_drawdown_20d":   "Max peak-to-trough drawdown over trailing 20 trading days (≤0)",
+    # Microstructure
+    "amihud_illiquidity":    "Amihud (2002): 20-day mean of |return|/volume×1e6 — higher = less liquid",
+    "bid_ask_spread_proxy":  "Corwin-Schultz spread proxy = (High−Low)/mid; higher = wider spread",
+    "volume_participation":  "Today's volume / 20-day average volume (>1 = above-average activity)",
+    "trade_imbalance":       "(Close−Open)/(High−Low); +1 = closed at high, −1 = closed at low",
+    # Momentum & mean-reversion
+    "reversal_1w":   "5-day simple return (short-term reversal factor)",
+    "momentum_1m":   "21-day return skipping last 5 days (Jegadeesh-Titman 1-month)",
+    "momentum_3m":   "63-day return skipping last 5 days (Jegadeesh-Titman 3-month)",
+    "momentum_6m":   "126-day return skipping last 5 days (Jegadeesh-Titman 6-month)",
+    "momentum_12m":  "252-day return skipping last 5 days (Jegadeesh-Titman 12-month)",
+    "high_52w_pct":  "Distance from 52-week high = Close/max252 − 1 (≤0; 0 = at high)",
+    "low_52w_pct":   "Distance from 52-week low = Close/min252 − 1 (≥0; 0 = at low)",
+    "price_accel":   "Momentum acceleration = momentum_1m − momentum_3m",
+    # Cross-asset / macro
+    "vix_level":          "CBOE VIX daily close (fear gauge; >30 = elevated uncertainty)",
+    "yield_10y":          "US 10-year Treasury yield (%) from ^TNX",
+    "yield_curve_slope":  "10Y yield minus 3M yield (bps proxy); negative = inverted curve",
+    "spy_beta_60d":       "Rolling 60-day OLS beta vs SPY (systematic market sensitivity)",
+    "qqq_corr_20d":       "Rolling 20-day Pearson correlation of log returns vs QQQ",
+    "sox_rel_strength":   "Daily log return minus SOXX (semiconductor ETF) log return",
     # Fundamentals (point-in-time quarterly — merged via merge_asof, no look-ahead)
     "fund_rev_ttm":          "TTM total revenue (sum of 4 most recent quarters)",
     "fund_gross_profit_ttm": "TTM gross profit",
@@ -174,7 +203,7 @@ class DataTransformer:
         # days). Fetch a warmup buffer before the requested start so that the
         # first bar in the output period has fully-warmed indicators instead
         # of NaN. We trim the warmup rows back out before returning.
-        _WARMUP_CALENDAR_DAYS = 300   # conservative: covers SMA_200 + ATR/RSI tails
+        _WARMUP_CALENDAR_DAYS = 400   # covers SMA_200 + momentum_12m (shift(257) ≈ 372 cal days)
 
         # Map period strings to approximate calendar-day counts
         _PERIOD_DAYS: dict = {
@@ -221,39 +250,67 @@ class DataTransformer:
 
         # ── 2. Derived price / volatility ratios ────────────────────────
         spine = self._add_derived_features(spine)
-        logger.info("[2/7] Derived features added: %d cols", len(spine.columns))
+        logger.info("[2/11] Derived features added: %d cols", len(spine.columns))
 
-        # ── 3. Fundamentals (broadcast across all dates) ─────────────────
+        # ── 3. Risk / volatility features ────────────────────────────────
+        spine = self._add_risk_features(spine)
+        risk_cols = [c for c in spine.columns if c in (
+            "realized_vol_20d","realized_vol_60d","vol_of_vol",
+            "skewness_20d","kurtosis_20d","downside_deviation","max_drawdown_20d")]
+        logger.info("[3/11] Risk features added: %d cols", len(risk_cols))
+
+        # ── 4. Microstructure features ────────────────────────────────────
+        spine = self._add_microstructure_features(spine)
+        micro_cols = [c for c in spine.columns if c in (
+            "amihud_illiquidity","bid_ask_spread_proxy",
+            "volume_participation","trade_imbalance")]
+        logger.info("[4/11] Microstructure features added: %d cols", len(micro_cols))
+
+        # ── 5. Momentum / mean-reversion features ────────────────────────
+        spine = self._add_momentum_features(spine)
+        mom_cols = [c for c in spine.columns if c in (
+            "momentum_1m","momentum_3m","momentum_6m","momentum_12m",
+            "reversal_1w","high_52w_pct","low_52w_pct","price_accel")]
+        logger.info("[5/11] Momentum features added: %d cols", len(mom_cols))
+
+        # ── 6. Cross-asset / macro features ──────────────────────────────
+        spine = self._merge_macro_features(spine, start_str, end_str)
+        macro_cols = [c for c in spine.columns if c in (
+            "vix_level","yield_10y","yield_curve_slope",
+            "spy_beta_60d","qqq_corr_20d","sox_rel_strength")]
+        logger.info("[6/11] Macro/cross-asset features added: %d cols", len(macro_cols))
+
+        # ── 7. Fundamentals (broadcast across all dates) ─────────────────
         spine = self._merge_fundamentals(spine, sym)
         fund_cols = [c for c in spine.columns if c.startswith('fund_')]
-        logger.info("[3/7] Fundamentals merged: %d fund_ cols, first valid: %s",
+        logger.info("[7/11] Fundamentals merged: %d fund_ cols, first valid: %s",
                     len(fund_cols),
                     spine[fund_cols[0]].first_valid_index() if fund_cols else 'N/A')
 
-        # ── 4. News — daily article count + sentiment ────────────────────
+        # ── 8. News — daily article count + sentiment ────────────────────
         spine = self._merge_news(spine, sym, start_str, end_str)
         for _nc in ('news_sent_av', 'news_sent_polygon', 'news_sent_finnhub', 'news_sent_score'):
             if _nc in spine.columns:
                 _n = spine[_nc].notna().sum()
-                logger.info("[4/7] %-24s: %d/%d rows filled (%.0f%%)",
+                logger.info("[8/11] %-24s: %d/%d rows filled (%.0f%%)",
                             _nc, _n, len(spine), _n / len(spine) * 100)
 
-        # ── 5. Insider sentiment (monthly → daily by forward-fill) ───────
+        # ── 9. Insider sentiment (monthly → daily by forward-fill) ───────
         spine = self._merge_sentiment(spine, sym)
         insdr_cols = [c for c in spine.columns if c.startswith('insdr_')]
-        logger.info("[5/7] Insider sentiment: %d insdr_ cols", len(insdr_cols))
+        logger.info("[9/11] Insider sentiment: %d insdr_ cols", len(insdr_cols))
 
-        # ── 6. Options snapshot — surface metrics ─────────────────────────
+        # ── 10. Options snapshot — surface metrics ────────────────────────
         spine = self._merge_options_snapshot(spine, sym)
         opt_cols = [c for c in spine.columns if c.startswith('opt_')]
-        logger.info("[6/7] Options snapshot: %d opt_ cols", len(opt_cols))
+        logger.info("[10/11] Options snapshot: %d opt_ cols", len(opt_cols))
 
-        # ── 7. Earnings calendar proximity flags ─────────────────────────
+        # ── 11. Earnings calendar proximity flags ─────────────────────────
         spine = self._merge_earnings(spine, sym)
         earn_cols = [c for c in spine.columns if c.startswith('earn_')]
-        logger.info("[7/7] Earnings flags: %d earn_ cols", len(earn_cols))
+        logger.info("[11/11] Earnings flags: %d earn_ cols", len(earn_cols))
 
-        # ── 8. Column ordering: symbol first, then chronological groups ──
+        # ── 12. Column ordering: symbol first, then chronological groups ──
         group_order = (
             ["symbol"]
             + [c for c in spine.columns if c in ("Open","High","Low","Close","Volume")]
@@ -262,6 +319,22 @@ class DataTransformer:
                "ATR_14","OBV","daily_return","log_return")]
             + [c for c in spine.columns if c.startswith("price_to_") or c in
                ("bb_pct","volume_zscore","high_low_range","overnight_gap")]
+            # Risk / volatility
+            + [c for c in spine.columns if c in (
+               "realized_vol_20d","realized_vol_60d","vol_of_vol",
+               "skewness_20d","kurtosis_20d","downside_deviation","max_drawdown_20d")]
+            # Microstructure
+            + [c for c in spine.columns if c in (
+               "amihud_illiquidity","bid_ask_spread_proxy",
+               "volume_participation","trade_imbalance")]
+            # Momentum
+            + [c for c in spine.columns if c in (
+               "reversal_1w","momentum_1m","momentum_3m","momentum_6m","momentum_12m",
+               "high_52w_pct","low_52w_pct","price_accel")]
+            # Cross-asset / macro
+            + [c for c in spine.columns if c in (
+               "vix_level","yield_10y","yield_curve_slope",
+               "spy_beta_60d","qqq_corr_20d","sox_rel_strength")]
             + sorted([c for c in spine.columns if c.startswith("fund_")])
             + [c for c in spine.columns if c.startswith("news_")]
             + [c for c in spine.columns if c.startswith("insdr_")]
@@ -617,6 +690,235 @@ class DataTransformer:
 
         except Exception as exc:
             logger.warning("Options snapshot merge failed for %s: %s", sym, exc)
+        return df
+
+    # ------------------------------------------------------------------
+    # New feature groups
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_risk_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Volatility and downside-risk features computed entirely from log_return.
+
+        Adds:
+            realized_vol_20d    — annualised 20-day realised volatility
+            realized_vol_60d    — annualised 60-day realised volatility
+            vol_of_vol          — rolling 20-day std of realized_vol_20d (vol regime)
+            skewness_20d        — 20-day rolling skewness of log returns
+            kurtosis_20d        — 20-day rolling excess kurtosis of log returns
+            downside_deviation  — 20-day semi-deviation (std of negative returns only)
+            max_drawdown_20d    — max peak-to-trough drawdown over rolling 20-day window
+        """
+        if "log_return" not in df.columns:
+            return df
+        lr = df["log_return"]
+
+        df["realized_vol_20d"] = lr.rolling(20, min_periods=5).std() * np.sqrt(252)
+        df["realized_vol_60d"] = lr.rolling(60, min_periods=20).std() * np.sqrt(252)
+        df["vol_of_vol"] = df["realized_vol_20d"].rolling(20, min_periods=5).std()
+
+        df["skewness_20d"] = lr.rolling(20, min_periods=10).skew()
+        df["kurtosis_20d"] = lr.rolling(20, min_periods=10).kurt()
+
+        # Downside deviation: std of returns below zero only
+        def _downside_std(x: pd.Series) -> float:
+            neg = x[x < 0]
+            return neg.std() * np.sqrt(252) if len(neg) >= 3 else np.nan
+        df["downside_deviation"] = lr.rolling(20, min_periods=10).apply(
+            _downside_std, raw=False
+        )
+
+        # Max drawdown over rolling 20-day window using Close prices
+        if "Close" in df.columns:
+            close = df["Close"]
+            roll_max = close.rolling(20, min_periods=1).max()
+            df["max_drawdown_20d"] = (close - roll_max) / roll_max.replace(0, np.nan)
+
+        return df
+
+    @staticmethod
+    def _add_microstructure_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Market microstructure proxies computed from daily OHLCV.
+
+        Adds:
+            amihud_illiquidity      — 20-day mean of |return|/volume (×1e6 for scale)
+            bid_ask_spread_proxy    — (High−Low)/mid-price (Corwin-Schultz proxy)
+            volume_participation    — today's volume / 20-day average volume
+            trade_imbalance         — (Close−Open)/(High−Low); direction of intraday flow
+        """
+        close  = df.get("Close")
+        high   = df.get("High")
+        low    = df.get("Low")
+        volume = df.get("Volume")
+        open_  = df.get("Open")
+        lr     = df.get("log_return")
+
+        if close is None or volume is None or lr is None:
+            return df
+
+        # Amihud illiquidity — scale by 1e6 so values are in readable range
+        vol_f = volume.astype(float).replace(0, np.nan)
+        amihud_daily = lr.abs() / vol_f * 1e6
+        df["amihud_illiquidity"] = amihud_daily.rolling(20, min_periods=5).mean()
+
+        # Bid-ask spread proxy
+        if high is not None and low is not None:
+            mid = (high + low) / 2
+            df["bid_ask_spread_proxy"] = ((high - low) / mid.replace(0, np.nan)).replace(
+                [np.inf, -np.inf], np.nan
+            )
+
+        # Volume participation rate
+        avg_vol = vol_f.rolling(20, min_periods=5).mean()
+        df["volume_participation"] = (vol_f / avg_vol.replace(0, np.nan)).replace(
+            [np.inf, -np.inf], np.nan
+        )
+
+        # Intraday trade imbalance: +1 = closed at high, −1 = closed at low
+        if high is not None and low is not None and open_ is not None:
+            hl_range = (high - low).replace(0, np.nan)
+            df["trade_imbalance"] = ((close - open_) / hl_range).clip(-1, 1)
+
+        return df
+
+    @staticmethod
+    def _add_momentum_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Cross-sectional momentum and mean-reversion features from Close prices.
+
+        Adds:
+            momentum_1m     — 21-day return (skip last 5d)
+            momentum_3m     — 63-day return (skip last 5d)
+            momentum_6m     — 126-day return (skip last 5d)
+            momentum_12m    — 252-day return (skip last 5d) [Jegadeesh-Titman]
+            reversal_1w     — last 5-day return (short-term reversal factor)
+            high_52w_pct    — distance from 52-week high (0 = AT high)
+            low_52w_pct     — distance from 52-week low (0 = AT low)
+            price_accel     — 1-month momentum minus 3-month momentum (acceleration)
+        """
+        if "Close" not in df.columns:
+            return df
+        c = df["Close"]
+
+        # Skip last 5 days (standard Jegadeesh-Titman construction avoids reversal)
+        df["reversal_1w"]   = c / c.shift(5).replace(0, np.nan) - 1
+        df["momentum_1m"]   = c.shift(5) / c.shift(26).replace(0, np.nan) - 1   # 5→26
+        df["momentum_3m"]   = c.shift(5) / c.shift(68).replace(0, np.nan) - 1   # 5→68
+        df["momentum_6m"]   = c.shift(5) / c.shift(131).replace(0, np.nan) - 1  # 5→131
+        df["momentum_12m"]  = c.shift(5) / c.shift(257).replace(0, np.nan) - 1  # 5→257
+
+        roll252_max = c.rolling(252, min_periods=63).max()
+        roll252_min = c.rolling(252, min_periods=63).min()
+        df["high_52w_pct"]  = (c / roll252_max.replace(0, np.nan) - 1).clip(-1, 0)
+        df["low_52w_pct"]   = (c / roll252_min.replace(0, np.nan) - 1).clip(0, None)
+
+        df["price_accel"]   = df["momentum_1m"] - df["momentum_3m"]
+
+        return df
+
+    def _merge_macro_features(
+        self, df: pd.DataFrame, start: str, end: str
+    ) -> pd.DataFrame:
+        """
+        Pull cross-asset / macro time series from yfinance and merge onto spine.
+
+        Tickers fetched:
+            SPY   — S&P 500 ETF  (beta, correlation)
+            QQQ   — Nasdaq-100   (correlation)
+            ^VIX  — CBOE VIX     (fear gauge level)
+            ^TNX  — US 10Y yield (rate sensitivity)
+            ^IRX  — US 3M yield  (yield-curve slope proxy)
+            SOXX  — Semi ETF     (sector relative strength)
+
+        Adds:
+            vix_level           — daily VIX close
+            yield_10y           — 10-year treasury yield (%)
+            yield_curve_slope   — 10Y minus 3M yield (bp proxy)
+            spy_beta_60d        — rolling 60-day OLS beta to SPY
+            qqq_corr_20d        — rolling 20-day Pearson corr to QQQ returns
+            sox_rel_strength    — symbol daily return minus SOXX daily return
+        """
+        import yfinance as yf
+
+        tickers = {"SPY": None, "QQQ": None, "^VIX": None,
+                   "^TNX": None, "^IRX": None, "SOXX": None}
+
+        # Extend lookback by 90d to warm rolling windows
+        _start = (pd.Timestamp(start) - pd.Timedelta(days=90)).date().isoformat()
+
+        for tkr in list(tickers):
+            try:
+                raw = yf.download(tkr, start=_start, end=end,
+                                  progress=False, auto_adjust=True)
+                if raw is not None and not raw.empty:
+                    raw.index = pd.to_datetime(raw.index).tz_localize(None)
+                    # Flatten MultiIndex columns if present (yfinance ≥ 0.2.38)
+                    if isinstance(raw.columns, pd.MultiIndex):
+                        raw.columns = raw.columns.get_level_values(0)
+                    tickers[tkr] = raw["Close"].rename(tkr)
+            except Exception as exc:
+                logger.warning("Macro fetch failed for %s: %s", tkr, exc)
+
+        # ── Align all series to the spine index ──────────────────────────
+        def _align(series: pd.Series) -> pd.Series:
+            """Forward-fill to trading spine, limit 5 days."""
+            combined = series.reindex(series.index.union(df.index)).ffill(limit=5)
+            return combined.reindex(df.index)
+
+        sym_ret  = df["log_return"] if "log_return" in df.columns else None
+        spy_s    = tickers.get("SPY")
+        qqq_s    = tickers.get("QQQ")
+        vix_s    = tickers.get("^VIX")
+        tnx_s    = tickers.get("^TNX")
+        irx_s    = tickers.get("^IRX")
+        soxx_s   = tickers.get("SOXX")
+
+        # VIX level
+        if vix_s is not None:
+            df["vix_level"] = _align(vix_s).values
+
+        # 10Y yield and yield curve slope
+        if tnx_s is not None:
+            df["yield_10y"] = _align(tnx_s).values
+            if irx_s is not None:
+                slope = _align(tnx_s) - _align(irx_s)
+                df["yield_curve_slope"] = slope.values
+
+        # SPY beta (rolling 60-day OLS)
+        if spy_s is not None and sym_ret is not None:
+            spy_ret = np.log(spy_s / spy_s.shift(1)).replace(
+                [np.inf, -np.inf], np.nan
+            )
+            spy_ret_aligned = _align(spy_ret)
+            cov  = sym_ret.rolling(60, min_periods=20).cov(spy_ret_aligned)
+            vari = spy_ret_aligned.rolling(60, min_periods=20).var().replace(0, np.nan)
+            df["spy_beta_60d"] = (cov / vari).replace([np.inf, -np.inf], np.nan)
+
+        # QQQ correlation (rolling 20-day)
+        if qqq_s is not None and sym_ret is not None:
+            qqq_ret = np.log(qqq_s / qqq_s.shift(1)).replace(
+                [np.inf, -np.inf], np.nan
+            )
+            qqq_ret_aligned = _align(qqq_ret)
+            df["qqq_corr_20d"] = sym_ret.rolling(20, min_periods=10).corr(
+                qqq_ret_aligned
+            )
+
+        # Semiconductor sector relative strength
+        if soxx_s is not None and sym_ret is not None:
+            soxx_ret = np.log(soxx_s / soxx_s.shift(1)).replace(
+                [np.inf, -np.inf], np.nan
+            )
+            soxx_ret_aligned = _align(soxx_ret)
+            df["sox_rel_strength"] = (sym_ret - soxx_ret_aligned).replace(
+                [np.inf, -np.inf], np.nan
+            )
+
+        # Trim warmup rows that crept in from macro fetch expansion
+        df = df[df.index >= pd.Timestamp(start)]
+
         return df
 
     def _merge_earnings(self, df: pd.DataFrame, sym: str) -> pd.DataFrame:
