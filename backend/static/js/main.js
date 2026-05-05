@@ -58,6 +58,19 @@ function setupNavigationListeners() {
         showSection('trading');
         setActiveNav(this);
     });
+
+    document.getElementById('navResearch').addEventListener('click', function(e) {
+        e.preventDefault();
+        showSection('research');
+        setActiveNav(this);
+    });
+
+    // View All — navigate to Research section
+    document.querySelector('.panel-link')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        showSection('research');
+        setActiveNav(document.getElementById('navResearch'));
+    });
 }
 
 // Show specific section
@@ -86,10 +99,18 @@ function showSection(section) {
 
 // Set active navigation item
 function setActiveNav(element) {
-    document.querySelectorAll('.navbar-nav .nav-link').forEach(link => {
+    document.querySelectorAll('.sidebar-item').forEach(link => {
         link.classList.remove('active');
     });
     element.classList.add('active');
+}
+
+// Show dashboard default view (hide stock details)
+function showDashboardDefault() {
+    document.getElementById('stockDetails').style.display = 'none';
+    const dashDefault = document.getElementById('dashboardDefault');
+    if (dashDefault) dashDefault.style.display = '';
+    currentStock = null;
 }
 
 // Setup event listeners
@@ -161,32 +182,63 @@ function setupEventListeners() {
 
 // Load real-time prices for watchlist stocks
 async function loadWatchlistPrices() {
-    const watchlistItems = document.querySelectorAll('.stock-item');
-    
-    watchlistItems.forEach(async (item) => {
-        const symbol = item.dataset.symbol;
-        const badge = item.querySelector('.badge');
-        
+    const symbols = new Set();
+    document.querySelectorAll('.stock-item[data-symbol]').forEach(item => symbols.add(item.dataset.symbol));
+
+    symbols.forEach(async (symbol) => {
         try {
-            console.log(`📊 Loading price for ${symbol}`);
             const response = await fetch(`/api/stock/${symbol}`);
             const data = await response.json();
-            
+
             if (data.success && data.quote) {
                 const price = data.quote.c;
                 const change = data.quote.d;
                 const changePercent = data.quote.dp;
-                
-                badge.className = change >= 0 ? 'badge bg-success' : 'badge bg-danger';
-                badge.textContent = `$${price.toFixed(2)} (${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
-                console.log(`✓ ${symbol}: $${price.toFixed(2)}`);
+                const up = change >= 0;
+                const priceStr = `$${price.toFixed(2)}`;
+                const changeStr = `${up ? '+' : ''}${changePercent.toFixed(2)}%`;
+                const colorClass = up ? 'text-positive' : 'text-negative';
+
+                // Watchlist panel
+                const wlPrice = document.getElementById(`wlPrice_${symbol}`);
+                const wlChange = document.getElementById(`wlChange_${symbol}`);
+                if (wlPrice) wlPrice.textContent = priceStr;
+                if (wlChange) { wlChange.textContent = changeStr; wlChange.className = `wl-change ${colorClass}`; }
+
+                // Volume leaders table
+                const vlLast = document.getElementById(`vlLast_${symbol}`);
+                const vlChg = document.getElementById(`vlChg_${symbol}`);
+                const vlVol = document.getElementById(`vlVol_${symbol}`);
+                const vlDepth = document.getElementById(`vlDepth_${symbol}`);
+                if (vlLast) vlLast.textContent = priceStr;
+                if (vlChg) { vlChg.textContent = changeStr; vlChg.className = `leader-chg ${colorClass}`; }
+                if (vlVol && data.quote.v) vlVol.textContent = formatVolume(data.quote.v);
+                if (vlDepth) {
+                    const pct = Math.min(100, Math.max(5, 50 + changePercent * 5));
+                    vlDepth.style.width = pct + '%';
+                    vlDepth.className = `depth-fill ${up ? 'depth-green' : 'depth-red'}`;
+                }
+
+                // Legacy badge (in case any old .badge element exists)
+                const badge = document.querySelector(`.stock-item[data-symbol="${symbol}"] .badge`);
+                if (badge) {
+                    badge.className = up ? 'badge bg-success' : 'badge bg-danger';
+                    badge.textContent = `${priceStr} (${changeStr})`;
+                }
+
+                console.log(`\u2713 ${symbol}: ${priceStr}`);
             }
         } catch (error) {
-            console.error(`✗ Error loading price for ${symbol}:`, error);
-            badge.textContent = 'Error';
-            badge.className = 'badge bg-secondary';
+            console.error(`\u2717 Error loading price for ${symbol}:`, error);
         }
     });
+}
+
+function formatVolume(v) {
+    if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K';
+    return v.toString();
 }
 
 // Load dashboard with market indices + 30-day charts
@@ -204,97 +256,103 @@ async function loadDashboard() {
         if (idxData.indices && idxData.indices.length > 0) {
             container.innerHTML = idxData.indices.map(idx => {
                 const up = idx.pct_change >= 0;
-                const arrow = up ? '▲' : '▼';
-                const colorClass = up ? 'text-success' : 'text-danger';
+                const colorClass = up ? 'pos' : 'neg';
                 const priceStr = idx.price >= 1000
                     ? idx.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
                     : idx.price.toFixed(2);
+                const pctStr = `${up ? '+' : ''}${idx.pct_change.toFixed(2)}%`;
+                const absStr = `${up ? '+' : ''}${idx.change.toFixed(2)}`;
+                const sparkId = `idxSpark_${idx.symbol.replace('^','')}`;
                 return `
-                <div class="col-6 col-md-4 col-lg-2">
-                    <div class="card h-100 border-0 shadow-sm">
-                        <div class="card-body p-3 text-center">
-                            <div class="small text-muted fw-semibold mb-1">${idx.name}</div>
-                            <div class="fs-5 fw-bold">${priceStr}</div>
-                            <div class="mt-1 ${colorClass} fw-semibold small">
-                                ${arrow} ${Math.abs(idx.pct_change).toFixed(2)}%
-                            </div>
-                            <div class="text-muted" style="font-size:0.72rem">
-                                ${up ? '+' : ''}${idx.change.toFixed(2)}
-                            </div>
+                <div class="index-card" data-symbol="${idx.symbol}">
+                    <div class="index-card-top">
+                        <div class="index-name-group">
+                            <div class="index-name">${idx.name}</div>
+                            <div class="index-badge-label">${idx.symbol}</div>
+                        </div>
+                        <div class="index-change-group">
+                            <div class="index-change-abs ${colorClass}">${absStr}</div>
+                            <div class="index-change-pct ${colorClass}">${pctStr}</div>
                         </div>
                     </div>
+                    <div class="index-price">${priceStr}</div>
+                    <canvas class="index-sparkline" id="${sparkId}"></canvas>
                 </div>`;
             }).join('');
+
+            // Click index cards to load stock details
+            container.querySelectorAll('.index-card[data-symbol]').forEach(card => {
+                card.addEventListener('click', () => loadStockDetails(card.dataset.symbol));
+            });
         } else {
-            container.innerHTML = '<div class="col-12"><p class="text-muted">Indices unavailable.</p></div>';
+            container.innerHTML = '<p class="text-muted">Indices unavailable.</p>';
         }
 
-        // Draw 30-day line charts
-        if (histData.history && idxData.indices) {
-            const names = Object.fromEntries(idxData.indices.map(i => [i.symbol, i.name]));
-            const chartsRow = document.getElementById('indexCharts');
-            chartsRow.innerHTML = '';
-            let anyChart = false;
-
-            for (const [symbol, hist] of Object.entries(histData.history)) {
-                if (!hist.closes || hist.closes.length === 0) continue;
-                anyChart = true;
-                const up = hist.closes[hist.closes.length - 1] >= hist.closes[0];
-                const color = up ? '#198754' : '#dc3545';
-                const fillColor = up ? 'rgba(25,135,84,0.08)' : 'rgba(220,53,69,0.08)';
-
-                const col = document.createElement('div');
-                col.className = 'col-12 col-md-6 col-xl-4';
-                col.innerHTML = `
-                    <div class="card border-0 shadow-sm">
-                        <div class="card-body p-3">
-                            <div class="fw-semibold mb-2">${names[symbol] || symbol}</div>
-                            <canvas id="idxChart_${symbol.replace('^','')}" height="80"></canvas>
-                        </div>
-                    </div>`;
-                chartsRow.appendChild(col);
-
-                // Draw after DOM insertion
-                setTimeout(() => {
-                    const ctx = document.getElementById(`idxChart_${symbol.replace('^','')}`);
-                    if (!ctx) return;
-                    new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: hist.labels,
-                            datasets: [{
-                                data: hist.closes,
-                                borderColor: color,
-                                backgroundColor: fillColor,
-                                borderWidth: 2,
-                                pointRadius: 0,
-                                fill: true,
-                                tension: 0.3,
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            plugins: { legend: { display: false }, tooltip: {
-                                callbacks: { label: ctx => ' ' + ctx.parsed.y.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) }
-                            }},
-                            scales: {
-                                x: { grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
-                                y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 },
-                                    callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0) }}
-                            }
-                        }
-                    });
-                }, 0);
-            }
-
-            document.getElementById('indexChartsContainer').style.display = anyChart ? '' : 'none';
+        // Draw sparklines inside index cards
+        if (histData.history) {
+            setTimeout(() => drawSparklines(histData.history), 0);
         }
 
         updateLastUpdated();
     } catch (error) {
         console.error('Error loading indices:', error);
         document.getElementById('marketIndices').innerHTML =
-            '<div class="col-12"><div class="alert alert-danger">Failed to load market indices</div></div>';
+            '<p class="text-muted">Failed to load market indices</p>';
+    }
+}
+
+// Period button handler for index cards (1D / 1W / 1M)
+function setPeriod(btn, period) {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadSparklines(period);
+}
+
+// Reload sparklines for a given UI period
+async function loadSparklines(uiPeriod) {
+    const periodMap = { '1D': '5d', '1W': '5d', '1M': '1mo' };
+    const intervalMap = { '1D': '5m', '1W': '30m', '1M': '1d' };
+    const p = periodMap[uiPeriod] || '1mo';
+    const i = intervalMap[uiPeriod] || '1d';
+    try {
+        const res = await fetch(`/api/indices/history?period=${p}&interval=${i}`);
+        const histData = await res.json();
+        if (histData.history) drawSparklines(histData.history);
+    } catch (e) { console.error('Sparkline reload error', e); }
+}
+
+// Draw sparkline charts into index-card canvas elements
+function drawSparklines(history) {
+    for (const [symbol, hist] of Object.entries(history)) {
+        if (!hist.closes || hist.closes.length === 0) continue;
+        const up = hist.closes[hist.closes.length - 1] >= hist.closes[0];
+        const color = up ? '#26c281' : '#f87171';
+        const fillColor = up ? 'rgba(38,194,129,0.15)' : 'rgba(248,113,113,0.12)';
+        const sparkId = `idxSpark_${symbol.replace('^', '')}`;
+        const ctx = document.getElementById(sparkId);
+        if (!ctx) continue;
+        if (ctx._chart) { ctx._chart.destroy(); }
+        ctx._chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: hist.labels,
+                datasets: [{
+                    data: hist.closes,
+                    borderColor: color,
+                    backgroundColor: fillColor,
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.4,
+                }]
+            },
+            options: {
+                responsive: false,
+                animation: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                scales: { x: { display: false }, y: { display: false } }
+            }
+        });
     }
 }
 
@@ -335,18 +393,20 @@ async function loadStockDetails(symbol) {
     console.log(`LOADING DATA FOR: ${symbol}`);
     console.log(`========================================\n`);
     
-    // Show stock details section, hide default welcome panel
+    // Navigate to Research section and show stock details
+    showSection('research');
+    setActiveNav(document.getElementById('navResearch'));
+    const placeholder = document.getElementById('researchPlaceholder');
+    if (placeholder) placeholder.style.display = 'none';
     document.getElementById('stockDetails').style.display = 'block';
-    const dashDefault = document.getElementById('dashboardDefault');
-    if (dashDefault) dashDefault.style.display = 'none';
     document.getElementById('stockSymbol').textContent = symbol;
-    
+
     // Show loading state
     document.getElementById('stockPrice').textContent = 'Loading...';
     document.getElementById('priceChange').textContent = '...';
-    
-    // Scroll to stock details
-    document.getElementById('stockDetails').scrollIntoView({ behavior: 'smooth' });
+
+    // Scroll to top of research section
+    document.querySelector('.page-content')?.scrollTo({ top: 0, behavior: 'smooth' });
     
     // Load overview tab by default
     await loadStockOverview(symbol);
@@ -1089,7 +1149,7 @@ async function loadEarningsCalendar() {
                                 <div class="d-flex flex-wrap gap-3 mt-3">
                                     <span class="badge bg-primary"><i class="fas fa-chart-line"></i> ${eventCounts['Earnings']} Earnings</span>
                                     <span class="badge bg-success"><i class="fas fa-dollar-sign"></i> ${eventCounts['Dividend']} Dividends</span>
-                                    <span class="badge bg-danger"><i class="fas fa-university"></i> ${eventCounts['FOMC Meeting']} FOMC</span>
+                                    <span class="badge bg-danger text-dark"><i class="fas fa-university"></i> ${eventCounts['FOMC Meeting']} FOMC</span>
                                     <span class="badge bg-info"><i class="fas fa-chart-bar"></i> ${eventCounts['Economic Data']} Economic Data</span>
                                     <span class="badge bg-warning text-dark"><i class="fas fa-vote-yea"></i> ${eventCounts['Election']} Elections</span>
                                     <span class="badge bg-secondary"><i class="fas fa-calendar-times"></i> ${eventCounts['Holiday']} Holidays</span>
@@ -1173,7 +1233,7 @@ async function loadEarningsCalendar() {
                             badgeClass = 'success';
                             icon = 'fa-dollar-sign';
                         } else if (event.type === 'FOMC Meeting') {
-                            badgeClass = 'danger';
+                            badgeClass = 'danger text-dark';
                             icon = 'fa-university';
                         } else if (event.type === 'Election') {
                             badgeClass = 'warning text-dark';
@@ -1818,13 +1878,14 @@ function updateMarketStatus() {
     const hours = now.getHours();
     const day = now.getDay();
     
-    const marketStatus = document.getElementById('marketStatus');
+    const marketStatusEl = document.getElementById('marketStatus');
+    const marketBadge = document.getElementById('marketStatusBadge');
     
     // Simple market hours check (9:30 AM - 4:00 PM ET, Mon-Fri)
-    if (day >= 1 && day <= 5 && hours >= 9 && hours < 16) {
-        marketStatus.innerHTML = '<span class="text-success">● Open</span>';
-    } else {
-        marketStatus.innerHTML = '<span class="text-danger">● Closed</span>';
+    const isOpen = day >= 1 && day <= 5 && hours >= 9 && hours < 16;
+    if (marketStatusEl) marketStatusEl.textContent = isOpen ? 'MARKET OPEN' : 'MARKET CLOSED';
+    if (marketBadge) {
+        marketBadge.classList.toggle('closed', !isOpen);
     }
 }
 
@@ -2410,46 +2471,48 @@ function renderWatchlist() {
 
 // Add watchlist item to DOM
 function addWatchlistItem(container, symbol, name) {
-    const item = document.createElement('a');
-    item.href = '#';
-    item.className = 'list-group-item list-group-item-action stock-item';
+    const item = document.createElement('div');
+    item.className = 'wl-row stock-item';
     item.dataset.symbol = symbol;
-    
+
     item.innerHTML = `
-        <div class="d-flex justify-content-between align-items-center">
-            <div class="flex-grow-1">
-                <strong>${symbol}</strong>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-primary">...</span>
-                <button class="btn btn-sm btn-link text-danger p-0 remove-from-watchlist" data-symbol="${symbol}" title="Remove from watchlist" style="font-size: 0.9rem;">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
+        <div class="wl-left">
+            <span class="wl-symbol">${symbol}</span>
+            <span class="wl-name" id="wlName_${symbol}">${name || '\u2014'}</span>
+        </div>
+        <div class="wl-right">
+            <span class="wl-price" id="wlPrice_${symbol}">\u2014</span>
+            <span class="wl-change" id="wlChange_${symbol}">\u2014</span>
         </div>
     `;
-    
+
     // Click to view
     item.addEventListener('click', function(e) {
         if (!e.target.closest('.remove-from-watchlist')) {
-            e.preventDefault();
             showSection('dashboard');
             setActiveNav(document.getElementById('navDashboard'));
             loadStockDetails(symbol);
         }
     });
-    
-    // Remove button
-    const removeBtn = item.querySelector('.remove-from-watchlist');
-    removeBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (confirm(`Remove ${symbol} from watchlist?`)) {
-            removeFromWatchlist(symbol);
-        }
-    });
-    
+
     container.appendChild(item);
+
+    // Also add a row to the volume leaders table if it exists and doesn't already have this symbol
+    const tbody = document.getElementById('volumeLeadersBody');
+    if (tbody && !document.getElementById(`vlLast_${symbol}`)) {
+        const tr = document.createElement('tr');
+        tr.className = 'leader-row stock-item';
+        tr.dataset.symbol = symbol;
+        tr.innerHTML = `
+            <td class="leader-symbol">${symbol}</td>
+            <td class="leader-last" id="vlLast_${symbol}">\u2014</td>
+            <td class="leader-chg" id="vlChg_${symbol}">\u2014</td>
+            <td class="leader-vol" id="vlVol_${symbol}">\u2014</td>
+            <td><div class="depth-bar"><div class="depth-fill depth-green" id="vlDepth_${symbol}" style="width:50%"></div></div></td>
+        `;
+        tr.addEventListener('click', () => { showSection('dashboard'); setActiveNav(document.getElementById('navDashboard')); loadStockDetails(symbol); });
+        tbody.appendChild(tr);
+    }
 }
 
 // Show notification
