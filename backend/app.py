@@ -270,12 +270,21 @@ def market_indices():
 
 @app.route('/api/indices/history')
 def indices_history():
-    """Return 30-day daily closes for each index for sparkline charts"""
+    """Return daily closes for each index for sparkline charts"""
+    period = request.args.get('period', '1mo')
+    interval = request.args.get('interval', '1d')
+    # Safety: only allow known yfinance period/interval values
+    allowed_periods = {'5d', '1mo', '3mo', '6mo', '1y'}
+    allowed_intervals = {'5m', '15m', '30m', '1h', '1d', '1wk'}
+    if period not in allowed_periods:
+        period = '1mo'
+    if interval not in allowed_intervals:
+        interval = '1d'
     symbols = ['^GSPC', '^IXIC', '^DJI', '^GSPTSE', '^RUT', '^VIX']
     result = {}
     for symbol in symbols:
         try:
-            df = yf.Ticker(symbol).history(period='1mo', interval='1d')
+            df = yf.Ticker(symbol).history(period=period, interval=interval)
             if not df.empty:
                 result[symbol] = {
                     'labels': [d.strftime('%b %d') for d in df.index],
