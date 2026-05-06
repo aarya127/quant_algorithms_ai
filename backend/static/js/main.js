@@ -447,10 +447,10 @@ async function loadStockOverview(symbol) {
             document.getElementById('stockPrice').textContent = `${currencySymbol}${data.quote.c.toFixed(2)}`;
             const change = data.quote.d;
             const changePercent = data.quote.dp;
-            const changeClass = change >= 0 ? 'bg-success' : 'bg-danger';
-            document.getElementById('priceChange').className = `badge ${changeClass}`;
-            document.getElementById('priceChange').textContent = 
-                `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent.toFixed(2)}%)`;
+            const changeEl = document.getElementById('priceChange');
+            changeEl.className = `badge ${change >= 0 ? 'bg-success' : 'bg-danger'}`;
+            changeEl.style.color = change >= 0 ? '' : '#000';
+            changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent.toFixed(2)}%)`;
         }
         
         // Update company info
