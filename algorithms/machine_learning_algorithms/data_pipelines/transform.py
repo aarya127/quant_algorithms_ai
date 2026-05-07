@@ -129,7 +129,9 @@ _COL_DESC: dict = {
     # News
     "news_count":       "Number of news articles indexed on this trading day",
     "news_sent_score":  "Daily mean sentiment score from Polygon/AV/Finnhub (-1=bearish, 0=neutral, +1=bullish)",
-    "news_sent_7d":     "7-trading-day rolling mean of news_sent_score (smoothed signal)",
+    "news_sent_7d":          "7-trading-day rolling mean of blended news_sent_score",
+    "news_sent_marketaux":   "Marketaux entity-specific NLP sentiment; match_score-weighted daily mean (-1 to +1)",
+    "news_sent_marketaux_7d":"7-trading-day rolling mean of news_sent_marketaux",
     # Insider sentiment (monthly, forward-filled to daily)
     "insdr_change":   "Net insider shares (bought − sold) for the month; positive = net buying",
     "insdr_mspr":     "Buy ratio = bought_shares / (bought + sold); 0.5 = neutral, >0.5 = net buying",
@@ -293,7 +295,8 @@ class DataTransformer:
 
         # ── 8. News — daily article count + sentiment ────────────────────
         spine = self._merge_news(spine, sym, start_str, end_str)
-        for _nc in ('news_sent_av', 'news_sent_polygon', 'news_sent_finnhub', 'news_sent_score'):
+        for _nc in ('news_sent_av', 'news_sent_polygon', 'news_sent_finnhub',
+                    'news_sent_marketaux', 'news_sent_score'):
             if _nc in spine.columns:
                 _n = spine[_nc].notna().sum()
                 logger.info("[8/11] %-24s: %d/%d rows filled (%.0f%%)",
@@ -345,6 +348,7 @@ class DataTransformer:
             + [c for c in spine.columns if c in (
                "vix_level","yield_10y","yield_curve_slope",
                "spy_beta_60d","qqq_corr_20d","sox_rel_strength")]
+            # Marketaux (placed just before fund_ so it's visible near AV)
             + sorted([c for c in spine.columns if c.startswith("fund_")])
             + [c for c in spine.columns if c.startswith("news_")]
             + [c for c in spine.columns if c.startswith("insdr_")]
@@ -479,7 +483,8 @@ class DataTransformer:
                 daily.index = pd.to_datetime(daily.index).tz_localize(None)
                 logger.info("  news_sentiment_history returned %d article-days  %s → %s",
                             len(daily), daily.index.min().date(), daily.index.max().date())
-                for _src_col in ('news_sent_av', 'news_sent_polygon', 'news_sent_finnhub'):
+                for _src_col in ('news_sent_av', 'news_sent_polygon',
+                                 'news_sent_finnhub', 'news_sent_marketaux'):
                     if _src_col in daily.columns:
                         _n = daily[_src_col].notna().sum()
                         logger.info("  %-24s: %d/%d article-days with scores", _src_col, _n, len(daily))
@@ -500,11 +505,12 @@ class DataTransformer:
                     tolerance=pd.Timedelta("4d"),  # max 4 calendar days gap
                 ).set_index("trade_date")
 
-                df["news_sent_score"]   = merged["news_sent_score"].values
-                df["news_sent_av"]      = merged["news_sent_av"].values if "news_sent_av" in merged.columns else float("nan")
-                df["news_sent_polygon"] = merged["news_sent_polygon"].values if "news_sent_polygon" in merged.columns else float("nan")
-                df["news_sent_finnhub"] = merged["news_sent_finnhub"].values if "news_sent_finnhub" in merged.columns else float("nan")
-                df["news_count"]        = merged["news_articles"].fillna(0).astype(int).values
+                df["news_sent_score"]      = merged["news_sent_score"].values
+                df["news_sent_av"]         = merged["news_sent_av"].values if "news_sent_av" in merged.columns else float("nan")
+                df["news_sent_polygon"]    = merged["news_sent_polygon"].values if "news_sent_polygon" in merged.columns else float("nan")
+                df["news_sent_finnhub"]    = merged["news_sent_finnhub"].values if "news_sent_finnhub" in merged.columns else float("nan")
+                df["news_sent_marketaux"]  = merged["news_sent_marketaux"].values if "news_sent_marketaux" in merged.columns else float("nan")
+                df["news_count"]           = merged["news_articles"].fillna(0).astype(int).values
 
                 logger.info("  After merge_asof (tol=4d): news_sent_av filled %d/%d trading days",
                             df["news_sent_av"].notna().sum(), len(df))
@@ -517,7 +523,8 @@ class DataTransformer:
                 # article may exist yet (limited to 5 days to avoid large back-smear).
                 _FFILL_LIMIT = 20  # trading days
                 _BFILL_LIMIT = 5   # trading days (start-of-window only)
-                for _sc in ("news_sent_score", "news_sent_av", "news_sent_polygon", "news_sent_finnhub"):
+                for _sc in ("news_sent_score", "news_sent_av", "news_sent_polygon",
+                            "news_sent_finnhub", "news_sent_marketaux"):
                     df[_sc] = df[_sc].ffill(limit=_FFILL_LIMIT).bfill(limit=_BFILL_LIMIT)
 
                 logger.info("  After ffill(%d)/bfill(%d): news_sent_av filled %d/%d trading days",
@@ -536,6 +543,9 @@ class DataTransformer:
                 df["news_sent_finnhub_7d"] = (
                     df["news_sent_finnhub"].rolling(7, min_periods=1).mean()
                 )
+                df["news_sent_marketaux_7d"] = (
+                    df["news_sent_marketaux"].rolling(7, min_periods=1).mean()
+                )
             else:
                 # Fallback: raw article count from the simple news() method
                 news = self.ex.news(sym, start=start, end=end, limit=500)
@@ -553,26 +563,30 @@ class DataTransformer:
                     )
                     df = df.join(daily_ct, how="left")
                 df["news_count"]        = df.get("news_count", 0).fillna(0).astype(int)
-                df["news_sent_score"]   = float("nan")
-                df["news_sent_av"]      = float("nan")
-                df["news_sent_polygon"] = float("nan")
-                df["news_sent_finnhub"] = float("nan")
-                df["news_sent_7d"]         = float("nan")
-                df["news_sent_av_7d"]      = float("nan")
-                df["news_sent_polygon_7d"] = float("nan")
-                df["news_sent_finnhub_7d"] = float("nan")
+                df["news_sent_score"]        = float("nan")
+                df["news_sent_av"]           = float("nan")
+                df["news_sent_polygon"]      = float("nan")
+                df["news_sent_finnhub"]      = float("nan")
+                df["news_sent_marketaux"]    = float("nan")
+                df["news_sent_7d"]           = float("nan")
+                df["news_sent_av_7d"]        = float("nan")
+                df["news_sent_polygon_7d"]   = float("nan")
+                df["news_sent_finnhub_7d"]   = float("nan")
+                df["news_sent_marketaux_7d"] = float("nan")
 
         except Exception as exc:
             logger.warning("News merge failed for %s: %s", sym, exc)
             df["news_count"]        = 0
-            df["news_sent_score"]   = float("nan")
-            df["news_sent_av"]      = float("nan")
-            df["news_sent_polygon"] = float("nan")
-            df["news_sent_finnhub"] = float("nan")
-            df["news_sent_7d"]         = float("nan")
-            df["news_sent_av_7d"]      = float("nan")
-            df["news_sent_polygon_7d"] = float("nan")
-            df["news_sent_finnhub_7d"] = float("nan")
+            df["news_sent_score"]        = float("nan")
+            df["news_sent_av"]           = float("nan")
+            df["news_sent_polygon"]      = float("nan")
+            df["news_sent_finnhub"]      = float("nan")
+            df["news_sent_marketaux"]    = float("nan")
+            df["news_sent_7d"]           = float("nan")
+            df["news_sent_av_7d"]        = float("nan")
+            df["news_sent_polygon_7d"]   = float("nan")
+            df["news_sent_finnhub_7d"]   = float("nan")
+            df["news_sent_marketaux_7d"] = float("nan")
         return df
 
     def _merge_sentiment(self, df: pd.DataFrame, sym: str) -> pd.DataFrame:

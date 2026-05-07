@@ -138,6 +138,9 @@ def _fiscal_ai_key() -> str:
 def _alphavantage_key() -> str:
     return _get_key("ALPHAVANTAGE_API_KEY", "alphavantage - 25 requests per day")
 
+def _marketaux_key() -> str:
+    return _get_key("MARKETAUX_API_KEY", "marketaux - 100 calls/day")
+
 def _alpaca_key() -> str:
     val = os.environ.get("ALPACA_API_KEY")
     if val:
@@ -728,6 +731,127 @@ class DataExtractor:
         logger.warning("yfinance news failed for %s, trying Alpaca", symbol)
         return self._alpaca_news(symbol, start, end, limit) or pd.DataFrame()
 
+    def _marketaux_news(
+        self,
+        symbol: str,
+        start:  str,
+        end:    str,
+        max_pages: int = 5,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch entity-specific news + pre-computed sentiment from Marketaux.
+
+        Marketaux tags each article with the exact entities mentioned and
+        provides a ``sentiment_score`` (−1 to +1) computed from entity-specific
+        highlighted text — more precise than full-article sentiment.  It also
+        returns a ``match_score`` (prominence of the entity in the article) which
+        is used as a weight in the daily aggregation.
+
+        Rate limit: 100 calls/day (free plan).
+        Strategy  : paginate up to *max_pages* pages per batch (default 5,
+                    = 500 articles) to stay within daily quota across 13
+                    30-day batches (13 × 5 = 65 calls, well under 100/day).
+
+        Returns a DataFrame with columns:
+            date        — UTC date of publication (tz-naive, normalized)
+            sent_score  — entity sentiment_score from Marketaux NLP
+            weight      — match_score (entity prominence; used for weighted mean)
+            headline    — article title
+        """
+        import pickle
+
+        key = _marketaux_key()
+        if not key:
+            return None
+
+        _CACHE_DIR  = Path(__file__).parent / ".pipeline_cache"
+        _CACHE_DIR.mkdir(exist_ok=True)
+        _cache_path = _CACHE_DIR / f"mx_news_{symbol.upper()}_{start}_{end}.pkl"
+
+        if _cache_path.exists():
+            try:
+                cached = pickle.loads(_cache_path.read_bytes())
+                if cached is not None:
+                    logger.debug("Marketaux cache hit: %s (%s → %s)", symbol, start, end)
+                    return cached
+            except Exception:
+                pass
+
+        rows: list[dict] = []
+        page = 1
+        while page <= max_pages:
+            try:
+                resp = requests.get(
+                    "https://api.marketaux.com/v1/news/all",
+                    params={
+                        "symbols":         symbol.upper(),
+                        "filter_entities": "true",
+                        "language":        "en",
+                        "published_after":  start,
+                        "published_before": end,
+                        "sort":            "published_on",
+                        "sort_order":      "asc",
+                        "limit":           100,
+                        "page":            page,
+                        "api_token":       key,
+                    },
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                if "error" in data:
+                    code = data["error"].get("code", "")
+                    if code == "usage_limit_reached":
+                        logger.warning("Marketaux daily quota reached for %s (%s → %s)", symbol, start, end)
+                    else:
+                        logger.warning("Marketaux error for %s: %s", symbol, data["error"])
+                    break
+
+                articles = data.get("data", [])
+                if not articles:
+                    break  # no more pages
+
+                for art in articles:
+                    pub = art.get("published_at", "")
+                    if not pub:
+                        continue
+                    date = pd.Timestamp(pub).tz_localize(None).normalize()
+                    for ent in art.get("entities", []):
+                        if ent.get("symbol", "").upper() != symbol.upper():
+                            continue
+                        score      = ent.get("sentiment_score")
+                        match_sc   = ent.get("match_score", 1.0)
+                        if score is None:
+                            continue
+                        rows.append({
+                            "date":       date,
+                            "sent_score": float(score),
+                            "weight":     float(match_sc) if match_sc else 1.0,
+                            "headline":   art.get("title", ""),
+                        })
+
+                meta = data.get("meta", {})
+                found    = meta.get("found", 0)
+                returned = meta.get("returned", 0)
+                if returned < 100 or len(rows) >= found:
+                    break  # last page
+                page += 1
+
+            except Exception as exc:
+                logger.warning("Marketaux fetch error for %s (page %d): %s", symbol, page, exc)
+                break
+
+        if not rows:
+            return None
+
+        result = pd.DataFrame(rows)
+        try:
+            _cache_path.write_bytes(pickle.dumps(result))
+        except Exception:
+            pass
+        return result
+
     def _finnhub_news(self, symbol, start, end, limit) -> Optional[pd.DataFrame]:
         key = _finnhub_key()
         if not key:
@@ -938,6 +1062,28 @@ class DataExtractor:
             logger.info("AlphaVantage news sentiment: %d articles for %s (%d batches)",
                         _av_total, symbol, _av_batches)
 
+        # Marketaux: entity-specific NLP sentiment, 100 calls/day limit.
+        # Use same 30-day batch window as AV (13 batches × ≤5 pages = ≤65 calls/run).
+        mx_frames: list[pd.DataFrame] = []
+        _mx_cursor   = datetime.date.fromisoformat(start)
+        _mx_end_dt   = datetime.date.fromisoformat(end)
+        _mx_window   = 30
+        _mx_total    = 0
+        _mx_batches  = 0
+        while _mx_cursor < _mx_end_dt:
+            _mb_end = min(_mx_cursor + datetime.timedelta(days=_mx_window - 1), _mx_end_dt)
+            _mx_batches += 1
+            mx_batch = self._marketaux_news(symbol, _mx_cursor.isoformat(), _mb_end.isoformat())
+            if mx_batch is not None and not mx_batch.empty:
+                mx_frames.append(mx_batch)
+                _mx_total += len(mx_batch)
+                logger.info("  Marketaux batch %d (%s → %s): %d articles",
+                            _mx_batches, _mx_cursor, _mb_end, len(mx_batch))
+            _mx_cursor = _mb_end + datetime.timedelta(days=1)
+        if _mx_total:
+            logger.info("Marketaux news sentiment: %d articles for %s (%d batches)",
+                        _mx_total, symbol, _mx_batches)
+
         alp = self._alpaca_news_sentiment(symbol, start, end)
         if alp is not None and not alp.empty:
             poly_frames.append(alp)  # same AI-insight format as Polygon
@@ -982,7 +1128,7 @@ class DataExtractor:
             fh_frames.append(fh_prep[keep_cols])
             logger.info("Finnhub news count: %d articles for %s", len(fh_prep), symbol)
 
-        all_frames = poly_frames + av_frames + fh_frames
+        all_frames = poly_frames + av_frames + fh_frames + mx_frames
         if not all_frames:
             return pd.DataFrame()
 
@@ -1012,9 +1158,10 @@ class DataExtractor:
         poly_daily = _agg_daily(poly_frames, "news_sent_polygon")
         av_daily   = _agg_daily(av_frames,   "news_sent_av")
         fhb_daily  = _agg_daily(fhb_frames,  "news_sent_finnhub")
+        mx_daily   = _agg_daily(mx_frames,   "news_sent_marketaux")
 
-        # Blended score across all scored sources (API scores + FinBERT-scored Finnhub)
-        scored_frames = poly_frames + av_frames + fhb_frames
+        # Blended score across all scored sources (API scores + FinBERT-scored Finnhub + Marketaux)
+        scored_frames = poly_frames + av_frames + fhb_frames + mx_frames
         blended_daily = _agg_daily(scored_frames if scored_frames else fh_frames, "news_sent_score")
 
         # Total article count across all sources (including Finnhub)
@@ -1047,6 +1194,11 @@ class DataExtractor:
             daily = daily.join(fhb_daily[["news_sent_finnhub"]], how="left")
         else:
             daily["news_sent_finnhub"] = float("nan")
+
+        if not mx_daily.empty:
+            daily = daily.join(mx_daily[["news_sent_marketaux"]], how="left")
+        else:
+            daily["news_sent_marketaux"] = float("nan")
 
         daily["news_articles"] = (
             total_daily["news_articles"].reindex(daily.index).fillna(0).astype(int)
