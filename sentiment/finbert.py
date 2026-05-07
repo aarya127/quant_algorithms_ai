@@ -110,7 +110,7 @@ class FinBertAnalyzer:
 
     _POLYGON_SLEEP = 12.0   # 5 req/min → 12 s between pages
 
-    def __init__(self, max_articles: int = 500):
+    def __init__(self, max_articles: int = 40):
         self.max_articles = max_articles
 
     # ------------------------------------------------------------------
