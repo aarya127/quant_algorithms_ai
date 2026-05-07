@@ -703,8 +703,8 @@ def sentiment_news(symbol):
 
         ex = DataExtractor()
 
-        # Article-level feed (AV scored + Finnhub unscored); larger cap for longer windows
-        max_art = 150 if days > 30 else 100
+        # Article-level feed (AV scored + Finnhub unscored); cap conservatively to stay within timeout
+        max_art = 40 if days > 30 else 25
         art_df = ex.news_with_scores(sym, start=start, end=end, max_articles=max_art)
 
         # Daily aggregate trend (uses the same sources + weights)

@@ -67,7 +67,7 @@ class StockAnalyzer:
         
         # Source 1: FinBERT on Finnhub News
         print(f"Analyzing FinBERT sentiment for {self.symbol}...")
-        print(f"  ⚠️  This uses Finnhub API (60 calls/min limit)")
+        print(f"This uses Finnhub API (60 calls/min limit)")
         try:
             finbert_result = analyze_stock_sentiment(self.symbol, self.symbol, days=7)
             if finbert_result:
@@ -94,7 +94,7 @@ class StockAnalyzer:
         
         # Source 2: Alpha Vantage News Sentiment
         print(f"Getting Alpha Vantage sentiment for {self.symbol}...")
-        print(f"  ⚠️  Alpha Vantage: 25 requests/day limit (use sparingly!)")
+        print(f"Alpha Vantage: 25 requests/day limit (use sparingly!)")
         try:
             av_news = av.get_market_news_sentiment(tickers=self.symbol, limit=50)
             if av_news and 'feed' in av_news:
