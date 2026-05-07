@@ -80,11 +80,15 @@ def _load_model():
     """Import torch/transformers and load ProsusAI/finbert on first use."""
     global _tokenizer, _model
     if _tokenizer is None or _model is None:
+        import torch
         from transformers import AutoTokenizer, AutoModelForSequenceClassification
-        import torch  # noqa
         logger.info("Loading FinBERT model (one-time, ~5-15s)…")
         _tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-        _model     = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
+        # float16 halves RAM (~220 MB vs ~440 MB) — safe for CPU inference on torch >= 2.2
+        _model = AutoModelForSequenceClassification.from_pretrained(
+            "ProsusAI/finbert", torch_dtype=torch.float16
+        )
+        _model.eval()
         logger.info("FinBERT model ready")
 
 
@@ -133,8 +137,10 @@ class FinBertAnalyzer:
             text, return_tensors="pt", padding=True,
             truncation=True, max_length=512,
         )
-        outputs = _model(**inputs)
-        probs  = torch.nn.functional.softmax(outputs.logits, dim=-1)
+        with torch.no_grad():
+            outputs = _model(**inputs)
+        # Cast logits back to float32 before softmax for numerical stability
+        probs  = torch.nn.functional.softmax(outputs.logits.float(), dim=-1)
         scores = probs[0].tolist()
         if hasattr(_model.config, "id2label"):
             labels = [_model.config.id2label[i] for i in range(len(scores))]
