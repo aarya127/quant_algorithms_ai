@@ -11,6 +11,14 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # Install remaining dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download FinBERT weights at build time so the first request never times out
+# doing a ~440 MB runtime download. The weights land in /root/.cache/huggingface/.
+RUN python3 -c "\
+from transformers import AutoTokenizer, AutoModelForSequenceClassification; \
+AutoTokenizer.from_pretrained('ProsusAI/finbert'); \
+AutoModelForSequenceClassification.from_pretrained('ProsusAI/finbert'); \
+print('FinBERT pre-downloaded')"
+
 # Copy the rest of the project
 COPY . .
 
