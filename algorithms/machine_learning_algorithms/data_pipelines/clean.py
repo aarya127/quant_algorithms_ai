@@ -126,6 +126,19 @@ else:
     for col, n in remaining.items():
         print(f"      !  {col:<30}  {n} nulls ({n/len(df):.1%})")
 
+# ── 4b. Drop zero-variance (constant) columns ────────────────────────────────
+numeric_cols_now = df.select_dtypes(include="number").columns
+zero_var = [c for c in numeric_cols_now if df[c].std() == 0]
+if zero_var:
+    print(f"\n[4b] Dropping {len(zero_var)} constant (zero-variance) column(s):")
+    for col in zero_var:
+        val = df[col].iloc[0]
+        print(f"      ✗  {col:<30}  (constant = {val})")
+        drop_log.append((col, f"constant={val}"))
+    df.drop(columns=zero_var, inplace=True)
+else:
+    print("\n[4b] No zero-variance columns found.")
+
 # ── 5. Save ───────────────────────────────────────────────────────────────────
 df.to_csv(dst)
 print(f"\nOutput: {dst}  ({df.shape[0]} rows × {df.shape[1]} cols)")
