@@ -170,5 +170,267 @@ class ARIMAModel:
             print(f"    Day {i}: ${fc:.2f}  [{lo:.2f}, {hi:.2f}]")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ARIMAXSuite — ARMA / ARIMAX vs naive baselines, rolling walk-forward backtest
+# ─────────────────────────────────────────────────────────────────────────────
+"""
+ARIMAXSuite compares:
+  1.  Zero-return naive baseline  (always predict μ of training window)
+  2.  ARMA(p,q) on returns        (order selected by AIC)
+  3.  ARIMAX with VIX change      (one exogenous macro regressor)
+  4.  ARIMAX with VIX + SPY       (two exogenous regressors)
+
+Walk-forward evaluation:
+  - Train on expanding window; predict 1-step ahead
+  - Metrics: RMSE, MAE, directional accuracy, IC (rank correlation)
+
+Key insight from the guide:
+  Stock returns are close to white noise, so ARIMA may barely beat the naive
+  zero-return baseline.  That is useful information: it is the reason ML with
+  richer features is needed.
+
+Outputs (output/arima/):
+  {TICKER}_arima_comparison.csv      — walk-forward metrics per model
+  {TICKER}_arima_comparison.png      — RMSE / dir_acc bar chart
+  {TICKER}_arima_forecast.png        — 5-day price forecast with CI
+
+Usage: python arima.py [TICKER]   (default: NVDA)
+"""
+
+import sys as _sys
+import warnings as _warnings
+_warnings.filterwarnings('ignore')
+
+import numpy as _np
+import pandas as _pd
+import matplotlib as _mpl
+_mpl.use('Agg')
+import matplotlib.pyplot as _plt
+from pathlib import Path as _Path
+from itertools import product as _product
+
+_ARIMA_OUT = _Path(__file__).parent / 'output' / 'arima'
+_ARIMA_OUT.mkdir(parents=True, exist_ok=True)
+
+
+def _arima_save(fig, name: str) -> None:
+    path = _ARIMA_OUT / name
+    fig.savefig(path, dpi=150, bbox_inches='tight')
+    _plt.close(fig)
+    print(f'  ✓ {path.name}')
+
+
+def _load_price_and_exog(ticker: str, period: str = '3y') -> _pd.DataFrame:
+    """Download price + VIX + SPY; align to common index."""
+    import yfinance as yf
+    tickers = [ticker, 'SPY', '^VIX']
+    raw = {}
+    for t in tickers:
+        d = yf.download(t, period=period, progress=False, auto_adjust=True)
+        raw[t] = d['Close'].squeeze()
+
+    df = _pd.DataFrame(raw).dropna()
+    df.columns = [ticker, 'SPY', 'VIX']
+
+    # Log returns
+    df['ret']     = _np.log(df[ticker] / df[ticker].shift(1))
+    df['ret_spy'] = _np.log(df['SPY']  / df['SPY'].shift(1))
+    df['d_vix']   = df['VIX'].diff()        # VIX change (level is I(1))
+    return df.dropna()
+
+
+def _best_arma_order(returns: _pd.Series, max_p: int = 3, max_q: int = 2) -> tuple:
+    """AIC grid search over ARMA(p,q) orders. Returns (p,q)."""
+    from statsmodels.tsa.arima.model import ARIMA as _ARIMA_sm
+    best_aic, best_order = _np.inf, (1, 0)
+    for p, q in _product(range(max_p + 1), range(max_q + 1)):
+        if p == 0 and q == 0:
+            continue
+        try:
+            res = _ARIMA_sm(returns, order=(p, 0, q)).fit()
+            if res.aic < best_aic:
+                best_aic, best_order = res.aic, (p, q)
+        except Exception:
+            pass
+    return best_order
+
+
+def _walk_forward_compare(df: _pd.DataFrame, ticker: str,
+                           init_train: int = 120) -> _pd.DataFrame:
+    """
+    Expanding-window 1-step-ahead comparison across four models.
+    Order is selected once on the initial training window to keep runtime fast.
+    Returns DataFrame of metrics per model.
+    """
+    from statsmodels.tsa.arima.model import ARIMA as _ARIMA_sm
+    from scipy.stats import spearmanr
+
+    rets    = df['ret'].values
+    d_vix   = df['d_vix'].values
+    ret_spy = df['ret_spy'].values
+    n       = len(rets)
+
+    # Select ARMA order once on the initial window (avoid re-fitting grid at every step)
+    init_p, init_q = _best_arma_order(_pd.Series(rets[:init_train]))
+
+    preds   = {m: [] for m in ['naive', 'arma', 'arimax_vix', 'arimax_vix_spy']}
+    actuals = []
+
+    for t in range(init_train, n - 1):
+        y_train = rets[:t]
+        actual  = rets[t]
+        actuals.append(actual)
+
+        # 1. Naive: mean of training returns
+        preds['naive'].append(float(_np.mean(y_train)))
+
+        # 2. ARMA (fixed order)
+        try:
+            res = _ARIMA_sm(y_train, order=(init_p, 0, init_q)).fit()
+            fc  = res.forecast(1)
+            preds['arma'].append(float(fc.iloc[0]))
+        except Exception:
+            preds['arma'].append(float(_np.mean(y_train)))
+
+        # 3. ARIMAX with VIX change
+        try:
+            exog_tr  = d_vix[:t].reshape(-1, 1)
+            exog_fc  = d_vix[t].reshape(1, 1)
+            res      = _ARIMA_sm(y_train, order=(init_p, 0, init_q),
+                                 exog=exog_tr).fit()
+            fc       = res.forecast(1, exog=exog_fc)
+            preds['arimax_vix'].append(float(fc.iloc[0]))
+        except Exception:
+            preds['arimax_vix'].append(float(_np.mean(y_train)))
+
+        # 4. ARIMAX with VIX + SPY
+        try:
+            exog_tr  = _np.column_stack([d_vix[:t], ret_spy[:t]])
+            exog_fc  = _np.array([[d_vix[t], ret_spy[t]]])
+            res      = _ARIMA_sm(y_train, order=(init_p, 0, init_q),
+                                 exog=exog_tr).fit()
+            fc       = res.forecast(1, exog=exog_fc)
+            preds['arimax_vix_spy'].append(float(fc.iloc[0]))
+        except Exception:
+            preds['arimax_vix_spy'].append(float(_np.mean(y_train)))
+
+    actuals = _np.array(actuals)
+    rows = []
+    for name, pred in preds.items():
+        p       = _np.array(pred)
+        rmse    = float(_np.sqrt(_np.mean((actuals - p) ** 2)))
+        mae     = float(_np.mean(_np.abs(actuals - p)))
+        dir_acc = float(_np.mean(_np.sign(actuals) == _np.sign(p)))
+        ic, _   = spearmanr(actuals, p)
+        rows.append({'Model': name, 'RMSE': round(rmse, 6),
+                     'MAE': round(mae, 6),
+                     'Dir_Acc': round(dir_acc, 4),
+                     'IC': round(float(ic), 4)})
+    return _pd.DataFrame(rows)
+
+
+def _plot_arima_comparison(df_comp: _pd.DataFrame, ticker: str) -> None:
+    """Bar chart of RMSE and directional accuracy."""
+    fig, axes = _plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle(
+        f'{ticker} — ARMA / ARIMAX Walk-Forward Comparison\n'
+        'Baselines: zero-return naive  |  Exog: VIX Δ, SPY return',
+        fontsize=12,
+    )
+    labels = ['Naive\nbaseline', 'ARMA', 'ARIMAX\n+VIX', 'ARIMAX\n+VIX+SPY']
+    colors = ['#9E9E9E', '#2196F3', '#FF9800', '#4CAF50']
+
+    for ax, metric, title in zip(
+        axes,
+        ['RMSE', 'Dir_Acc'],
+        ['RMSE (lower = better)', 'Directional Accuracy (higher = better)'],
+    ):
+        ax.bar(labels, df_comp[metric], color=colors, edgecolor='white')
+        ax.set_title(title)
+        ax.set_ylabel(metric)
+        ax.tick_params(axis='x', labelsize=9)
+
+    fig.tight_layout()
+    _arima_save(fig, f'{ticker}_arima_comparison.png')
+
+
+def _plot_arima_forecast(df: _pd.DataFrame, ticker: str,
+                         forecast_days: int = 10) -> None:
+    """Price-level 10-day forecast from best ARMA with confidence interval."""
+    from statsmodels.tsa.arima.model import ARIMA as _ARIMA_sm
+
+    rets    = df['ret']
+    closes  = df[ticker]
+    p, q    = _best_arma_order(rets)
+
+    try:
+        from statsmodels.stats.diagnostic import acorr_ljungbox
+        model  = _ARIMA_sm(rets, order=(p, 0, q))
+        result = model.fit()
+        fc     = result.get_forecast(forecast_days)
+        ci     = fc.conf_int(alpha=0.05)
+        fc_ret = fc.predicted_mean.values
+
+        last_price = float(closes.iloc[-1])
+        prices_fc  = last_price * _np.exp(_np.cumsum(fc_ret))
+        lo_prices  = last_price * _np.exp(_np.cumsum(ci.iloc[:, 0].values))
+        hi_prices  = last_price * _np.exp(_np.cumsum(ci.iloc[:, 1].values))
+
+        future_idx = _pd.date_range(closes.index[-1], periods=forecast_days + 1,
+                                    freq='B')[1:]
+
+        fig, ax = _plt.subplots(figsize=(14, 5))
+        ax.plot(closes.index[-60:], closes.iloc[-60:],
+                label='Historical Price', color='#212121', linewidth=1.5)
+        ax.plot(future_idx, prices_fc,
+                label=f'ARMA({p},{q}) Forecast', color='#2196F3',
+                linewidth=2, linestyle='--')
+        ax.fill_between(future_idx, lo_prices, hi_prices,
+                        alpha=0.2, color='#2196F3', label='95% CI')
+        ax.axvline(closes.index[-1], color='gray', linestyle=':', linewidth=1)
+        ax.set_title(f'{ticker} — ARMA({p},{q}) 10-Day Price Forecast')
+        ax.set_ylabel(f'{ticker} Price ($)')
+        ax.legend(fontsize=9)
+        fig.tight_layout()
+        _arima_save(fig, f'{ticker}_arima_forecast.png')
+    except Exception as e:
+        print(f'  [warn] forecast plot failed: {e}')
+
+
+def run_arima_suite(ticker: str = 'NVDA') -> None:
+    print(f'\n[arima suite]  {ticker}')
+    print(f'  Output → {_ARIMA_OUT}')
+    print('  Running walk-forward comparison (this takes ~30s) …')
+
+    df = _load_price_and_exog(ticker)
+    df_comp = _walk_forward_compare(df, ticker)
+
+    path = _ARIMA_OUT / f'{ticker}_arima_comparison.csv'
+    df_comp.to_csv(path, index=False)
+    print(f'  ✓ {path.name}')
+
+    sep = '=' * 62
+    print(f'\n{sep}')
+    print(f'  ARIMA / ARIMAX COMPARISON — {ticker}')
+    print(sep)
+    print(df_comp.to_string(index=False))
+    naive_rmse = df_comp.loc[df_comp['Model'] == 'naive', 'RMSE'].iloc[0]
+    best_rmse  = df_comp['RMSE'].min()
+    best_name  = df_comp.loc[df_comp['RMSE'].idxmin(), 'Model']
+    improve    = (naive_rmse - best_rmse) / naive_rmse * 100
+    print(f'\n  Best RMSE model: {best_name}  '
+          f'(improvement vs naive: {improve:.2f}%)')
+    if improve < 5:
+        print('  → Returns are near-white-noise — ARIMA barely improves on naive.')
+        print('    This confirms why ML with richer features is needed.')
+    print(sep)
+
+    _plot_arima_comparison(df_comp, ticker)
+    _plot_arima_forecast(df, ticker)
+
+
 if __name__ == '__main__':
-    ARIMAModel().run('NVDA')
+    ticker = _sys.argv[1] if len(_sys.argv) > 1 else 'NVDA'
+    ARIMAModel().run(ticker)
+    run_arima_suite(ticker)
+
