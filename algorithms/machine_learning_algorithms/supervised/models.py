@@ -171,6 +171,11 @@ def tune_model(name, model, param_dist, X, y, scoring, n_iter, n_splits=3):
     On failure prints a warning, falls back to fitting with original params,
     and returns (model, {}).
     """
+    # Reduce inner splits when the minority class is too small for n_splits folds
+    if len(np.unique(y)) > 1:
+        min_class_count = int(np.bincount(y.astype(int)).min())
+        n_splits = min(n_splits, max(1, min_class_count - 1))
+
     tscv = TimeSeriesSplit(n_splits=n_splits)
     try:
         rs = RandomizedSearchCV(
