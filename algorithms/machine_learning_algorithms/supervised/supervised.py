@@ -476,27 +476,29 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
 # ─────────────────────────────────────────────────────────────────────────────
 # 8. plots
 # ─────────────────────────────────────────────────────────────────────────────
-def plot_cv_metrics(cv_df, target, task, version):
+def _primary_metric(task, target):
     if task == "regression":
-        metrics = ["mae", "rmse", "dir_acc", "ic"]
-    elif target == "target_large_move":
-        metrics = ["f1_w", "precision", "recall", "pr_auc"]
-    else:
-        metrics = ["f1_w", "f1_macro", "bal_acc"]
+        return "ic"
+    return "pr_auc" if target == "target_large_move" else "f1_w"
 
-    for metric in metrics:
-        if metric not in cv_df.columns:
-            continue
-        fig, ax = plt.subplots(figsize=(9, 4))
-        for model in cv_df["model"].unique():
-            sub = cv_df[cv_df["model"] == model]
-            ax.plot(sub["fold"], sub[metric], "o-", label=model,
-                    linewidth=1.5, markersize=5)
-        ax.set_title(f"{SYMBOL} v{version} — {target} | {metric} (CV)")
-        ax.set_xlabel("Fold"); ax.set_ylabel(metric)
-        ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
-        plt.tight_layout()
-        _save(fig, f"v{version}_cv_{target}_{metric}.png")
+
+def plot_cv_primary(cv_df, target, task, version):
+    """One chart: primary metric across folds, all models."""
+    metric = _primary_metric(task, target)
+    if metric not in cv_df.columns:
+        return
+    fig, ax = plt.subplots(figsize=(9, 4))
+    for model in cv_df["model"].unique():
+        sub = cv_df[cv_df["model"] == model]
+        style = dict(linewidth=1.8, markersize=6)
+        if model == "baseline":
+            style.update(color="gray", linestyle="--", linewidth=1.2)
+        ax.plot(sub["fold"], sub[metric], "o-", label=model, **style)
+    ax.set_title(f"{SYMBOL} v{version} — {target} | {metric} (walk-forward CV)")
+    ax.set_xlabel("Fold"); ax.set_ylabel(metric)
+    ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    _save(fig, f"v{version}_cv_{target}.png")
 
 
 def plot_feat_freq(feat_counter, target, version, top_n=20):
@@ -511,37 +513,82 @@ def plot_feat_freq(feat_counter, target, version, top_n=20):
     _save(fig, f"v{version}_feat_freq_{target}.png")
 
 
-def plot_holdout_scatter(y_true, y_pred, model, target, version):
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.scatter(y_true, y_pred, alpha=0.6, s=25, color="#E91E63", edgecolors="none")
-    lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
-    ax.plot(lims, lims, "k--", linewidth=0.8)
-    ax.set_xlabel("Actual"); ax.set_ylabel("Predicted")
-    ax.set_title(f"{SYMBOL} v{version} — {target} | {model}")
+def plot_holdout_bar(h_res, target, task, version):
+    """Horizontal bar: primary metric for all models on the holdout set."""
+    metric = _primary_metric(task, target)
+    rows = [(m, res["metrics"].get(metric))
+            for m, res in h_res.items()
+            if "metrics" in res and res["metrics"].get(metric) is not None]
+    if not rows:
+        return
+    models, vals = zip(*rows)
+    colors = ["#9E9E9E" if m == "baseline" else "#1976D2" for m in models]
+    fig, ax = plt.subplots(figsize=(7, max(3, len(rows) * 0.45)))
+    ax.barh(models, vals, color=colors, height=0.6, edgecolor="white")
+    bl = h_res.get("baseline", {}).get("metrics", {}).get(metric)
+    if bl is not None:
+        ax.axvline(bl, color="red", linestyle="--", linewidth=1.2,
+                   label=f"baseline={bl:.3f}")
+        ax.legend(fontsize=8)
+    ax.set_xlabel(metric)
+    ax.set_title(f"{SYMBOL} v{version} — {target} | holdout {metric}")
+    ax.invert_yaxis()
     plt.tight_layout()
-    _save(fig, f"v{version}_scatter_{target}_{model}.png")
+    _save(fig, f"v{version}_holdout_{target}.png")
 
 
-def plot_confusion(y_true, y_pred, model, target, version):
-    cm = confusion_matrix(y_true.astype(int), y_pred.astype(int))
-    fig, ax = plt.subplots(figsize=(5, 4))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
-    ax.set_xlabel("Predicted"); ax.set_ylabel("Actual")
-    ax.set_title(f"{SYMBOL} v{version} — {target} | {model}")
-    plt.tight_layout()
-    _save(fig, f"v{version}_confusion_{target}_{model}.png")
-
-
-def plot_pr_curve(y_true, proba, model, target, version):
-    prec, rec, _ = precision_recall_curve(y_true.astype(int), proba[:, 1])
-    ap = average_precision_score(y_true.astype(int), proba[:, 1])
+def plot_pr_combined(h_res, target, version):
+    """All models' PR curves on one chart for the imbalanced binary target."""
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.plot(rec, prec, color="#E91E63", linewidth=1.5, label=f"AP={ap:.3f}")
+    for model, res in h_res.items():
+        if model == "baseline" or res.get("proba") is None:
+            continue
+        try:
+            prec, rec, _ = precision_recall_curve(
+                res["y_true"].astype(int), res["proba"][:, 1])
+            ap = average_precision_score(
+                res["y_true"].astype(int), res["proba"][:, 1])
+            ax.plot(rec, prec, linewidth=1.5, label=f"{model} AP={ap:.3f}")
+        except Exception:
+            pass
     ax.set_xlabel("Recall"); ax.set_ylabel("Precision")
-    ax.set_title(f"{SYMBOL} v{version} — {target} | {model} PR curve")
-    ax.legend(fontsize=9); ax.grid(True, alpha=0.3)
+    ax.set_title(f"{SYMBOL} v{version} — {target} | PR curves (holdout)")
+    ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    _save(fig, f"v{version}_pr_curve_{target}_{model}.png")
+    _save(fig, f"v{version}_pr_curves_{target}.png")
+
+
+def plot_best_holdout(h_res, target, task, version):
+    """Scatter (regression) or confusion (classification) for the best model only."""
+    metric = _primary_metric(task, target)
+    best, best_val = None, -np.inf
+    for model, res in h_res.items():
+        if model == "baseline" or "metrics" not in res:
+            continue
+        v = res["metrics"].get(metric)
+        if v is not None and v > best_val:
+            best_val, best = v, model
+    if best is None:
+        return
+    res = h_res[best]
+    y_t, y_p = res["y_true"], res["y_pred"]
+    if task == "regression":
+        fig, ax = plt.subplots(figsize=(5, 5))
+        ax.scatter(y_t, y_p, alpha=0.6, s=25, color="#E91E63", edgecolors="none")
+        lims = [min(y_t.min(), y_p.min()), max(y_t.max(), y_p.max())]
+        ax.plot(lims, lims, "k--", linewidth=0.8)
+        ax.set_xlabel("Actual"); ax.set_ylabel("Predicted")
+        ax.set_title(f"{SYMBOL} v{version} — {target} | best: {best} ({metric}={best_val:.3f})")
+        plt.tight_layout()
+        _save(fig, f"v{version}_best_{target}.png")
+    else:
+        cm = confusion_matrix(y_t.astype(int), y_p.astype(int))
+        fig, ax = plt.subplots(figsize=(5, 4))
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+        ax.set_xlabel("Predicted"); ax.set_ylabel("Actual")
+        ax.set_title(f"{SYMBOL} v{version} — {target} | best: {best} ({metric}={best_val:.3f})")
+        plt.tight_layout()
+        _save(fig, f"v{version}_best_{target}.png")
 
 
 def plot_version_comparison(all_holdout, targets, task):
@@ -621,8 +668,9 @@ def main():
             fd.insert(1, "target", target)
             all_cv_rows.append(fd)
 
-            plot_cv_metrics(fd, target, task, version)
-            plot_feat_freq(feat_counter, target, version)
+            plot_cv_primary(fd, target, task, version)
+            if version == "A":                          # feature freq once is enough
+                plot_feat_freq(feat_counter, target, version)
 
             # holdout
             print(f"    → Holdout ({HOLDOUT_ROWS} rows):")
@@ -639,13 +687,10 @@ def main():
                                  if isinstance(v, float))
                 print(line)
 
-                y_t = res["y_true"]; y_p = res["y_pred"]
-                if task == "regression":
-                    plot_holdout_scatter(y_t, y_p, model, target, version)
-                else:
-                    plot_confusion(y_t, y_p, model, target, version)
-                    if target == "target_large_move" and res.get("proba") is not None:
-                        plot_pr_curve(y_t, res["proba"], model, target, version)
+            plot_holdout_bar(h_res, target, task, version)
+            plot_best_holdout(h_res, target, task, version)
+            if target == "target_large_move":
+                plot_pr_combined(h_res, target, version)
 
     # ── version comparison plots ──────────────────────────────────────────────
     plot_version_comparison(all_holdout, REG_TARGETS, "regression")
