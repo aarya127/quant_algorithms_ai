@@ -34,8 +34,5 @@ REGIME_COLS  = ["cluster_kmeans", "anomaly_iso", "anomaly_score"]
 
 # ── Stage 7C — hyperparameter tuning ─────────────────────────────────────────
 USE_TUNING   = True   # RandomizedSearchCV with TimeSeriesSplit inner CV
-TUNE_ITER    = 15     # iterations per model per fold
+TUNE_ITER    = 25     # iterations per model per fold (guide: 25–50)
 TUNE_SPLITS  = 3      # inner TimeSeriesSplit folds
-BINARY_CLF   = {"target_large_move"}
-MULTI_CLF    = {"target_dir_1d", "target_regime"}
-REGIME_COLS  = ["cluster_kmeans", "anomaly_iso", "anomaly_score"]

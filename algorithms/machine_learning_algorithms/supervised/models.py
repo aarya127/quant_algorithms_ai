@@ -100,49 +100,67 @@ def _get_feature_importances(model, name, sel_features):
 # Stage 7C — Hyperparameter tuning
 # ─────────────────────────────────────────────────────────────────────────────
 def reg_param_dists():
-    """RandomizedSearch parameter distributions for regression models."""
+    """RandomizedSearch parameter distributions for regression models.
+    Ranges aligned with guide recommendations for small datasets (~251 rows).
+    """
     return {
         "ridge":      {"alpha": loguniform(0.1, 100)},
         "elasticnet": {"alpha": loguniform(1e-3, 1), "l1_ratio": uniform(0.1, 0.85)},
         "huber":      {"epsilon": uniform(1.05, 1.45), "alpha": loguniform(1e-5, 0.1)},
-        "rf":         {"n_estimators": [100, 200, 300],
-                       "max_depth": [4, 6, 8, None],
-                       "min_samples_leaf": [1, 2, 4]},
-        "xgb":        {"n_estimators": [100, 200, 300], "max_depth": [3, 4, 6],
-                       "learning_rate": loguniform(0.01, 0.3),
+        "rf":         {"n_estimators": [50, 100, 200, 300],
+                       "max_depth": [2, 3, 4, None],
+                       "min_samples_leaf": [1, 2, 4],
+                       "max_features": ["sqrt", "log2", 0.5]},
+        "xgb":        {"n_estimators": [50, 100, 200, 300], "max_depth": [2, 3, 4],
+                       "learning_rate": loguniform(0.01, 0.1),
+                       "min_child_weight": [1, 3, 5, 10],
                        "subsample": uniform(0.6, 0.4), "colsample_bytree": uniform(0.6, 0.4),
-                       "reg_alpha": loguniform(0.01, 1), "reg_lambda": loguniform(0.1, 10)},
-        "lgb":        {"n_estimators": [100, 200, 300], "max_depth": [3, 4, 6],
-                       "learning_rate": loguniform(0.01, 0.3),
+                       "reg_alpha": [0, 0.1, 0.5, 1, 2, 5],
+                       "reg_lambda": loguniform(1, 20)},
+        "lgb":        {"n_estimators": [50, 100, 200, 300], "max_depth": [2, 3, 4],
+                       "num_leaves": [15, 31, 63],
+                       "learning_rate": loguniform(0.01, 0.1),
                        "subsample": uniform(0.6, 0.4), "colsample_bytree": uniform(0.6, 0.4),
-                       "reg_alpha": loguniform(0.01, 1), "reg_lambda": loguniform(0.1, 10)},
+                       "reg_alpha": [0, 0.1, 0.5, 1, 2, 5],
+                       "reg_lambda": loguniform(1, 20)},
     }
 
 
 def clf_param_dists():
-    """RandomizedSearch parameter distributions for classification models."""
+    """RandomizedSearch parameter distributions for classification models.
+    Ranges aligned with guide recommendations for small datasets (~251 rows).
+    """
     return {
         "logistic": {"C": loguniform(0.01, 100)},
         "svc_cal":  {"estimator__C": loguniform(0.01, 100)},
-        "rf":       {"n_estimators": [100, 200, 300],
-                     "max_depth": [4, 6, 8, None],
-                     "min_samples_leaf": [1, 2, 4]},
-        "xgb":      {"n_estimators": [100, 200, 300], "max_depth": [3, 4, 6],
-                     "learning_rate": loguniform(0.01, 0.3),
+        "rf":       {"n_estimators": [50, 100, 200, 300],
+                     "max_depth": [2, 3, 4, None],
+                     "min_samples_leaf": [1, 2, 4],
+                     "max_features": ["sqrt", "log2", 0.5]},
+        "xgb":      {"n_estimators": [50, 100, 200, 300], "max_depth": [2, 3, 4],
+                     "learning_rate": loguniform(0.01, 0.1),
+                     "min_child_weight": [1, 3, 5, 10],
                      "subsample": uniform(0.6, 0.4), "colsample_bytree": uniform(0.6, 0.4),
-                     "reg_alpha": loguniform(0.01, 1), "reg_lambda": loguniform(0.1, 10)},
-        "lgb":      {"n_estimators": [100, 200, 300], "max_depth": [3, 4, 6],
-                     "learning_rate": loguniform(0.01, 0.3),
+                     "reg_alpha": [0, 0.1, 0.5, 1, 2, 5],
+                     "reg_lambda": loguniform(1, 20)},
+        "lgb":      {"n_estimators": [50, 100, 200, 300], "max_depth": [2, 3, 4],
+                     "num_leaves": [15, 31, 63],
+                     "learning_rate": loguniform(0.01, 0.1),
                      "subsample": uniform(0.6, 0.4), "colsample_bytree": uniform(0.6, 0.4),
-                     "reg_alpha": loguniform(0.01, 1), "reg_lambda": loguniform(0.1, 10)},
+                     "reg_alpha": [0, 0.1, 0.5, 1, 2, 5],
+                     "reg_lambda": loguniform(1, 20)},
     }
 
 
 def _tune_scoring(task, target):
-    """Return the sklearn scoring string for inner CV during tuning."""
+    """Return the sklearn scoring string for inner CV during tuning.
+    - Regression: r2 (proxy; could also use neg_mean_absolute_error)
+    - Imbalanced binary (target_large_move): average_precision (PR AUC)
+    - Other classification: f1_macro (guide-recommended for multiclass)
+    """
     if task == "regression":
         return "r2"
-    return "average_precision" if target in BINARY_CLF else "f1_weighted"
+    return "average_precision" if target in BINARY_CLF else "f1_macro"
 
 
 def tune_model(name, model, param_dist, X, y, scoring, n_iter, n_splits=3):
