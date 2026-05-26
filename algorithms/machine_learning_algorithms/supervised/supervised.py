@@ -264,7 +264,7 @@ def clf_model_set(n_cls, is_binary_imb, spw, is_multi):
     multi = "multinomial" if is_multi else "ovr"
     return {
         "logistic": LogisticRegression(C=1.0, class_weight="balanced",
-                                        max_iter=2000, multi_class=multi,
+                                        max_iter=2000,
                                         solver="lbfgs", random_state=42),
         "svc_cal":  CalibratedClassifierCV(
                         LinearSVC(class_weight="balanced", max_iter=5000,
@@ -290,6 +290,31 @@ def clf_model_set(n_cls, is_binary_imb, spw, is_multi):
                         class_weight="balanced",
                         random_state=42, verbosity=-1, n_jobs=1),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5b. native feature importance extraction (no SHAP required)
+# ─────────────────────────────────────────────────────────────────────────────
+def _get_feature_importances(model, name, sel_features):
+    """Return a {feature: normalized_importance} dict for supported models."""
+    try:
+        if name in ("rf", "xgb", "lgb"):
+            fi = np.array(model.feature_importances_, dtype=float)
+        elif name in ("ridge", "elasticnet", "huber"):
+            fi = np.abs(np.array(model.coef_, dtype=float))
+        elif name == "logistic":
+            coef = np.array(model.coef_, dtype=float)
+            fi = np.abs(coef).mean(axis=0) if coef.ndim == 2 else np.abs(coef[0])
+        else:
+            return None         # svc_cal — calibrated SVC internals are complex; skip
+        if len(fi) != len(sel_features):
+            return None
+        total = fi.sum()
+        if total > 0:
+            fi = fi / total
+        return dict(zip(sel_features, fi.tolist()))
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -395,7 +420,8 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     except Exception:
         mask = np.ones(len(features), dtype=bool)
 
-    X_cv = X_s[:, mask]
+    X_cv         = X_s[:, mask]
+    sel_features = [features[i] for i in range(len(features)) if mask[i]]
 
     X_h_raw = df.loc[holdout_idx, features].values.astype(float)
     for j in range(X_h_raw.shape[1]):
@@ -417,8 +443,11 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
             try:
                 m.fit(X_cv, y_all)
                 yhat = m.predict(X_h_ev)
-                results[name] = {"metrics": reg_metrics(y_h_ev, yhat),
-                                 "y_true": y_h_ev, "y_pred": yhat}
+                results[name] = {
+                    "metrics": reg_metrics(y_h_ev, yhat),
+                    "y_true": y_h_ev, "y_pred": yhat,
+                    "importances": _get_feature_importances(m, name, sel_features),
+                }
             except Exception as e:
                 results[name] = {"error": str(e)}
 
@@ -465,7 +494,8 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
                 results[name] = {
                     "metrics": clf_metrics(y_h_ev.astype(int), yhat.astype(int), proba, target),
                     "y_true": y_h_ev, "y_pred": yhat,
-                    "proba": proba
+                    "proba": proba,
+                    "importances": _get_feature_importances(m, name, sel_features),
                 }
             except Exception as e:
                 results[name] = {"error": str(e)}
@@ -591,6 +621,38 @@ def plot_best_holdout(h_res, target, task, version):
         _save(fig, f"v{version}_best_{target}.png")
 
 
+def plot_feature_importance(h_res, target, task, version, top_n=20):
+    """Horizontal bar: native feature importances for the best model on holdout."""
+    metric = _primary_metric(task, target)
+    best, best_val = None, -np.inf
+    for model, res in h_res.items():
+        if model == "baseline" or "metrics" not in res:
+            continue
+        if res.get("importances") is None:
+            continue
+        v = res["metrics"].get(metric)
+        if v is not None and v > best_val:
+            best_val, best = v, model
+    if best is None:
+        return
+
+    imp = h_res[best]["importances"]
+    s = pd.Series(imp).sort_values(ascending=False).head(top_n)
+    if s.empty:
+        return
+
+    fig, ax = plt.subplots(figsize=(9, max(4, len(s) * 0.42)))
+    s.plot(kind="barh", ax=ax, color="#388E3C", edgecolor="white")
+    ax.set_xlabel("Normalized importance")
+    ax.set_title(
+        f"{SYMBOL} v{version} — {target} | Feature importance  [{best}]  top-{top_n}"
+    )
+    ax.invert_yaxis()
+    ax.grid(True, alpha=0.25, axis="x")
+    plt.tight_layout()
+    _save(fig, f"v{version}_feat_imp_{target}.png")
+
+
 def plot_version_comparison(all_holdout, targets, task):
     key = "ic" if task == "regression" else "f1_w"
     rows = []
@@ -689,6 +751,7 @@ def main():
 
             plot_holdout_bar(h_res, target, task, version)
             plot_best_holdout(h_res, target, task, version)
+            plot_feature_importance(h_res, target, task, version)
             if target == "target_large_move":
                 plot_pr_combined(h_res, target, version)
 
