@@ -4,66 +4,61 @@ supervised.py  —  Walk-forward supervised modeling (zero leakage)
 Usage:
     python algorithms/machine_learning_algorithms/supervised/supervised.py NVDA
 
-Design principles
------------------
-Every fold is a fully isolated pipeline:
-    1. Split train / validation by time
-    2. Fit StandardScaler on TRAIN only  → transform train + val
-    3. Run Lasso feature selection on TRAIN only
-    4. Refit KMeans clustering on TRAIN only  → label train + val
-    5. Apply SMOTE on TRAIN only (classification targets)
-    6. Tune decision threshold on TRAIN out-of-bag / val
-    7. Fit model on TRAIN  → evaluate on VAL (future period)
+Phase 2 — Target-specific baselines
+    target_1d      → predict 0 (zero return)
+    target_5d      → predict rolling mean of recent train returns
+    target_vol_5d  → predict median of recent train vol
+    target_dir_1d  → predict majority class
+    target_large_move → always predict 0 (no large move)
+    target_regime  → predict last seen regime
 
-Nothing fitted to val/test set until inference time.
+Phase 3 — Model ladder (per task):
+    Regression:     Ridge, ElasticNet, HuberRegressor, RandomForest, XGBoost, LightGBM
+    Classification: Logistic, CalibratedSVC, RandomForest, XGBoost, LightGBM
 
-Models
-------
-Regression targets  (target_1d, target_5d, target_vol_5d):
-    • Baseline  : predict train-mean (dummy)
-    • Ridge     : linear, well-regularised
-    • XGBoost   : gradient boosted trees
-    • LightGBM  : fast gradient boosted trees
+Phase 4 — Target-specific metrics:
+    Regression: MAE, RMSE, R², directional accuracy, IC (Spearman rank corr)
+    Classification: accuracy, balanced accuracy, F1-weighted, F1-macro
+    target_large_move extras: precision, recall, PR-AUC, ROC-AUC
+    target_regime extras: per-class F1 in confusion matrix
 
-Classification targets  (target_dir_1d, target_large_move, target_regime):
-    • Baseline  : predict majority class
-    • Logistic  : linear, L2
-    • XGBoost   : gradient boosted trees  (+ class_weight for imbalance)
-    • LightGBM  : gradient boosted trees  (+ class_weight for imbalance)
+Feature set comparison:
+    Version A: 34 recommended features only
+    Version B: 34 features + cluster_kmeans + anomaly_iso + anomaly_score
 
-Walk-forward scheme
--------------------
-    INIT_TRAIN = 120 days  (~6 months)
-    STEP       = 21  days  (~1 month  roll)
-    Produces ~6 folds over 1-year window
-    Final held-out TEST: last 51 rows (same as unsupervised.py)
+Leakage controls — per fold:
+    1. Split by time
+    2. Median imputation fit on train only
+    3. StandardScaler fit on train only
+    4. Lasso feature selection fit on train only
+    5. SMOTE applied to train only (target_large_move)
+    6. Class weights / scale_pos_weight computed from train only
 """
 
 import sys
 import warnings
-import json
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import seaborn as sns
 from pathlib import Path
 from collections import defaultdict
+from scipy.stats import spearmanr
 
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import Ridge, LogisticRegression, Lasso
-from sklearn.dummy import DummyRegressor, DummyClassifier
-from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.linear_model import Ridge, ElasticNet, HuberRegressor, Lasso, LogisticRegression
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.metrics import (
     mean_absolute_error, mean_squared_error, r2_score,
-    accuracy_score, f1_score, roc_auc_score,
-    classification_report, confusion_matrix,
-    precision_recall_curve
+    accuracy_score, balanced_accuracy_score,
+    f1_score, precision_score, recall_score,
+    roc_auc_score, average_precision_score,
+    confusion_matrix, precision_recall_curve,
 )
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder
 from imblearn.over_sampling import SMOTE
 
 import xgboost as xgb
@@ -85,18 +80,19 @@ REGIMES_CSV = PIPELINES / f"{SYMBOL}_features_with_regimes.csv"
 FEAT_FILE   = FD_OUT / "recommended_features.txt"
 
 # ── config ────────────────────────────────────────────────────────────────────
-INIT_TRAIN   = 120    # rows in first training window
-STEP         = 21     # rows to advance each fold
-HOLDOUT_ROWS = 51     # final test set  (matches unsupervised split)
+INIT_TRAIN   = 120
+STEP         = 21
+HOLDOUT_ROWS = 51
 
-LASSO_ALPHA  = 5e-3   # per-fold Lasso for feature selection
-N_PCA        = None   # set to int to add PCA inside fold; None = skip
-SMOTE_K      = 5      # SMOTE neighbours
+LASSO_ALPHA  = 5e-3
+SMOTE_K      = 5
 
 REG_TARGETS  = ["target_1d", "target_5d", "target_vol_5d"]
 CLF_TARGETS  = ["target_dir_1d", "target_large_move", "target_regime"]
+BINARY_CLF   = {"target_large_move"}
+MULTI_CLF    = {"target_dir_1d", "target_regime"}
 
-MULTI_CLASS_TARGETS = {"target_dir_1d", "target_regime"}   # 3-class problems
+REGIME_COLS  = ["cluster_kmeans", "anomaly_iso", "anomaly_score"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,84 +105,55 @@ def _save(fig, name):
     print(f"  ✓ {name}")
 
 
-def _mae(y, yhat):   return mean_absolute_error(y, yhat)
-def _rmse(y, yhat):  return np.sqrt(mean_squared_error(y, yhat))
-def _r2(y, yhat):    return r2_score(y, yhat)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. make_walk_forward_splits
+# 1. walk-forward splits
 # ─────────────────────────────────────────────────────────────────────────────
-def make_walk_forward_splits(n_total: int, init_train: int, step: int,
-                              holdout: int):
-    """
-    Returns list of (train_idx, val_idx) tuples.
-    The final `holdout` rows are never used in any fold — reserved for
-    the true out-of-sample test evaluation at the end.
-    """
+def make_walk_forward_splits(n_total, init_train, step, holdout):
     available = n_total - holdout
-    folds = []
-    train_end = init_train
+    folds, train_end = [], init_train
     while train_end < available:
         val_end = min(train_end + step, available)
-        folds.append((
-            list(range(0, train_end)),
-            list(range(train_end, val_end))
-        ))
+        folds.append((list(range(0, train_end)), list(range(train_end, val_end))))
         train_end += step
     return folds
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. prepare_fold_data
+# 2. per-fold leakage-free data prep
 # ─────────────────────────────────────────────────────────────────────────────
-def prepare_fold_data(df: pd.DataFrame, train_idx, val_idx,
-                       base_features: list, target: str,
-                       use_smote: bool = False):
-    """
-    Leakage-free per-fold preparation:
-      - Scale features (fit on train only)
-      - Lasso feature selection (fit on train only)
-      - Optional SMOTE (applied to train only)
-    Returns X_tr, X_val, y_tr, y_val, selected_features, scaler
-    """
-    X_raw_tr  = df.loc[train_idx, base_features].values.astype(float)
-    X_raw_val = df.loc[val_idx,   base_features].values.astype(float)
-    y_tr      = df.loc[train_idx, target].values
-    y_val     = df.loc[val_idx,   target].values
+def prepare_fold_data(df, train_idx, val_idx, features, target, use_smote=False):
+    X_raw_tr  = df.loc[train_idx, features].values.astype(float)
+    X_raw_val = df.loc[val_idx,   features].values.astype(float)
+    y_tr      = df.loc[train_idx, target].values.astype(float)
+    y_val     = df.loc[val_idx,   target].values.astype(float)
 
-    # ── 2a. NaN imputation: median from train only → apply to train + val ────
-    col_medians = np.nanmedian(X_raw_tr, axis=0)
+    # NaN imputation — medians from train only
+    col_med = np.nanmedian(X_raw_tr, axis=0)
     for j in range(X_raw_tr.shape[1]):
-        nan_mask_tr  = np.isnan(X_raw_tr[:, j])
-        nan_mask_val = np.isnan(X_raw_val[:, j])
-        X_raw_tr[nan_mask_tr, j]  = col_medians[j]
-        X_raw_val[nan_mask_val, j] = col_medians[j]
+        X_raw_tr[np.isnan(X_raw_tr[:, j]), j]  = col_med[j]
+        X_raw_val[np.isnan(X_raw_val[:, j]), j] = col_med[j]
 
-    # ── 2b. scale (fit on train only) ────────────────────────────────────────
+    # scale — fit on train only
     scaler = StandardScaler()
     X_tr_s  = scaler.fit_transform(X_raw_tr)
     X_val_s = scaler.transform(X_raw_val)
 
-    # ── 2c. Lasso feature selection (fit on train only) ───────────────────────
-    # Use LassoCV-alpha or fixed alpha; regression-style even for classif
-    # (we select features by magnitude, not by coefficient sign)
+    # Lasso feature selection — fit on train only
     try:
         lasso = Lasso(alpha=LASSO_ALPHA, max_iter=5000)
-        lasso.fit(X_tr_s, y_tr.astype(float))
+        lasso.fit(X_tr_s, y_tr)
         mask = np.abs(lasso.coef_) > 0
-        if mask.sum() < 3:          # fallback: keep top-10 by magnitude
-            mask = np.zeros(len(base_features), dtype=bool)
-            top = np.argsort(np.abs(lasso.coef_))[-10:]
-            mask[top] = True
+        if mask.sum() < 3:
+            mask = np.zeros(len(features), dtype=bool)
+            mask[np.argsort(np.abs(lasso.coef_))[-10:]] = True
     except Exception:
-        mask = np.ones(len(base_features), dtype=bool)
+        mask = np.ones(len(features), dtype=bool)
 
-    selected = [base_features[i] for i in range(len(base_features)) if mask[i]]
+    sel   = [features[i] for i in range(len(features)) if mask[i]]
     X_tr  = X_tr_s[:, mask]
     X_val = X_val_s[:, mask]
 
-    # ── 2d. SMOTE (train only, classification only) ───────────────────────────
+    # SMOTE — train only, for imbalanced binary target
     if use_smote:
         n_min = pd.Series(y_tr.astype(int)).value_counts().min()
         k = min(SMOTE_K, n_min - 1)
@@ -194,316 +161,422 @@ def prepare_fold_data(df: pd.DataFrame, train_idx, val_idx,
             try:
                 sm = SMOTE(k_neighbors=k, random_state=42)
                 X_tr, y_tr = sm.fit_resample(X_tr, y_tr.astype(int))
+                y_tr = y_tr.astype(float)
             except Exception:
-                pass   # not enough samples in a fold — skip SMOTE
+                pass
 
-    return X_tr, X_val, y_tr, y_val, selected, scaler
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. train_baselines
-# ─────────────────────────────────────────────────────────────────────────────
-def train_baselines(X_tr, X_val, y_tr, y_val, task: str):
-    if task == "regression":
-        m = DummyRegressor(strategy="mean")
-        m.fit(X_tr, y_tr)
-        yhat = m.predict(X_val)
-        return m, yhat, {"mae": _mae(y_val, yhat), "rmse": _rmse(y_val, yhat), "r2": _r2(y_val, yhat)}
-    else:
-        m = DummyClassifier(strategy="most_frequent")
-        m.fit(X_tr, y_tr)
-        yhat = m.predict(X_val)
-        return m, yhat, {"acc": accuracy_score(y_val, yhat), "f1": f1_score(y_val, yhat, average="weighted", zero_division=0)}
+    return X_tr, X_val, y_tr, y_val, sel, scaler, mask, col_med
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. train_tree_models
+# 3. target-specific baselines  (Phase 2)
 # ─────────────────────────────────────────────────────────────────────────────
-def _xgb_reg(X_tr, y_tr):
-    m = xgb.XGBRegressor(
-        n_estimators=300, max_depth=4, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        reg_alpha=0.1, reg_lambda=1.0,
-        random_state=42, verbosity=0, n_jobs=1
-    )
-    m.fit(X_tr, y_tr, verbose=False)
-    return m
+def target_baseline(y_tr, n_val, target):
+    if target == "target_1d":
+        return np.zeros(n_val)                              # predict zero return
+    elif target == "target_5d":
+        return np.full(n_val, float(np.mean(y_tr[-20:])))  # rolling mean last 20
+    elif target == "target_vol_5d":
+        return np.full(n_val, float(np.median(y_tr[-5:]))) # recent median vol
+    elif target == "target_dir_1d":
+        maj = int(pd.Series(y_tr.astype(int)).mode()[0])
+        return np.full(n_val, float(maj))                  # majority class
+    elif target == "target_large_move":
+        return np.zeros(n_val)                             # always no large move
+    elif target == "target_regime":
+        return np.full(n_val, float(int(y_tr[-1])))        # last observed regime
+    return np.zeros(n_val)
 
 
-def _lgb_reg(X_tr, y_tr):
-    m = lgb.LGBMRegressor(
-        n_estimators=300, max_depth=4, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        reg_alpha=0.1, reg_lambda=1.0,
-        random_state=42, verbosity=-1, n_jobs=1
-    )
-    m.fit(X_tr, y_tr)
-    return m
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. target-specific metrics  (Phase 4)
+# ─────────────────────────────────────────────────────────────────────────────
+def reg_metrics(y_true, y_pred):
+    valid = ~(np.isnan(y_true) | np.isnan(y_pred))
+    yt, yp = y_true[valid], y_pred[valid]
+    if len(yt) < 2:
+        return {}
+    ic, _ = spearmanr(yt, yp)
+    return {
+        "mae":     float(mean_absolute_error(yt, yp)),
+        "rmse":    float(np.sqrt(mean_squared_error(yt, yp))),
+        "r2":      float(r2_score(yt, yp)),
+        "dir_acc": float(np.mean(np.sign(yt) == np.sign(yp))),
+        "ic":      float(ic) if not np.isnan(ic) else 0.0,
+    }
 
 
-def _xgb_clf(X_tr, y_tr, n_classes, sample_weight=None):
-    obj = "multi:softprob" if n_classes > 2 else "binary:logistic"
-    m = xgb.XGBClassifier(
-        n_estimators=300, max_depth=4, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        reg_alpha=0.1, reg_lambda=1.0,
-        objective=obj, num_class=n_classes if n_classes > 2 else None,
-        random_state=42, verbosity=0, n_jobs=1,
-        eval_metric="mlogloss" if n_classes > 2 else "logloss"
-    )
-    m.fit(X_tr, y_tr.astype(int), sample_weight=sample_weight, verbose=False)
-    return m
-
-
-def _lgb_clf(X_tr, y_tr, n_classes, sample_weight=None):
-    obj = "multiclass" if n_classes > 2 else "binary"
-    m = lgb.LGBMClassifier(
-        n_estimators=300, max_depth=4, learning_rate=0.05,
-        subsample=0.8, colsample_bytree=0.8,
-        reg_alpha=0.1, reg_lambda=1.0,
-        objective=obj, num_class=n_classes if n_classes > 2 else None,
-        random_state=42, verbosity=-1, n_jobs=1,
-        class_weight="balanced"
-    )
-    m.fit(X_tr, y_tr.astype(int), sample_weight=sample_weight)
-    return m
-
-
-def train_tree_models(X_tr, X_val, y_tr, y_val, task: str, target: str):
-    results = {}
-
-    if task == "regression":
-        for name, fn in [("xgb", _xgb_reg), ("lgb", _lgb_reg)]:
-            m = fn(X_tr, y_tr)
-            yhat = m.predict(X_val)
-            results[name] = (m, yhat, {
-                "mae": _mae(y_val, yhat),
-                "rmse": _rmse(y_val, yhat),
-                "r2": _r2(y_val, yhat)
-            })
-    else:
-        # LabelEncoder maps arbitrary int labels (e.g. -1,0,1) → 0,1,2 for XGB/LGB
-        le = LabelEncoder()
-        y_tr_enc  = le.fit_transform(y_tr.astype(int))
-        y_val_enc = le.transform(y_val.astype(int))
-        n_cls = len(le.classes_)
-
-        # class weights (on encoded labels — safe for bincount now)
-        label_counts = pd.Series(y_tr_enc).value_counts()
-        weights_map  = {c: len(y_tr_enc) / (n_cls * cnt + 1e-9)
-                        for c, cnt in label_counts.items()}
-        sw = np.array([weights_map.get(int(c), 1.0) for c in y_tr_enc])
-
-        for name, fn in [("xgb", _xgb_clf), ("lgb", _lgb_clf)]:
-            m = fn(X_tr, y_tr_enc, n_cls, sample_weight=sw)
-            yhat_enc = m.predict(X_val).astype(int)
-            # decode back to original labels for consistent metric computation
-            yhat = le.inverse_transform(yhat_enc)
-            # probabilities for AUC
+def clf_metrics(y_true, y_pred, proba, target):
+    yt = y_true.astype(int)
+    yp = y_pred.astype(int)
+    m = {
+        "acc":      float(accuracy_score(yt, yp)),
+        "bal_acc":  float(balanced_accuracy_score(yt, yp)),
+        "f1_w":     float(f1_score(yt, yp, average="weighted",  zero_division=0)),
+        "f1_macro": float(f1_score(yt, yp, average="macro",     zero_division=0)),
+    }
+    if target == "target_large_move":
+        m["precision"] = float(precision_score(yt, yp, zero_division=0))
+        m["recall"]    = float(recall_score(yt, yp,    zero_division=0))
+        if proba is not None and proba.ndim == 2 and proba.shape[1] >= 2:
             try:
-                proba = m.predict_proba(X_val)
-                if n_cls == 2:
-                    auc = roc_auc_score(y_val.astype(int), proba[:, 1])
-                else:
-                    auc = roc_auc_score(y_val.astype(int), proba,
-                                        multi_class="ovr", average="weighted")
+                m["pr_auc"]  = float(average_precision_score(yt, proba[:, 1]))
+                m["roc_auc"] = float(roc_auc_score(yt, proba[:, 1]))
             except Exception:
-                auc = float("nan")
-            results[name] = (m, yhat, {
-                "acc": accuracy_score(y_val.astype(int), yhat),
-                "f1":  f1_score(y_val.astype(int), yhat, average="weighted", zero_division=0),
-                "auc": auc
-            })
-
-    return results
+                pass
+    elif proba is not None:
+        n_cls = len(np.unique(yt))
+        try:
+            if n_cls == 2:
+                m["roc_auc"] = float(roc_auc_score(yt, proba[:, 1]))
+            else:
+                m["roc_auc"] = float(roc_auc_score(
+                    yt, proba, multi_class="ovr", average="weighted"))
+        except Exception:
+            pass
+    return m
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. linear models (Ridge / Logistic)
+# 5. model factories  (Phase 3)
 # ─────────────────────────────────────────────────────────────────────────────
-def train_linear_models(X_tr, X_val, y_tr, y_val, task: str, target: str):
+def reg_model_set():
+    return {
+        "ridge":       Ridge(alpha=10.0),
+        "elasticnet":  ElasticNet(alpha=0.01, l1_ratio=0.5, max_iter=5000),
+        "huber":       HuberRegressor(epsilon=1.5, max_iter=500),
+        "rf":          RandomForestRegressor(n_estimators=200, max_depth=6,
+                                             random_state=42, n_jobs=1),
+        "xgb":         xgb.XGBRegressor(n_estimators=300, max_depth=4,
+                                         learning_rate=0.05, subsample=0.8,
+                                         colsample_bytree=0.8, reg_alpha=0.1,
+                                         reg_lambda=1.0, random_state=42,
+                                         verbosity=0, n_jobs=1),
+        "lgb":         lgb.LGBMRegressor(n_estimators=300, max_depth=4,
+                                          learning_rate=0.05, subsample=0.8,
+                                          colsample_bytree=0.8, reg_alpha=0.1,
+                                          reg_lambda=1.0, random_state=42,
+                                          verbosity=-1, n_jobs=1),
+    }
+
+
+def clf_model_set(n_cls, is_binary_imb, spw, is_multi):
+    multi = "multinomial" if is_multi else "ovr"
+    return {
+        "logistic": LogisticRegression(C=1.0, class_weight="balanced",
+                                        max_iter=2000, multi_class=multi,
+                                        solver="lbfgs", random_state=42),
+        "svc_cal":  CalibratedClassifierCV(
+                        LinearSVC(class_weight="balanced", max_iter=5000,
+                                  random_state=42), cv=3),
+        "rf":       RandomForestClassifier(n_estimators=200, max_depth=6,
+                                           class_weight="balanced",
+                                           random_state=42, n_jobs=1),
+        "xgb":      xgb.XGBClassifier(
+                        n_estimators=300, max_depth=4, learning_rate=0.05,
+                        subsample=0.8, colsample_bytree=0.8,
+                        reg_alpha=0.1, reg_lambda=1.0,
+                        objective="multi:softprob" if n_cls > 2 else "binary:logistic",
+                        num_class=n_cls if n_cls > 2 else None,
+                        scale_pos_weight=spw if (is_binary_imb and n_cls == 2) else 1.0,
+                        random_state=42, verbosity=0, n_jobs=1,
+                        eval_metric="mlogloss" if n_cls > 2 else "logloss"),
+        "lgb":      lgb.LGBMClassifier(
+                        n_estimators=300, max_depth=4, learning_rate=0.05,
+                        subsample=0.8, colsample_bytree=0.8,
+                        reg_alpha=0.1, reg_lambda=1.0,
+                        objective="multiclass" if n_cls > 2 else "binary",
+                        num_class=n_cls if n_cls > 2 else None,
+                        class_weight="balanced",
+                        random_state=42, verbosity=-1, n_jobs=1),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. fold runner
+# ─────────────────────────────────────────────────────────────────────────────
+def run_folds(df, folds, features, target, task):
+    use_smote     = (target == "target_large_move")
+    is_binary_imb = (target in BINARY_CLF)
+    is_multi      = (target in MULTI_CLF)
+
+    fold_records = []
+    feat_counter = defaultdict(int)
+
+    for fi, (tr_idx, val_idx) in enumerate(folds):
+        X_tr, X_val, y_tr, y_val, sel, scaler, mask, _ = prepare_fold_data(
+            df, tr_idx, val_idx, features, target, use_smote=use_smote)
+        for f in sel:
+            feat_counter[f] += 1
+
+        valid = ~np.isnan(y_val)
+        y_bl  = target_baseline(y_tr, int(valid.sum()), target)
+
+        if task == "regression":
+            fold_records.append({"fold": fi, "model": "baseline",
+                                 **reg_metrics(y_val[valid], y_bl)})
+            for name, m in reg_model_set().items():
+                try:
+                    m.fit(X_tr, y_tr)
+                    yhat = m.predict(X_val)
+                    fold_records.append({"fold": fi, "model": name,
+                                         **reg_metrics(y_val[valid], yhat[valid])})
+                except Exception as e:
+                    fold_records.append({"fold": fi, "model": name, "error": str(e)})
+        else:
+            le         = LabelEncoder()
+            y_tr_enc   = le.fit_transform(y_tr.astype(int))
+            y_val_orig = y_val.astype(int)
+            n_cls      = len(le.classes_)
+
+            lc   = pd.Series(y_tr_enc).value_counts()
+            spw  = float(lc.get(0, 1) / max(lc.get(1, 1), 1)) if is_binary_imb else 1.0
+            sw_m = {c: len(y_tr_enc)/(n_cls * cnt + 1e-9) for c, cnt in lc.items()}
+            sw   = np.array([sw_m.get(int(c), 1.0) for c in y_tr_enc])
+
+            # baseline (clamp to valid label range before inverse_transform)
+            y_bl_i = np.clip(y_bl.astype(int),
+                             int(le.classes_.min()), int(le.classes_.max()))
+            fold_records.append({"fold": fi, "model": "baseline",
+                                 **clf_metrics(y_val_orig, y_bl_i, None, target)})
+
+            for name, m in clf_model_set(n_cls, is_binary_imb, spw, is_multi).items():
+                try:
+                    if name in ("xgb", "lgb"):
+                        m.fit(X_tr, y_tr_enc, sample_weight=sw)
+                        yhat = le.inverse_transform(
+                            np.clip(m.predict(X_val).astype(int), 0, n_cls - 1))
+                        proba = m.predict_proba(X_val)
+                    else:
+                        m.fit(X_tr, y_tr.astype(int))
+                        yhat  = m.predict(X_val).astype(int)
+                        proba = m.predict_proba(X_val) if hasattr(m, "predict_proba") else None
+                    fold_records.append({"fold": fi, "model": name,
+                                         **clf_metrics(y_val_orig, yhat, proba, target)})
+                except Exception as e:
+                    fold_records.append({"fold": fi, "model": name, "error": str(e)})
+
+        # summary line
+        km = "ic" if task == "regression" else "f1_w"
+        parts = [f"fold {fi+1}/{len(folds)}  val={val_idx[0]}–{val_idx[-1]}"]
+        for r in fold_records:
+            if r["fold"] == fi and km in r:
+                parts.append(f"{r['model']}={r[km]:.4f}")
+        print("    " + "  ".join(parts))
+
+    return fold_records, feat_counter
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. final refit + holdout evaluation
+# ─────────────────────────────────────────────────────────────────────────────
+def run_holdout(df, cv_idx, holdout_idx, features, target, task):
+    use_smote     = (target == "target_large_move")
+    is_binary_imb = (target in BINARY_CLF)
+    is_multi      = (target in MULTI_CLF)
+
+    X_raw = df.loc[cv_idx, features].values.astype(float)
+    y_all = df.loc[cv_idx, target].values.astype(float)
+
+    col_med = np.nanmedian(X_raw, axis=0)
+    for j in range(X_raw.shape[1]):
+        X_raw[np.isnan(X_raw[:, j]), j] = col_med[j]
+
+    scaler = StandardScaler()
+    X_s    = scaler.fit_transform(X_raw)
+
+    try:
+        lasso = Lasso(alpha=LASSO_ALPHA, max_iter=5000)
+        lasso.fit(X_s, y_all)
+        mask = np.abs(lasso.coef_) > 0
+        if mask.sum() < 3:
+            mask = np.zeros(len(features), dtype=bool)
+            mask[np.argsort(np.abs(lasso.coef_))[-10:]] = True
+    except Exception:
+        mask = np.ones(len(features), dtype=bool)
+
+    X_cv = X_s[:, mask]
+
+    X_h_raw = df.loc[holdout_idx, features].values.astype(float)
+    for j in range(X_h_raw.shape[1]):
+        X_h_raw[np.isnan(X_h_raw[:, j]), j] = col_med[j]
+    X_h   = scaler.transform(X_h_raw)[:, mask]
+    y_h   = df.loc[holdout_idx, target].values.astype(float)
+
+    valid_h = ~np.isnan(y_h)
+    X_h_ev  = X_h[valid_h]
+    y_h_ev  = y_h[valid_h]
+
     results = {}
-    is_multi = target in MULTI_CLASS_TARGETS
 
     if task == "regression":
-        m = Ridge(alpha=10.0)
-        m.fit(X_tr, y_tr)
-        yhat = m.predict(X_val)
-        results["ridge"] = (m, yhat, {
-            "mae": _mae(y_val, yhat),
-            "rmse": _rmse(y_val, yhat),
-            "r2": _r2(y_val, yhat)
-        })
+        y_bl = target_baseline(y_all, len(y_h_ev), target)
+        results["baseline"] = {"metrics": reg_metrics(y_h_ev, y_bl),
+                               "y_true": y_h_ev, "y_pred": y_bl}
+        for name, m in reg_model_set().items():
+            try:
+                m.fit(X_cv, y_all)
+                yhat = m.predict(X_h_ev)
+                results[name] = {"metrics": reg_metrics(y_h_ev, yhat),
+                                 "y_true": y_h_ev, "y_pred": yhat}
+            except Exception as e:
+                results[name] = {"error": str(e)}
+
     else:
-        multi = "multinomial" if is_multi else "ovr"
-        m = LogisticRegression(
-            C=1.0, class_weight="balanced", max_iter=2000,
-            multi_class=multi, solver="lbfgs", random_state=42
-        )
-        m.fit(X_tr, y_tr.astype(int))
-        yhat = m.predict(X_val).astype(int)
-        classes = np.unique(y_tr.astype(int))
-        n_cls   = len(classes)
-        try:
-            proba = m.predict_proba(X_val)
-            if n_cls == 2:
-                auc = roc_auc_score(y_val.astype(int), proba[:, 1])
-            else:
-                auc = roc_auc_score(y_val.astype(int), proba,
-                                    multi_class="ovr", average="weighted")
-        except Exception:
-            auc = float("nan")
-        results["logistic"] = (m, yhat, {
-            "acc": accuracy_score(y_val.astype(int), yhat),
-            "f1":  f1_score(y_val.astype(int), yhat, average="weighted", zero_division=0),
-            "auc": auc
-        })
+        le       = LabelEncoder()
+        y_cv_enc = le.fit_transform(y_all.astype(int))
+        n_cls    = len(le.classes_)
 
-    return results
+        lc   = pd.Series(y_cv_enc).value_counts()
+        spw  = float(lc.get(0, 1) / max(lc.get(1, 1), 1)) if is_binary_imb else 1.0
+        sw_m = {c: len(y_cv_enc)/(n_cls * cnt + 1e-9) for c, cnt in lc.items()}
+        sw   = np.array([sw_m.get(int(c), 1.0) for c in y_cv_enc])
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. evaluate_regression / evaluate_classification
-# ─────────────────────────────────────────────────────────────────────────────
-def evaluate_regression(fold_results: list, target: str):
-    """
-    fold_results: list of dicts  {"fold": int, "model": str, "metrics": dict, "y_true": arr, "y_pred": arr}
-    Returns summary DataFrame + per-fold plot data.
-    """
-    rows = []
-    for r in fold_results:
-        rows.append({
-            "target": target,
-            "fold":   r["fold"],
-            "model":  r["model"],
-            "mae":    r["metrics"]["mae"],
-            "rmse":   r["metrics"]["rmse"],
-            "r2":     r["metrics"]["r2"],
-        })
-    return pd.DataFrame(rows)
-
-
-def evaluate_classification(fold_results: list, target: str):
-    rows = []
-    for r in fold_results:
-        rows.append({
-            "target": target,
-            "fold":   r["fold"],
-            "model":  r["model"],
-            "acc":    r["metrics"]["acc"],
-            "f1":     r["metrics"]["f1"],
-            "auc":    r["metrics"].get("auc", float("nan")),
-        })
-    return pd.DataFrame(rows)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. final holdout evaluation (no refit of scaler — scaler from last fold)
-# ─────────────────────────────────────────────────────────────────────────────
-def evaluate_holdout(df, holdout_idx, base_features, target, task,
-                     last_fold_scaler, last_fold_features,
-                     models: dict):
-    """
-    Transform holdout using the LAST fold's scaler + selected features.
-    This is standard practice: retrain on all available non-holdout data,
-    fit scaler on that full train, transform holdout.
-    """
-    X_raw  = df.loc[holdout_idx, base_features].values.astype(float)
-    X_s    = last_fold_scaler.transform(X_raw)
-    feat_mask = np.array([f in last_fold_features for f in base_features])
-    X_h    = X_s[:, feat_mask]
-    y_h    = df.loc[holdout_idx, target].values
-
-    results = {}
-    for name, model in models.items():
-        try:
-            yhat = model.predict(X_h)
-            if task == "regression":
-                results[name] = {
-                    "mae":  _mae(y_h, yhat),
-                    "rmse": _rmse(y_h, yhat),
-                    "r2":   _r2(y_h, yhat),
-                    "y_true": y_h, "y_pred": yhat
-                }
-            else:
-                yhat = yhat.astype(int)
-                n_cls = len(np.unique(y_h.astype(int)))
+        # after SMOTE X_cv grows — track resampled labels for all models
+        y_cv_orig_fit = y_all.astype(int)   # default: no SMOTE
+        if use_smote:
+            n_min = int(pd.Series(y_cv_enc).value_counts().min())
+            k = min(SMOTE_K, n_min - 1)
+            if k >= 1:
                 try:
-                    proba = model.predict_proba(X_h)
-                    auc = roc_auc_score(y_h.astype(int), proba[:, 1] if n_cls == 2 else proba,
-                                        multi_class="ovr" if n_cls > 2 else "raise",
-                                        average="weighted")
+                    sm = SMOTE(k_neighbors=k, random_state=42)
+                    X_cv, y_cv_enc = sm.fit_resample(X_cv, y_cv_enc)
+                    y_cv_orig_fit = le.inverse_transform(y_cv_enc)  # keep aligned
+                    sw = None
                 except Exception:
-                    auc = float("nan")
+                    pass
+
+        y_bl  = target_baseline(y_all, len(y_h_ev), target)
+        y_bl_i = np.clip(y_bl.astype(int), int(le.classes_.min()), int(le.classes_.max()))
+        results["baseline"] = {"metrics": clf_metrics(y_h_ev.astype(int), y_bl_i, None, target),
+                               "y_true": y_h_ev, "y_pred": y_bl_i.astype(float)}
+
+        for name, m in clf_model_set(n_cls, is_binary_imb, spw, is_multi).items():
+            try:
+                if name in ("xgb", "lgb"):
+                    m.fit(X_cv, y_cv_enc, sample_weight=sw)
+                    yhat_enc = m.predict(X_h_ev).astype(int)
+                    yhat  = le.inverse_transform(np.clip(yhat_enc, 0, n_cls - 1)).astype(float)
+                    proba = m.predict_proba(X_h_ev)
+                else:
+                    m.fit(X_cv, y_cv_orig_fit)   # uses SMOTE-resampled labels if applicable
+                    yhat  = m.predict(X_h_ev).astype(float)
+                    proba = m.predict_proba(X_h_ev) if hasattr(m, "predict_proba") else None
                 results[name] = {
-                    "acc": accuracy_score(y_h.astype(int), yhat),
-                    "f1":  f1_score(y_h.astype(int), yhat, average="weighted", zero_division=0),
-                    "auc": auc,
-                    "y_true": y_h, "y_pred": yhat
+                    "metrics": clf_metrics(y_h_ev.astype(int), yhat.astype(int), proba, target),
+                    "y_true": y_h_ev, "y_pred": yhat,
+                    "proba": proba
                 }
-        except Exception as e:
-            results[name] = {"error": str(e)}
+            except Exception as e:
+                results[name] = {"error": str(e)}
 
     return results
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. save_results
+# 8. plots
 # ─────────────────────────────────────────────────────────────────────────────
-def save_results(cv_df: pd.DataFrame, fname: str):
-    path = OUT_DIR / fname
-    cv_df.to_csv(path, index=False)
-    print(f"  ✓ {fname}")
+def plot_cv_metrics(cv_df, target, task, version):
+    if task == "regression":
+        metrics = ["mae", "rmse", "dir_acc", "ic"]
+    elif target == "target_large_move":
+        metrics = ["f1_w", "precision", "recall", "pr_auc"]
+    else:
+        metrics = ["f1_w", "f1_macro", "bal_acc"]
+
+    for metric in metrics:
+        if metric not in cv_df.columns:
+            continue
+        fig, ax = plt.subplots(figsize=(9, 4))
+        for model in cv_df["model"].unique():
+            sub = cv_df[cv_df["model"] == model]
+            ax.plot(sub["fold"], sub[metric], "o-", label=model,
+                    linewidth=1.5, markersize=5)
+        ax.set_title(f"{SYMBOL} v{version} — {target} | {metric} (CV)")
+        ax.set_xlabel("Fold"); ax.set_ylabel(metric)
+        ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        _save(fig, f"v{version}_cv_{target}_{metric}.png")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# plotting helpers
-# ─────────────────────────────────────────────────────────────────────────────
-def _plot_cv_metric(cv_df: pd.DataFrame, metric: str, target: str, task: str):
-    models = cv_df["model"].unique()
-    fig, ax = plt.subplots(figsize=(9, 4))
-    for m in models:
-        sub = cv_df[cv_df["model"] == m]
-        ax.plot(sub["fold"], sub[metric], "o-", label=m, linewidth=1.5, markersize=5)
-    ax.set_title(f"{SYMBOL} — {target} | {metric.upper()} per fold (walk-forward CV)")
-    ax.set_xlabel("Fold"); ax.set_ylabel(metric.upper())
-    ax.legend(fontsize=9); ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    _save(fig, f"cv_{target}_{metric}.png")
-
-
-def _plot_feature_freq(feat_counts: dict, target: str, top_n: int = 20):
-    if not feat_counts:
+def plot_feat_freq(feat_counter, target, version, top_n=20):
+    if not feat_counter:
         return
-    series = pd.Series(feat_counts).sort_values(ascending=False).head(top_n)
-    fig, ax = plt.subplots(figsize=(9, max(4, top_n * 0.35)))
-    series.plot(kind="barh", ax=ax, color="#1976D2")
+    s = pd.Series(feat_counter).sort_values(ascending=False).head(top_n)
+    fig, ax = plt.subplots(figsize=(9, max(4, len(s) * 0.35)))
+    s.plot(kind="barh", ax=ax, color="#1976D2")
     ax.set_xlabel("# folds selected by Lasso")
-    ax.set_title(f"{SYMBOL} — {target} | Feature selection frequency (walk-forward)")
-    ax.invert_yaxis()
-    plt.tight_layout()
-    _save(fig, f"feat_freq_{target}.png")
+    ax.set_title(f"{SYMBOL} v{version} — {target} | Feature selection frequency")
+    ax.invert_yaxis(); plt.tight_layout()
+    _save(fig, f"v{version}_feat_freq_{target}.png")
 
 
-def _plot_holdout_scatter(y_true, y_pred, model_name, target):
+def plot_holdout_scatter(y_true, y_pred, model, target, version):
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.scatter(y_true, y_pred, alpha=0.6, s=25, color="#E91E63", edgecolors="none")
     lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
     ax.plot(lims, lims, "k--", linewidth=0.8)
     ax.set_xlabel("Actual"); ax.set_ylabel("Predicted")
-    ax.set_title(f"{SYMBOL} — {target} | {model_name} holdout (actual vs predicted)")
+    ax.set_title(f"{SYMBOL} v{version} — {target} | {model}")
     plt.tight_layout()
-    _save(fig, f"holdout_{target}_{model_name}.png")
+    _save(fig, f"v{version}_scatter_{target}_{model}.png")
 
 
-def _plot_confusion(y_true, y_pred, model_name, target):
+def plot_confusion(y_true, y_pred, model, target, version):
     cm = confusion_matrix(y_true.astype(int), y_pred.astype(int))
     fig, ax = plt.subplots(figsize=(5, 4))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
     ax.set_xlabel("Predicted"); ax.set_ylabel("Actual")
-    ax.set_title(f"{SYMBOL} — {target} | {model_name} confusion matrix (holdout)")
+    ax.set_title(f"{SYMBOL} v{version} — {target} | {model}")
     plt.tight_layout()
-    _save(fig, f"confusion_{target}_{model_name}.png")
+    _save(fig, f"v{version}_confusion_{target}_{model}.png")
+
+
+def plot_pr_curve(y_true, proba, model, target, version):
+    prec, rec, _ = precision_recall_curve(y_true.astype(int), proba[:, 1])
+    ap = average_precision_score(y_true.astype(int), proba[:, 1])
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(rec, prec, color="#E91E63", linewidth=1.5, label=f"AP={ap:.3f}")
+    ax.set_xlabel("Recall"); ax.set_ylabel("Precision")
+    ax.set_title(f"{SYMBOL} v{version} — {target} | {model} PR curve")
+    ax.legend(fontsize=9); ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    _save(fig, f"v{version}_pr_curve_{target}_{model}.png")
+
+
+def plot_version_comparison(all_holdout, targets, task):
+    key = "ic" if task == "regression" else "f1_w"
+    rows = []
+    for tgt in targets:
+        for ver in ["A", "B"]:
+            if (tgt, ver) not in all_holdout:
+                continue
+            for model, res in all_holdout[(tgt, ver)].items():
+                if "error" in res or "metrics" not in res:
+                    continue
+                v = res["metrics"].get(key)
+                if v is not None:
+                    rows.append({"target": tgt, "version": ver, "model": model, key: v})
+    if not rows:
+        return
+    df_p = pd.DataFrame(rows)
+    fig, axes = plt.subplots(1, len(targets), figsize=(5 * len(targets), 5), sharey=False)
+    if len(targets) == 1:
+        axes = [axes]
+    for ax, tgt in zip(axes, targets):
+        sub = df_p[df_p["target"] == tgt]
+        if sub.empty:
+            continue
+        pivot = sub.pivot(index="model", columns="version", values=key)
+        pivot.plot(kind="bar", ax=ax, color=["#1976D2", "#E91E63"], width=0.65)
+        ax.set_title(tgt, fontsize=9); ax.set_xlabel("")
+        ax.set_ylabel(key); ax.legend(title="Version", fontsize=8)
+        ax.tick_params(axis="x", labelrotation=40)
+        ax.grid(True, alpha=0.2, axis="y")
+    task_label = task
+    fig.suptitle(f"{SYMBOL} — Version A vs B  |  {key} (holdout)", fontsize=11)
+    plt.tight_layout()
+    _save(fig, f"version_AB_{task_label}.png")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -512,249 +585,126 @@ def _plot_confusion(y_true, y_pred, model_name, target):
 def main():
     print(f"\n=== supervised: {SYMBOL} ===")
 
-    # ── load data ─────────────────────────────────────────────────────────────
     df = (pd.read_csv(REGIMES_CSV, parse_dates=["Date"])
-            .sort_values("Date")
-            .reset_index(drop=True))
+            .sort_values("Date").reset_index(drop=True))
 
-    raw_features = [ln.strip() for ln in FEAT_FILE.read_text().splitlines() if ln.strip()]
-    # add regime + anomaly cols from unsupervised stage (known at fold time — already historical)
-    extra_cols = ["cluster_kmeans", "anomaly_iso"]
-    base_features = [f for f in raw_features if f in df.columns]
-    base_features += [c for c in extra_cols if c in df.columns and c not in base_features]
+    raw_feats = [ln.strip() for ln in FEAT_FILE.read_text().splitlines() if ln.strip()]
+    feat_A    = [f for f in raw_feats if f in df.columns]
+    feat_B    = feat_A + [c for c in REGIME_COLS if c in df.columns and c not in feat_A]
 
-    n = len(df)
+    n           = len(df)
     holdout_idx = list(range(n - HOLDOUT_ROWS, n))
     cv_idx      = list(range(0, n - HOLDOUT_ROWS))
+    folds       = make_walk_forward_splits(n, INIT_TRAIN, STEP, HOLDOUT_ROWS)
 
-    folds = make_walk_forward_splits(n, INIT_TRAIN, STEP, HOLDOUT_ROWS)
-    print(f"Rows      : {n}  (CV pool: {len(cv_idx)}, holdout: {HOLDOUT_ROWS})")
-    print(f"Features  : {len(base_features)}")
-    print(f"CV folds  : {len(folds)}")
-    print(f"Saving to : {OUT_DIR}\n")
+    print(f"Rows        : {n}  (CV: {len(cv_idx)}, holdout: {HOLDOUT_ROWS})")
+    print(f"Features A  : {len(feat_A)}  |  B: {len(feat_B)}")
+    print(f"CV folds    : {len(folds)}")
+    print(f"Saving to   : {OUT_DIR}\n")
 
-    all_cv_reg  = []   # regression cv rows
-    all_cv_clf  = []   # classification cv rows
-    holdout_summary = {}   # {target: {model: metrics}}
+    all_cv_rows = []
+    all_holdout = {}   # {(target, version): {model: result}}
 
-    # ── per-target walk-forward loop ──────────────────────────────────────────
-    for target in REG_TARGETS + CLF_TARGETS:
-        task = "regression" if target in REG_TARGETS else "classification"
-        use_smote = (task == "classification" and target == "target_large_move")
-        print(f"─── {target}  ({task}) ───────────────────────────────────")
+    for version, features in [("A", feat_A), ("B", feat_B)]:
+        print(f"\n{'═'*62}")
+        print(f"  VERSION {version}  ({len(features)} features)")
+        print(f"{'═'*62}")
 
-        fold_records   = []
-        feat_counter   = defaultdict(int)
-        last_scaler    = None
-        last_features  = None
-        last_models    = {}
+        for target in REG_TARGETS + CLF_TARGETS:
+            task = "regression" if target in REG_TARGETS else "classification"
+            print(f"\n── {target}  [{task}]  v{version} ──────────────────────")
 
-        for fi, (tr_idx, val_idx) in enumerate(folds):
-            # ── per-fold data prep (leakage-free) ────────────────────────────
-            X_tr, X_val, y_tr, y_val, sel_feats, scaler = prepare_fold_data(
-                df, tr_idx, val_idx, base_features, target,
-                use_smote=use_smote
-            )
-            for f in sel_feats:
-                feat_counter[f] += 1
+            fold_records, feat_counter = run_folds(df, folds, features, target, task)
 
-            # ── baseline ─────────────────────────────────────────────────────
-            _, yhat_bl, metrics_bl = train_baselines(X_tr, X_val, y_tr, y_val, task)
-            fold_records.append({"fold": fi, "model": "baseline",
-                                  "metrics": metrics_bl, "y_true": y_val, "y_pred": yhat_bl})
+            fd = pd.DataFrame(fold_records)
+            fd.insert(0, "version", version)
+            fd.insert(1, "target", target)
+            all_cv_rows.append(fd)
 
-            # ── linear ───────────────────────────────────────────────────────
-            lin = train_linear_models(X_tr, X_val, y_tr, y_val, task, target)
-            for name, (m, yhat, metrics) in lin.items():
-                fold_records.append({"fold": fi, "model": name,
-                                     "metrics": metrics, "y_true": y_val, "y_pred": yhat})
-                last_models[name] = m
+            plot_cv_metrics(fd, target, task, version)
+            plot_feat_freq(feat_counter, target, version)
 
-            # ── tree models ───────────────────────────────────────────────────
-            tree = train_tree_models(X_tr, X_val, y_tr, y_val, task, target)
-            for name, (m, yhat, metrics) in tree.items():
-                fold_records.append({"fold": fi, "model": name,
-                                     "metrics": metrics, "y_true": y_val, "y_pred": yhat})
-                last_models[name] = m
+            # holdout
+            print(f"    → Holdout ({HOLDOUT_ROWS} rows):")
+            h_res = run_holdout(df, cv_idx, holdout_idx, features, target, task)
+            all_holdout[(target, version)] = h_res
 
-            last_scaler   = scaler
-            last_features = sel_feats
-
-            # brief fold summary
-            best_metric = "rmse" if task == "regression" else "f1"
-            fold_line = f"    fold {fi+1}/{len(folds)}  val={val_idx[0]}–{val_idx[-1]}"
-            for name in (["ridge", "xgb", "lgb"] if task == "regression"
-                         else ["logistic", "xgb", "lgb"]):
-                r = next((r for r in reversed(fold_records)
-                          if r["fold"] == fi and r["model"] == name), None)
-                if r:
-                    v = r["metrics"].get(best_metric, float("nan"))
-                    fold_line += f"  {name}={v:.4f}"
-            print(fold_line)
-
-        # ── CV summary tables + plots ─────────────────────────────────────────
-        if task == "regression":
-            cv_df = evaluate_regression(fold_records, target)
-            all_cv_reg.append(cv_df)
-            for metric in ["mae", "rmse", "r2"]:
-                _plot_cv_metric(cv_df, metric, target, task)
-        else:
-            cv_df = evaluate_classification(fold_records, target)
-            all_cv_clf.append(cv_df)
-            for metric in ["acc", "f1", "auc"]:
-                _plot_cv_metric(cv_df, metric, target, task)
-
-        _plot_feature_freq(feat_counter, target)
-
-        # ── final model: refit on all non-holdout data ────────────────────────
-        # Fit scaler on entire cv_idx (no holdout seen)
-        X_all_raw = df.loc[cv_idx, base_features].values.astype(float)
-        y_all     = df.loc[cv_idx, target].values
-
-        # NaN imputation using cv-train medians (fit on cv only, no holdout)
-        all_medians = np.nanmedian(X_all_raw, axis=0)
-        for j in range(X_all_raw.shape[1]):
-            nan_mask = np.isnan(X_all_raw[:, j])
-            X_all_raw[nan_mask, j] = all_medians[j]
-
-        final_scaler = StandardScaler()
-        X_all_s = final_scaler.fit_transform(X_all_raw)
-
-        # final Lasso on all cv data
-        try:
-            lasso = Lasso(alpha=LASSO_ALPHA, max_iter=5000)
-            lasso.fit(X_all_s, y_all.astype(float))
-            mask = np.abs(lasso.coef_) > 0
-            if mask.sum() < 3:
-                mask = np.zeros(len(base_features), dtype=bool)
-                top  = np.argsort(np.abs(lasso.coef_))[-10:]
-                mask[top] = True
-        except Exception:
-            mask = np.ones(len(base_features), dtype=bool)
-
-        final_features = [base_features[i] for i in range(len(base_features)) if mask[i]]
-        X_all_f = X_all_s[:, mask]
-
-        final_models = {}
-        final_le = None   # LabelEncoder for classification tree models
-        if task == "regression":
-            for name, fn in [("ridge", lambda X, y: Ridge(alpha=10.0).fit(X, y)),
-                             ("xgb",   lambda X, y: _xgb_reg(X, y)),
-                             ("lgb",   lambda X, y: _lgb_reg(X, y))]:
-                final_models[name] = fn(X_all_f, y_all)
-        else:
-            # LabelEncoder: map arbitrary labels (e.g. -1,0,1) → 0-indexed for XGB/LGB
-            final_le = LabelEncoder()
-            y_all_enc = final_le.fit_transform(y_all.astype(int))
-            n_cls     = len(final_le.classes_)
-            label_counts_all = pd.Series(y_all_enc).value_counts()
-            weights_map_all  = {c: len(y_all_enc) / (n_cls * cnt + 1e-9)
-                                for c, cnt in label_counts_all.items()}
-            sw        = np.array([weights_map_all.get(int(c), 1.0) for c in y_all_enc])
-            is_multi  = target in MULTI_CLASS_TARGETS
-            # logistic uses original labels (handles negatives natively)
-            m_log = LogisticRegression(
-                C=1.0, class_weight="balanced", max_iter=2000,
-                multi_class="multinomial" if is_multi else "ovr",
-                solver="lbfgs", random_state=42)
-            m_log.fit(X_all_f, y_all.astype(int))
-            final_models["logistic"] = m_log
-            # tree models use encoded labels
-            final_models["xgb"] = _xgb_clf(X_all_f, y_all_enc, n_cls, sample_weight=sw)
-            final_models["lgb"] = _lgb_clf(X_all_f, y_all_enc, n_cls, sample_weight=sw)
-
-        # ── holdout evaluation ────────────────────────────────────────────────
-        print(f"    → Holdout evaluation ({HOLDOUT_ROWS} rows):")
-        holdout_res = {}
-        X_h_raw = df.loc[holdout_idx, base_features].values.astype(float)
-        # impute NaN in holdout using final (all-cv) train medians
-        all_cv_raw = df.loc[cv_idx, base_features].values.astype(float)
-        cv_medians = np.nanmedian(all_cv_raw, axis=0)
-        for j in range(X_h_raw.shape[1]):
-            nan_mask_h = np.isnan(X_h_raw[:, j])
-            if nan_mask_h.any():
-                X_h_raw[nan_mask_h, j] = cv_medians[j]
-        X_h_s   = final_scaler.transform(X_h_raw)
-        X_h     = X_h_s[:, mask]
-        y_h     = df.loc[holdout_idx, target].values
-
-        # drop rows where target is NaN (e.g. target_5d needs 5 future rows — last few unavailable)
-        valid_h = ~np.isnan(y_h.astype(float))
-        if valid_h.sum() == 0:
-            print(f"    → Holdout: all target rows are NaN — skipping {target}")
-            holdout_summary[target] = {}
-            continue
-        X_h_eval = X_h[valid_h]
-        y_h_eval = y_h[valid_h]
-
-        for name, model in final_models.items():
-            try:
-                yhat = model.predict(X_h_eval)
-                if task == "regression":
-                    metrics = {"mae": _mae(y_h_eval, yhat), "rmse": _rmse(y_h_eval, yhat), "r2": _r2(y_h_eval, yhat)}
-                    _plot_holdout_scatter(y_h_eval, yhat, name, target)
-                else:
-                    # tree models predict encoded labels — decode back to original
-                    if final_le is not None and name in ("xgb", "lgb"):
-                        yhat = final_le.inverse_transform(yhat.astype(int))
-                    else:
-                        yhat = yhat.astype(int)
-                    n_cls = len(np.unique(y_h_eval.astype(int)))
-                    try:
-                        proba = model.predict_proba(X_h_eval)
-                        auc = roc_auc_score(
-                            y_h_eval.astype(int),
-                            proba[:, 1] if n_cls == 2 else proba,
-                            multi_class="ovr" if n_cls > 2 else "raise",
-                            average="weighted"
-                        )
-                    except Exception:
-                        auc = float("nan")
-                    metrics = {
-                        "acc": accuracy_score(y_h_eval.astype(int), yhat),
-                        "f1":  f1_score(y_h_eval.astype(int), yhat, average="weighted", zero_division=0),
-                        "auc": auc
-                    }
-                    _plot_confusion(y_h_eval, yhat, name, target)
-                holdout_res[name] = metrics
-                line = f"       {name:12s}  " + "  ".join(f"{k}={v:.4f}" for k, v in metrics.items())
+            for model, res in h_res.items():
+                if "error" in res:
+                    print(f"       {model:14s}  ERROR: {res['error']}")
+                    continue
+                met  = res["metrics"]
+                line = f"       {model:14s}  " + \
+                       "  ".join(f"{k}={v:.4f}" for k, v in met.items()
+                                 if isinstance(v, float))
                 print(line)
-            except Exception as e:
-                holdout_res[name] = {"error": str(e)}
-                print(f"       {name:12s}  ERROR: {e}")
 
-        holdout_summary[target] = holdout_res
+                y_t = res["y_true"]; y_p = res["y_pred"]
+                if task == "regression":
+                    plot_holdout_scatter(y_t, y_p, model, target, version)
+                else:
+                    plot_confusion(y_t, y_p, model, target, version)
+                    if target == "target_large_move" and res.get("proba") is not None:
+                        plot_pr_curve(y_t, res["proba"], model, target, version)
 
-    # ── aggregate CV results ──────────────────────────────────────────────────
-    print("\n[SUMMARY] Cross-validation mean metrics")
+    # ── version comparison plots ──────────────────────────────────────────────
+    plot_version_comparison(all_holdout, REG_TARGETS, "regression")
+    plot_version_comparison(all_holdout, CLF_TARGETS, "classification")
 
-    if all_cv_reg:
-        reg_all = pd.concat(all_cv_reg)
-        save_results(reg_all, "cv_regression_results.csv")
-        summary_reg = reg_all.groupby(["target", "model"])[["mae", "rmse", "r2"]].mean().round(5)
-        print("\n── Regression CV mean ──")
-        print(summary_reg.to_string())
+    # ── save CSVs ─────────────────────────────────────────────────────────────
+    all_cv_df = pd.concat(all_cv_rows, ignore_index=True)
+    all_cv_df.to_csv(OUT_DIR / "cv_all_results.csv", index=False)
+    print(f"\n  ✓ cv_all_results.csv")
 
-    if all_cv_clf:
-        clf_all = pd.concat(all_cv_clf)
-        save_results(clf_all, "cv_classification_results.csv")
-        summary_clf = clf_all.groupby(["target", "model"])[["acc", "f1", "auc"]].mean().round(4)
-        print("\n── Classification CV mean ──")
-        print(summary_clf.to_string())
-
-    # ── holdout summary table ─────────────────────────────────────────────────
-    print("\n[SUMMARY] Holdout test metrics")
     holdout_rows = []
-    for tgt, model_metrics in holdout_summary.items():
-        for mdl, metrics in model_metrics.items():
-            row = {"target": tgt, "model": mdl}
-            row.update(metrics)
+    for (tgt, ver), model_res in all_holdout.items():
+        for model, res in model_res.items():
+            if "error" in res:
+                continue
+            row = {"target": tgt, "version": ver, "model": model}
+            row.update(res.get("metrics", {}))
             holdout_rows.append(row)
     holdout_df = pd.DataFrame(holdout_rows)
-    save_results(holdout_df, "holdout_results.csv")
-    print(holdout_df.to_string(index=False))
+    holdout_df.to_csv(OUT_DIR / "holdout_results.csv", index=False)
+    print(f"  ✓ holdout_results.csv")
 
-    print(f"\n=== supervised complete — outputs in {OUT_DIR} ===")
+    # ── beat-the-baseline summary ─────────────────────────────────────────────
+    print("\n\n" + "═"*70)
+    print("  DOES THE MODEL BEAT THE NAIVE BASELINE?  (holdout, Version A)")
+    print("═"*70)
+
+    for task, targets in [("regression", REG_TARGETS), ("classification", CLF_TARGETS)]:
+        key = "ic" if task == "regression" else "f1_w"
+        higher_is_better = (key != "rmse")
+        print(f"\n── {task.upper()} — primary metric: {key} ──")
+
+        for tgt in targets:
+            res_A = all_holdout.get((tgt, "A"), {})
+            bl_val = res_A.get("baseline", {}).get("metrics", {}).get(key)
+            if bl_val is None:
+                continue
+            print(f"\n  {tgt}  (baseline {key}={bl_val:.4f})")
+            for model, res in res_A.items():
+                if model == "baseline" or "error" in res:
+                    continue
+                mv = res.get("metrics", {}).get(key)
+                if mv is None:
+                    continue
+                beat = mv > bl_val if higher_is_better else mv < bl_val
+                sym  = "✓ BEATS" if beat else "✗ LOSES"
+                diff = mv - bl_val
+                print(f"    {sym}  {model:14s}  {key}={mv:.4f}  (Δ={diff:+.4f})")
+
+        # also print version A vs B delta
+        print(f"\n  Version B uplift over A (Δ{key}, holdout):")
+        for tgt in targets:
+            for model in ["xgb", "lgb", "rf"]:
+                va = all_holdout.get((tgt, "A"), {}).get(model, {}).get("metrics", {}).get(key)
+                vb = all_holdout.get((tgt, "B"), {}).get(model, {}).get("metrics", {}).get(key)
+                if va is not None and vb is not None:
+                    print(f"    {tgt:25s}  {model:8s}  A={va:.4f}  B={vb:.4f}  Δ={vb-va:+.4f}")
+
+    print(f"\n=== supervised complete — {OUT_DIR} ===\n")
 
 
 if __name__ == "__main__":
