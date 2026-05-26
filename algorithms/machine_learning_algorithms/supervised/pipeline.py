@@ -8,11 +8,12 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.linear_model import Lasso
 from imblearn.over_sampling import SMOTE
 
-from config import LASSO_ALPHA, SMOTE_K, BINARY_CLF, MULTI_CLF
+from config import LASSO_ALPHA, SMOTE_K, BINARY_CLF, MULTI_CLF, USE_TUNING, TUNE_ITER, TUNE_SPLITS
 from data import prepare_fold_data
 from baselines import target_baseline
 from metrics import reg_metrics, clf_metrics
-from models import reg_model_set, clf_model_set, _get_feature_importances
+from models import (reg_model_set, clf_model_set, _get_feature_importances,
+                    reg_param_dists, clf_param_dists, _tune_scoring, tune_model)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -32,6 +33,9 @@ def run_folds(df, folds, features, target, task):
 
     fold_records = []
     feat_counter = defaultdict(int)
+    param_dists  = (reg_param_dists() if task == "regression"
+                    else clf_param_dists()) if USE_TUNING else {}
+    scoring      = _tune_scoring(task, target) if USE_TUNING else None
 
     for fi, (tr_idx, val_idx) in enumerate(folds):
         X_tr, X_val, y_tr, y_val, sel, scaler, mask, _ = prepare_fold_data(
@@ -47,7 +51,11 @@ def run_folds(df, folds, features, target, task):
                                  **reg_metrics(y_val[valid], y_bl)})
             for name, m in reg_model_set().items():
                 try:
-                    m.fit(X_tr, y_tr)
+                    if USE_TUNING and name in param_dists:
+                        m, _ = tune_model(name, m, param_dists[name],
+                                          X_tr, y_tr, scoring, TUNE_ITER, TUNE_SPLITS)
+                    else:
+                        m.fit(X_tr, y_tr)
                     yhat = m.predict(X_val)
                     fold_records.append({"fold": fi, "model": name,
                                          **reg_metrics(y_val[valid], yhat[valid])})
@@ -71,13 +79,19 @@ def run_folds(df, folds, features, target, task):
 
             for name, m in clf_model_set(n_cls, is_binary_imb, spw, is_multi).items():
                 try:
-                    if name in ("xgb", "lgb"):
+                    if USE_TUNING and name in param_dists:
+                        y_fit = y_tr_enc if name in ("xgb", "lgb") else y_tr.astype(int)
+                        m, _ = tune_model(name, m, param_dists[name],
+                                          X_tr, y_fit, scoring, TUNE_ITER, TUNE_SPLITS)
+                    elif name in ("xgb", "lgb"):
                         m.fit(X_tr, y_tr_enc, sample_weight=sw)
+                    else:
+                        m.fit(X_tr, y_tr.astype(int))
+                    if name in ("xgb", "lgb"):
                         yhat = le.inverse_transform(
                             np.clip(m.predict(X_val).astype(int), 0, n_cls - 1))
                         proba = m.predict_proba(X_val)
                     else:
-                        m.fit(X_tr, y_tr.astype(int))
                         yhat  = m.predict(X_val).astype(int)
                         proba = m.predict_proba(X_val) if hasattr(m, "predict_proba") else None
                     fold_records.append({"fold": fi, "model": name,
@@ -144,16 +158,23 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     X_h_ev  = X_h[valid_h]
     y_h_ev  = y_h[valid_h]
 
-    results = {}
+    results     = {}
+    param_dists = (reg_param_dists() if task == "regression"
+                   else clf_param_dists()) if USE_TUNING else {}
+    h_scoring   = _tune_scoring(task, target) if USE_TUNING else None
 
-    # ── regression ────────────────────────────────────────────────────────────
+    # ── regression ─────────────────────────────────────────────────────────────
     if task == "regression":
         y_bl = target_baseline(y_all, len(y_h_ev), target)
         results["baseline"] = {"metrics": reg_metrics(y_h_ev, y_bl),
                                "y_true": y_h_ev, "y_pred": y_bl}
         for name, m in reg_model_set().items():
             try:
-                m.fit(X_cv, y_all)
+                if USE_TUNING and name in param_dists:
+                    m, _ = tune_model(name, m, param_dists[name],
+                                      X_cv, y_all, h_scoring, TUNE_ITER, TUNE_SPLITS)
+                else:
+                    m.fit(X_cv, y_all)
                 yhat = m.predict(X_h_ev)
                 results[name] = {
                     "metrics":     reg_metrics(y_h_ev, yhat),
@@ -199,13 +220,19 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
 
         for name, m in clf_model_set(n_cls, is_binary_imb, spw, is_multi).items():
             try:
-                if name in ("xgb", "lgb"):
+                if USE_TUNING and name in param_dists:
+                    y_fit = y_cv_enc if name in ("xgb", "lgb") else y_cv_orig_fit
+                    m, _ = tune_model(name, m, param_dists[name],
+                                      X_cv, y_fit, h_scoring, TUNE_ITER, TUNE_SPLITS)
+                elif name in ("xgb", "lgb"):
                     m.fit(X_cv, y_cv_enc, sample_weight=sw)
+                else:
+                    m.fit(X_cv, y_cv_orig_fit)
+                if name in ("xgb", "lgb"):
                     yhat_enc = m.predict(X_h_ev).astype(int)
                     yhat  = le.inverse_transform(np.clip(yhat_enc, 0, n_cls - 1)).astype(float)
                     proba = m.predict_proba(X_h_ev)
                 else:
-                    m.fit(X_cv, y_cv_orig_fit)
                     yhat  = m.predict(X_h_ev).astype(float)
                     proba = m.predict_proba(X_h_ev) if hasattr(m, "predict_proba") else None
                 results[name] = {
