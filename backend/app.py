@@ -1599,6 +1599,74 @@ def get_research_markdown(paper_name):
             'error': str(e)
         }), 500
 
+@app.route('/api/trading/ohlcv', methods=['POST'])
+def trading_ohlcv():
+    """Fetch OHLCV bars from yfinance for the interactive trading chart.
+
+    POST body: { "ticker": "AAPL", "interval": "1d", "period": "1y" }
+    interval values (yfinance format): 1m 2m 5m 15m 30m 60m 1h 1d 5d 1wk 1mo 3mo
+    period values: 1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max
+    """
+    try:
+        import yfinance as _yf
+    except ImportError:
+        return jsonify({'success': False, 'error': 'yfinance not installed'}), 503
+
+    body     = request.get_json(force=True, silent=True) or {}
+    ticker   = (body.get('ticker') or 'AAPL').upper().strip()[:20]
+    interval = body.get('interval', '1d')
+    period   = body.get('period', '1y')
+
+    # Map the TV-style intervals from the UI to yfinance equivalents
+    _iv_map = {
+        '1m': '1m',  '5m': '5m',  '15m': '15m', '30m': '30m',
+        '1h': '60m', '4h': '60m',
+        '1D': '1d',  '1W': '1wk', '1M': '1mo',
+    }
+    # Map interval → sensible default period when not specified
+    _period_map = {
+        '1m': '1d',  '5m': '5d',  '15m': '5d',  '30m': '60d',
+        '60m': '60d', '1h': '60d', '4h': '6mo',
+        '1d': '1y',  '1D': '1y',  '1wk': '5y', '1W': '5y',
+        '1mo': 'max', '1M': 'max',
+    }
+    yf_interval = _iv_map.get(interval, interval)
+    yf_period   = period if period != 'auto' else _period_map.get(yf_interval, '1y')
+
+    try:
+        tk   = _yf.Ticker(ticker)
+        hist = tk.history(period=yf_period, interval=yf_interval)
+        if hist.empty:
+            return jsonify({'success': False, 'error': f'No data returned for {ticker}'}), 404
+
+        bars = []
+        for ts, row in hist.iterrows():
+            # Lightweight Charts expects Unix timestamp (seconds) for time
+            t = int(ts.timestamp())
+            bars.append({
+                'time':   t,
+                'open':   round(float(row['Open']),   4),
+                'high':   round(float(row['High']),   4),
+                'low':    round(float(row['Low']),    4),
+                'close':  round(float(row['Close']),  4),
+                'volume': int(row['Volume']),
+            })
+
+        info = tk.fast_info
+        currency = getattr(info, 'currency', 'USD') or 'USD'
+
+        return jsonify({
+            'success':  True,
+            'ticker':   ticker,
+            'interval': interval,
+            'period':   yf_period,
+            'currency': currency,
+            'bars':     bars,
+        })
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
 @app.route('/api/trading/chart', methods=['POST'])
 def trading_chart():
     """Proxy chart-img.com TradingView chart image requests.

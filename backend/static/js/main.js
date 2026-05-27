@@ -57,6 +57,15 @@ function setupNavigationListeners() {
         e.preventDefault();
         showSection('trading');
         setActiveNav(this);
+        // Display as flex column so the chart fills remaining height
+        var sec = document.getElementById('sectionTrading');
+        sec.style.display = 'flex';
+        sec.style.flexDirection = 'column';
+        // Auto-load chart if not yet loaded
+        if (document.getElementById('tradingChartResult').style.display === 'none' &&
+            document.getElementById('tradingChartLoading').style.display === 'none') {
+            loadTradingChart();
+        }
     });
 
     document.getElementById('navResearch').addEventListener('click', function(e) {
@@ -1512,11 +1521,11 @@ async function loadMLSignals() {
             const preds = d.predictions || {};
 
             const predRows = [
-                ['1d Return',  preds.ret_1d,    v => (v*100).toFixed(2)+'%'],
-                ['5d Return',  preds.ret_5d,    v => (v*100).toFixed(2)+'%'],
-                ['Vol 5d',     preds.vol_5d,    v => (v*100).toFixed(2)+'%'],
-                ['Regime',     preds.regime,    v => v],
-                ['Dir 1d',     preds.dir_1d,    v => v === 1 ? '▲ Up' : v === -1 ? '▼ Down' : '– Flat'],
+                ['1d Return',  preds.predicted_1d_return,  v => (v*100).toFixed(2)+'%'],
+                ['5d Return',  preds.predicted_5d_return,  v => (v*100).toFixed(2)+'%'],
+                ['Vol 5d',     preds.predicted_vol_5d,     v => (v*100).toFixed(2)+'%'],
+                ['Regime',     preds.predicted_regime,     v => v],
+                ['Dir 1d',     preds.predicted_dir_1d,     v => v === 1 ? '▲ Up' : v === -1 ? '▼ Down' : '– Flat'],
             ].map(([label, val, fmt]) => {
                 const cell = val !== undefined && val !== null ? fmt(val) : '—';
                 return `<tr><td class="text-muted small">${label}</td>
@@ -3331,7 +3340,15 @@ function renderPriceChartWithIndicators(data) {
     });
 }
 
-// ─── Trading Charts (chart-img API) ──────────────────────────────────────────
+// ─── Trading Charts — yfinance + Lightweight Charts (chart-img fallback) ─────
+
+let _lwChart = null;       // main price chart instance
+let _lwVolChart = null;    // volume chart instance
+
+function _destroyLWCharts() {
+    if (_lwChart)    { try { _lwChart.remove();    } catch(e){} _lwChart    = null; }
+    if (_lwVolChart) { try { _lwVolChart.remove(); } catch(e){} _lwVolChart = null; }
+}
 
 function loadTradingChart() {
     var exchange = document.getElementById('tradingExchange').value;
@@ -3339,54 +3356,233 @@ function loadTradingChart() {
     if (!ticker) { alert('Please enter a ticker symbol.'); return; }
 
     var symbol   = exchange + ':' + ticker;
-    var interval = document.getElementById('tradingInterval').value;
-    var style    = document.getElementById('tradingChartStyle').value;
+    // Read interval from radio pills
+    var ivChecked = document.querySelector('input[name="tvInterval"]:checked');
+    var interval  = ivChecked ? ivChecked.value : '1D';
+    var style     = document.getElementById('tradingChartStyle').value;
 
     var studies = [];
     document.querySelectorAll('.trading-indicator:checked').forEach(function(cb) {
         studies.push(cb.value);
     });
 
-    document.getElementById('tradingChartPlaceholder').style.display = 'none';
-    document.getElementById('tradingChartResult').style.display      = 'none';
-    document.getElementById('tradingChartError').style.display       = 'none';
-    document.getElementById('tradingChartLoading').style.display     = 'block';
+    // UI state helpers
+    var chartArea = document.getElementById('tradingChartArea');
+    var show = function(id) {
+        ['tradingChartPlaceholder','tradingChartResult','tradingChartError','tradingChartLoading']
+            .forEach(function(i){
+                var el = document.getElementById(i);
+                el.style.display = (i === id) ? (i === 'tradingChartResult' ? 'flex' : 'flex') : 'none';
+            });
+    };
+    show('tradingChartLoading');
     var btn = document.getElementById('tradingLoadBtn');
-    btn.disabled   = true;
-    btn.textContent = 'Loading\u2026';
+    btn.disabled    = true;
+    btn.innerHTML   = '<i class="fas fa-spinner fa-spin me-1"></i>Loading\u2026';
 
-    fetch('/api/trading/chart', {
+    // ── 1. Try yfinance interactive chart ──────────────────────────────────
+    fetch('/api/trading/ohlcv', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ symbol: symbol, interval: interval, style: style, studies: studies, width: 800, height: 600 })
+        body:    JSON.stringify({ ticker: ticker, interval: interval, period: 'auto' })
     })
-    .then(function(resp) {
-        if (!resp.ok) {
-            return resp.json().then(function(d) {
-                throw new Error(d.details || d.error || 'HTTP ' + resp.status);
-            });
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (!data.success || !data.bars || data.bars.length === 0) {
+            throw new Error(data.error || 'No data');
         }
-        return resp.blob();
-    })
-    .then(function(blob) {
-        var url = URL.createObjectURL(blob);
-        document.getElementById('tradingChartImg').src = url;
-        var dl = document.getElementById('tradingChartDownload');
-        dl.href     = url;
-        dl.download = symbol.replace(':', '_') + '_' + interval + '.png';
+        show('tradingChartResult');
+        _renderLWChart(data, ticker, symbol, interval, style);
         document.getElementById('tradingChartLabel').textContent =
-            symbol + ' \u00b7 ' + interval + ' \u00b7 ' + style + (studies.length ? ' \u00b7 ' + studies.length + ' indicator(s)' : '');
-        document.getElementById('tradingChartLoading').style.display = 'none';
-        document.getElementById('tradingChartResult').style.display  = 'block';
+            ticker + ' \u00b7 ' + interval + '  [' + data.bars.length + ' bars]';
+        var src = document.getElementById('tradingChartSource');
+        src.textContent = 'yfinance';
+        src.className   = 'badge bg-success';
+        src.style.display = '';
+        document.getElementById('tradingImgWrap').style.display = 'none';
     })
-    .catch(function(err) {
-        document.getElementById('tradingChartLoading').style.display = 'none';
-        document.getElementById('tradingChartErrorMsg').textContent  = String(err);
-        document.getElementById('tradingChartError').style.display   = 'block';
+    .catch(function(yferr) {
+        console.warn('yfinance chart failed, falling back to chart-img:', yferr);
+        // ── 2. Fallback: chart-img screenshot ─────────────────────────────
+        fetch('/api/trading/chart', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ symbol: symbol, interval: interval, style: style,
+                                      studies: studies, width: 1400, height: 700 })
+        })
+        .then(function(resp) {
+            if (!resp.ok) return resp.json().then(function(d){ throw new Error(d.details||d.error||'HTTP '+resp.status); });
+            return resp.blob();
+        })
+        .then(function(blob) {
+            _destroyLWCharts();
+            var url = URL.createObjectURL(blob);
+            document.getElementById('tradingChartImg').src = url;
+            var dl = document.getElementById('tradingChartDownload');
+            dl.href = url; dl.download = ticker + '_' + interval + '.png'; dl.style.display = '';
+            document.getElementById('tradingLWChart').style.display     = 'none';
+            document.getElementById('tradingVolumeChart').style.display = 'none';
+            document.getElementById('tradingImgWrap').style.display     = 'block';
+            var src = document.getElementById('tradingChartSource');
+            src.textContent = 'chart-img'; src.className = 'badge bg-secondary'; src.style.display = '';
+            document.getElementById('tradingChartLabel').textContent = symbol + ' \u00b7 ' + interval;
+            show('tradingChartResult');
+        })
+        .catch(function(err) {
+            document.getElementById('tradingChartErrorMsg').textContent = String(err);
+            show('tradingChartError');
+        });
+    })
+    .finally(function() {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fas fa-play me-1"></i>Load';
+    });
+}
+
+    // ── 1. Try yfinance interactive chart ──────────────────────────────────
+    fetch('/api/trading/ohlcv', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ ticker: ticker, interval: interval, period: 'auto' })
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (!data.success || !data.bars || data.bars.length === 0) {
+            throw new Error(data.error || 'No data');
+        }
+        _renderLWChart(data, ticker, symbol, interval, style);
+        document.getElementById('tradingChartLabel').textContent =
+            ticker + ' \u00b7 ' + interval + ' \u00b7 ' + data.bars.length + ' bars';
+        document.getElementById('tradingChartSource').textContent  = 'yfinance';
+        document.getElementById('tradingChartSource').className    = 'badge bg-success';
+        document.getElementById('tradingImgWrap').style.display    = 'none';
+        show('tradingChartResult');
+    })
+    .catch(function(yferr) {
+        console.warn('yfinance chart failed, falling back to chart-img:', yferr);
+        // ── 2. Fallback: chart-img screenshot ─────────────────────────────
+        fetch('/api/trading/chart', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ symbol: symbol, interval: interval, style: style,
+                                      studies: studies, width: 1200, height: 600 })
+        })
+        .then(function(resp) {
+            if (!resp.ok) return resp.json().then(function(d){ throw new Error(d.details||d.error||'HTTP '+resp.status); });
+            return resp.blob();
+        })
+        .then(function(blob) {
+            _destroyLWCharts();
+            var url = URL.createObjectURL(blob);
+            document.getElementById('tradingChartImg').src   = url;
+            var dl = document.getElementById('tradingChartDownload');
+            dl.href = url; dl.download = ticker + '_' + interval + '.png'; dl.style.display = '';
+            document.getElementById('tradingLWChart').style.display     = 'none';
+            document.getElementById('tradingVolumeChart').style.display = 'none';
+            document.getElementById('tradingImgWrap').style.display     = 'block';
+            document.getElementById('tradingChartSource').textContent   = 'chart-img';
+            document.getElementById('tradingChartSource').className     = 'badge bg-secondary';
+            document.getElementById('tradingChartLabel').textContent    =
+                symbol + ' \u00b7 ' + interval + ' \u00b7 ' + style;
+            show('tradingChartResult');
+        })
+        .catch(function(err) {
+            document.getElementById('tradingChartErrorMsg').textContent = String(err);
+            show('tradingChartError');
+        });
     })
     .finally(function() {
         btn.disabled  = false;
         btn.innerHTML = '&#9654; Load Chart';
     });
+}
+
+function _renderLWChart(data, ticker, symbol, interval, style) {
+    _destroyLWCharts();
+
+    var bars    = data.bars;
+    var lwDiv   = document.getElementById('tradingLWChart');
+    var volDiv  = document.getElementById('tradingVolumeChart');
+    lwDiv.style.display  = 'block';
+    volDiv.style.display = 'block';
+
+    var darkLayout = {
+        background: { type: 'solid', color: '#0d1117' },
+        textColor:  '#8892a4',
+        grid:       { vertLines: { color: '#1e2d47' }, horzLines: { color: '#1e2d47' } },
+        crosshair:  { vertLine: { color: '#00c9a7' }, horzLine: { color: '#00c9a7' } },
+        timeScale:  { borderColor: '#1e2d47' },
+        rightPriceScale: { borderColor: '#1e2d47' },
+    };
+
+    // ── Main price chart ──────────────────────────────────────────────────
+    _lwChart = LightweightCharts.createChart(lwDiv, Object.assign({
+        width:  lwDiv.clientWidth || 900,
+        height: 500,
+        localization: { priceFormatter: function(p){ return '$'+p.toFixed(2); } },
+    }, darkLayout));
+
+    var useLine = (style === 'line' || style === 'area' || style === 'baseline');
+    if (useLine) {
+        var lineSeries = _lwChart.addLineSeries({
+            color: '#00c9a7',
+            lineWidth: 2,
+            lastValueVisible: true,
+            priceLineVisible: true,
+        });
+        lineSeries.setData(bars.map(function(b){ return { time: b.time, value: b.close }; }));
+    } else {
+        var candleSeries = _lwChart.addCandlestickSeries({
+            upColor:          '#26c281',
+            downColor:        '#f87171',
+            borderUpColor:    '#26c281',
+            borderDownColor:  '#f87171',
+            wickUpColor:      '#26c281',
+            wickDownColor:    '#f87171',
+        });
+        candleSeries.setData(bars.map(function(b){
+            return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close };
+        }));
+    }
+
+    // ── Volume sub-chart ─────────────────────────────────────────────────
+    _lwVolChart = LightweightCharts.createChart(volDiv, Object.assign({
+        width:  volDiv.clientWidth || 900,
+        height: 120,
+        rightPriceScale: { visible: true, scaleMargins: { top: 0.1, bottom: 0 } },
+        timeScale:       { visible: false },
+    }, darkLayout));
+
+    var volSeries = _lwVolChart.addHistogramSeries({
+        color:    'rgba(0,201,167,0.5)',
+        priceFormat: { type: 'volume' },
+    });
+    volSeries.setData(bars.map(function(b){
+        return {
+            time:  b.time,
+            value: b.volume,
+            color: b.close >= b.open ? 'rgba(38,194,129,0.5)' : 'rgba(248,113,113,0.5)',
+        };
+    }));
+
+    // Keep time scales in sync
+    _lwChart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
+        if (range) _lwVolChart.timeScale().setVisibleLogicalRange(range);
+    });
+    _lwVolChart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
+        if (range) _lwChart.timeScale().setVisibleLogicalRange(range);
+    });
+
+    // Fit content
+    _lwChart.timeScale().fitContent();
+    _lwVolChart.timeScale().fitContent();
+
+    // Resize on window resize
+    window._lwResizeHandler = function() {
+        if (_lwChart)    _lwChart.resize(lwDiv.clientWidth, 500);
+        if (_lwVolChart) _lwVolChart.resize(volDiv.clientWidth, 120);
+    };
+    window.removeEventListener('resize', window._lwResizeHandler);
+    window.addEventListener('resize', window._lwResizeHandler);
 }
 
