@@ -293,8 +293,28 @@ option { background: var(--bg-card); }
 /* NEWS */
 .news-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; cursor: pointer; }
 .news-card:hover { border-color: var(--accent); background: var(--bg-hover); transform: translateX(3px); }
-.news-card h6 { color: var(--text-1); font-weight: 600; }
-.news-card .small { color: var(--text-2); }
+.news-card h6, .news-card .card-title { color: var(--text-1) !important; font-weight: 600; }
+.news-card .small, .news-card .card-text { color: #b8c4d4 !important; }
+.news-card .text-muted { color: #8892a4 !important; }
+/* Market news grid cards — force dark bg and readable text */
+#marketNews .card { background: var(--bg-card) !important; border-color: var(--border) !important; color: var(--text-1) !important; }
+#marketNews .card-title { color: var(--text-1) !important; }
+#marketNews .card-text { color: #b8c4d4 !important; }
+#marketNews .text-muted { color: #8892a4 !important; }
+
+/* QUANT SECTION — dark card theme */
+#sectionQuant .card { background: var(--bg-card) !important; border-color: var(--border) !important; color: var(--text-1) !important; }
+#sectionQuant .card-header { background: rgba(255,255,255,0.03) !important; border-color: var(--border) !important; color: var(--text-1) !important; font-weight: 600; }
+#sectionQuant .card-body { color: var(--text-1) !important; }
+#sectionQuant .table { color: var(--text-1) !important; --bs-table-color: var(--text-1); }
+#sectionQuant .table th, #sectionQuant .table td { border-color: var(--border) !important; color: var(--text-1) !important; }
+#sectionQuant .table thead.sticky-top { background: var(--bg-card) !important; }
+#sectionQuant .text-muted { color: #8892a4 !important; }
+#sectionQuant .alert-warning { background: rgba(245,158,11,0.15) !important; border-color: rgba(245,158,11,0.35) !important; color: #fbbf24 !important; }
+#sectionQuant .alert-secondary { background: rgba(100,116,139,0.15) !important; border-color: var(--border) !important; color: var(--text-2) !important; }
+#sectionQuant .alert-info { background: rgba(0,201,167,0.1) !important; border-color: rgba(0,201,167,0.3) !important; color: var(--accent) !important; }
+#sectionQuant .alert-danger { background: rgba(248,113,113,0.15) !important; border-color: rgba(248,113,113,0.3) !important; color: #f87171 !important; }
+#sectionQuant .metric-item { color: var(--text-1); border-bottom: 1px solid var(--border); padding: 6px 0; }
 
 /* SCENARIO ANALYSIS */
 .scenario-container { display: flex; flex-direction: column; gap: 1.5rem; }
@@ -447,6 +467,36 @@ option { background: var(--bg-card); }
 /* AOS */
 [data-aos="flip-left"] { transition-duration: 0.8s; }
 [data-aos="zoom-in"] { transition-duration: 0.6s; }
+/* TRADING TERMINAL */
+#sectionTrading { background: #000 !important; }
+/* When visible, display as flex column */
+#sectionTrading[style*="display: flex"],
+#sectionTrading[style*="display:flex"] { display: flex !important; flex-direction: column; height: 100vh; overflow: hidden; }
+
+.tv-ctrl {
+  background: #111 !important;
+  border: 1px solid #2a2a2a !important;
+  color: #e0e0e0 !important;
+  font-size: 12px !important;
+}
+.tv-ctrl:focus { border-color: #00c9a7 !important; box-shadow: 0 0 0 2px rgba(0,201,167,0.15) !important; }
+.tv-sep { background: #181818 !important; border-color: #2a2a2a !important; color: #555 !important; font-size:12px; padding:0 6px; }
+.tv-pill {
+  background: #111 !important;
+  border: 1px solid #2a2a2a !important;
+  color: #888 !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  transition: all 0.15s;
+}
+.btn-check:checked + .tv-pill {
+  background: rgba(0,201,167,0.18) !important;
+  border-color: #00c9a7 !important;
+  color: #00c9a7 !important;
+  font-weight: 600;
+}
+.tv-pill:hover { border-color: #444 !important; color: #ccc !important; }
+
 [data-aos="fade-up"] { transition-duration: 0.5s; }
 
 /* RESPONSIVE */
