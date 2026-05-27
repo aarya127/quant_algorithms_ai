@@ -1,0 +1,18 @@
+{
+  "ticker": "NVDA",
+  "target": "target_dir_1d",
+  "task": "classification",
+  "model_type": "xgb",
+  "feature_version": "B",
+  "created_at": "2026-05-26T21:28:17.085541Z",
+  "primary_metric": "f1_w",
+  "metric_value": 0.355372,
+  "n_features": 26,
+  "metrics": {
+    "acc": 0.39215686274509803,
+    "bal_acc": 0.31666666666666665,
+    "f1_w": 0.3553717509205347,
+    "f1_macro": 0.28646315140302187,
+    "roc_auc": 0.5538704172807425
+  }
+}

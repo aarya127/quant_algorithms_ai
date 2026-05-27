@@ -5,6 +5,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import pandas as pd
+from pathlib import Path
 
 from config import (
     SYMBOL, REGIMES_CSV, FEAT_FILE, HOLDOUT_ROWS, INIT_TRAIN, STEP,
@@ -17,6 +18,10 @@ from plots import (
     plot_best_holdout, plot_feature_importance,
     plot_pr_combined, plot_version_comparison,
 )
+from ensemble import run_ensemble
+from registry import save_registry
+
+_REGISTRY_DIR = Path(__file__).parent / "model_registry"
 
 
 def main():
@@ -67,6 +72,8 @@ def main():
             all_holdout[(target, version)] = h_res
 
             for model, res in h_res.items():
+                if model.startswith("_"):
+                    continue
                 if "error" in res:
                     print(f"       {model:14s}  ERROR: {res['error']}")
                     continue
@@ -94,7 +101,7 @@ def main():
     holdout_rows = []
     for (tgt, ver), model_res in all_holdout.items():
         for model, res in model_res.items():
-            if "error" in res:
+            if model.startswith("_") or "error" in res:
                 continue
             row = {"target": tgt, "version": ver, "model": model}
             row.update(res.get("metrics", {}))
@@ -102,6 +109,12 @@ def main():
     holdout_df = pd.DataFrame(holdout_rows)
     holdout_df.to_csv(OUT_DIR / "holdout_results.csv", index=False)
     print(f"  ✓ holdout_results.csv")
+
+    # ── Stage 13A: ensemble layer ─────────────────────────────────────────────
+    run_ensemble(all_holdout, df, holdout_idx, SYMBOL, OUT_DIR)
+
+    # ── Stage 14A: local model registry ──────────────────────────────────────
+    save_registry(all_holdout, SYMBOL, _REGISTRY_DIR)
 
     # ── beat-the-baseline summary ─────────────────────────────────────────────
     print("\n\n" + "═"*70)
