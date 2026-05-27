@@ -1634,23 +1634,96 @@ def trading_ohlcv():
     yf_period   = period if period != 'auto' else _period_map.get(yf_interval, '1y')
 
     try:
+        import numpy as _np
+        import pandas as _pd
         tk   = _yf.Ticker(ticker)
         hist = tk.history(period=yf_period, interval=yf_interval)
         if hist.empty:
             return jsonify({'success': False, 'error': f'No data returned for {ticker}'}), 404
 
+        close = hist['Close']
+        high  = hist['High']
+        low   = hist['Low']
+
+        # ── Indicators (NaN → None so JSON serialises cleanly) ──────────────
+        def _s(series):
+            """Round a pandas Series, coerce NaN→None for JSON."""
+            return {ts: (None if _np.isnan(v) else round(float(v), 4))
+                    for ts, v in series.items()}
+
+        # EMAs
+        ema20  = _s(close.ewm(span=20,  adjust=False).mean())
+        ema50  = _s(close.ewm(span=50,  adjust=False).mean())
+        ema200 = _s(close.ewm(span=200, adjust=False).mean())
+
+        # Bollinger Bands (20, 2σ)
+        bb_mid   = close.rolling(20).mean()
+        bb_std   = close.rolling(20).std()
+        bb_upper = _s(bb_mid + 2 * bb_std)
+        bb_lower = _s(bb_mid - 2 * bb_std)
+        bb_mid   = _s(bb_mid)
+
+        # RSI (14)
+        delta = close.diff()
+        gain  = delta.where(delta > 0, 0.0).rolling(14).mean()
+        loss  = (-delta.where(delta < 0, 0.0)).rolling(14).mean()
+        rsi   = _s(100 - 100 / (1 + gain / loss.replace(0, _np.nan)))
+
+        # MACD (12, 26, 9)
+        ema12      = close.ewm(span=12, adjust=False).mean()
+        ema26      = close.ewm(span=26, adjust=False).mean()
+        macd_line  = ema12 - ema26
+        macd_sig   = macd_line.ewm(span=9, adjust=False).mean()
+        macd_hist_s = _s(macd_line - macd_sig)
+        macd_line  = _s(macd_line)
+        macd_sig   = _s(macd_sig)
+
+        # Stochastic (14, 3)
+        low14  = low.rolling(14).min()
+        high14 = high.rolling(14).max()
+        stk    = 100 * (close - low14) / (high14 - low14).replace(0, _np.nan)
+        std    = _s(stk.rolling(3).mean())
+        stk    = _s(stk)
+
+        # ATR (14)
+        tr  = _pd.concat([(high - low).abs(),
+                           (high - close.shift()).abs(),
+                           (low  - close.shift()).abs()], axis=1).max(axis=1)
+        atr = _s(tr.rolling(14).mean())
+
+        # CCI (20)
+        tp  = (high + low + close) / 3
+        cci = _s((tp - tp.rolling(20).mean()) / (0.015 * tp.rolling(20).std()))
+
+        # ── Build bars array ─────────────────────────────────────────────────
         bars = []
         for ts, row in hist.iterrows():
-            # Lightweight Charts expects Unix timestamp (seconds) for time
             t = int(ts.timestamp())
-            bars.append({
+            bar = {
                 'time':   t,
                 'open':   round(float(row['Open']),   4),
                 'high':   round(float(row['High']),   4),
                 'low':    round(float(row['Low']),    4),
                 'close':  round(float(row['Close']),  4),
                 'volume': int(row['Volume']),
-            })
+                # overlays
+                'ema20':  ema20.get(ts),
+                'ema50':  ema50.get(ts),
+                'ema200': ema200.get(ts),
+                'bb_upper': bb_upper.get(ts),
+                'bb_mid':   bb_mid.get(ts),
+                'bb_lower': bb_lower.get(ts),
+                # sub-pane indicators
+                'rsi':        rsi.get(ts),
+                'macd':       macd_line.get(ts),
+                'macd_sig':   macd_sig.get(ts),
+                'macd_hist':  macd_hist_s.get(ts),
+                'stoch_k':    stk.get(ts),
+                'stoch_d':    std.get(ts),
+                'atr':        atr.get(ts),
+                'cci':        cci.get(ts),
+            }
+            bars.append(bar)
 
         info = tk.fast_info
         currency = getattr(info, 'currency', 'USD') or 'USD'

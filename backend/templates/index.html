@@ -1625,7 +1625,11 @@
                     <!-- Charts result — flex column fills full area -->
                     <div id="tradingChartResult" style="position:absolute; inset:0; display:none; flex-direction:column;">
                         <div id="tradingLWChart" style="flex:1; min-height:0;"></div>
-                        <div id="tradingVolumeChart" style="height:90px; flex-shrink:0; border-top:1px solid #1a1a1a;"></div>
+                        <div id="tradingVolumeChart" style="height:75px; flex-shrink:0; border-top:1px solid #1a1a1a;"></div>
+                        <!-- indicator sub-panes (shown when relevant indicator is checked) -->
+                        <div id="tradingRSIChart"   style="height:75px; flex-shrink:0; border-top:1px solid #1a1a1a; display:none;"></div>
+                        <div id="tradingMACDChart"  style="height:90px; flex-shrink:0; border-top:1px solid #1a1a1a; display:none;"></div>
+                        <div id="tradingStochChart" style="height:75px; flex-shrink:0; border-top:1px solid #1a1a1a; display:none;"></div>
                         <!-- Fallback screenshot -->
                         <div id="tradingImgWrap" style="display:none; position:absolute; inset:0;">
                             <img id="tradingChartImg" src="" alt="Trading Chart" style="width:100%; height:100%; object-fit:contain;">
