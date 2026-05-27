@@ -4,7 +4,7 @@
   "task": "regression",
   "model_type": "xgb",
   "feature_version": "B",
-  "created_at": "2026-05-26T21:28:17.085541Z",
+  "created_at": "2026-05-27T04:48:03.458023Z",
   "primary_metric": "ic",
   "metric_value": 0.348033,
   "n_features": 10,

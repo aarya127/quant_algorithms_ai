@@ -33,6 +33,9 @@ MULTI_CLF    = {"target_dir_1d", "target_regime"}
 REGIME_COLS  = ["cluster_kmeans", "anomaly_iso", "anomaly_score"]
 
 # ── Stage 7C — hyperparameter tuning ─────────────────────────────────────────
-USE_TUNING   = True   # RandomizedSearchCV with TimeSeriesSplit inner CV
+# Set env var USE_TUNING=0 for a fast no-tuning run (default params, ~30s).
+# Set USE_TUNING=1 (or leave unset) for full RandomizedSearchCV (~10 min).
+import os as _os
+USE_TUNING   = _os.environ.get("USE_TUNING", "1") != "0"
 TUNE_ITER    = 25     # iterations per model per fold (guide: 25–50)
 TUNE_SPLITS  = 3      # inner TimeSeriesSplit folds
