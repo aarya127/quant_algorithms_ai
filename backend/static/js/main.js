@@ -513,12 +513,9 @@ async function loadStockOverview(symbol) {
                 companyHTML += `<p class="mb-2"><strong>52-Week Range:</strong> ${currencySymbol}${data.company.fiftyTwoWeekLow.toFixed(2)} - ${currencySymbol}${data.company.fiftyTwoWeekHigh.toFixed(2)}</p>`;
             }
             if (data.company.dividendYield && data.company.dividendYield > 0) {
-                // yfinance returns dividendYield as a decimal ratio (e.g. 0.045 = 4.5%)
-                // but some tickers/versions return it already as a percentage (e.g. 4.5).
-                // Guard: if the raw value > 1 it is already a percentage, don't multiply.
-                var _dy = data.company.dividendYield;
-                var _dyStr = _dy > 1 ? _dy.toFixed(2) + '%' : (_dy * 100).toFixed(2) + '%';
-                companyHTML += `<p class="mb-2"><strong>Dividend Yield:</strong> ${_dyStr}</p>`;
+                // yfinance dividendYield is already a percentage value (e.g. 0.35 = 0.35%, 2.81 = 2.81%)
+                // — do NOT multiply by 100.
+                companyHTML += `<p class="mb-2"><strong>Dividend Yield:</strong> ${(+data.company.dividendYield).toFixed(2)}%</p>`;
             }
             if (data.company.trailingPE && data.company.trailingPE > 0) {
                 companyHTML += `<p class="mb-2"><strong>P/E Ratio:</strong> ${data.company.trailingPE.toFixed(2)}</p>`;
