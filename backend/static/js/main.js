@@ -1578,8 +1578,8 @@ async function loadMLSignals() {
             const flagRows = (d.drift_flags || []).slice(0, 8).map(f =>
                 `<tr>
                     <td class="small text-truncate" style="max-width:120px" title="${f.feature}">${f.feature}</td>
-                    <td class="small text-end">${(+f.latest).toFixed(2)}</td>
-                    <td class="small text-end">${(+f.mean).toFixed(2)}</td>
+                    <td class="small text-end">${(+f.latest_value).toFixed(2)}</td>
+                    <td class="small text-end">${(+f.training_mean).toFixed(2)}</td>
                     <td class="small text-end ${Math.abs(f.z_score) > 4 ? 'text-danger fw-bold' : ''}">${(+f.z_score).toFixed(1)}</td>
                 </tr>`
             ).join('');
@@ -1622,8 +1622,8 @@ async function loadMLSignals() {
             for (const [tk, info] of Object.entries(d.registry)) {
                 for (const [target, meta] of Object.entries(info.targets || {})) {
                     const metric = meta.metric || '—';
-                    const score = meta[metric] !== undefined
-                        ? (+meta[metric]).toFixed(4) : '—';
+                    const score = meta.metric_value !== undefined && meta.metric_value !== null
+                        ? (+meta.metric_value).toFixed(4) : '—';
                     rows.push(`<tr>
                         <td class="small fw-semibold">${target.replace('target_','')}</td>
                         <td class="small">${meta.model_type || '—'}</td>
