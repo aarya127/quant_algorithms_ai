@@ -513,7 +513,12 @@ async function loadStockOverview(symbol) {
                 companyHTML += `<p class="mb-2"><strong>52-Week Range:</strong> ${currencySymbol}${data.company.fiftyTwoWeekLow.toFixed(2)} - ${currencySymbol}${data.company.fiftyTwoWeekHigh.toFixed(2)}</p>`;
             }
             if (data.company.dividendYield && data.company.dividendYield > 0) {
-                companyHTML += `<p class="mb-2"><strong>Dividend Yield:</strong> ${(data.company.dividendYield * 100).toFixed(2)}%</p>`;
+                // yfinance returns dividendYield as a decimal ratio (e.g. 0.045 = 4.5%)
+                // but some tickers/versions return it already as a percentage (e.g. 4.5).
+                // Guard: if the raw value > 1 it is already a percentage, don't multiply.
+                var _dy = data.company.dividendYield;
+                var _dyStr = _dy > 1 ? _dy.toFixed(2) + '%' : (_dy * 100).toFixed(2) + '%';
+                companyHTML += `<p class="mb-2"><strong>Dividend Yield:</strong> ${_dyStr}</p>`;
             }
             if (data.company.trailingPE && data.company.trailingPE > 0) {
                 companyHTML += `<p class="mb-2"><strong>P/E Ratio:</strong> ${data.company.trailingPE.toFixed(2)}</p>`;
@@ -3344,10 +3349,22 @@ function renderPriceChartWithIndicators(data) {
 
 let _lwChart = null;       // main price chart instance
 let _lwVolChart = null;    // volume chart instance
+let _lwRSIChart = null;
+let _lwMACDChart = null;
+let _lwStochChart = null;
 
 function _destroyLWCharts() {
-    if (_lwChart)    { try { _lwChart.remove();    } catch(e){} _lwChart    = null; }
-    if (_lwVolChart) { try { _lwVolChart.remove(); } catch(e){} _lwVolChart = null; }
+    [['_lwChart', _lwChart], ['_lwVolChart', _lwVolChart],
+     ['_lwRSIChart', _lwRSIChart], ['_lwMACDChart', _lwMACDChart],
+     ['_lwStochChart', _lwStochChart]].forEach(function(pair) {
+        if (pair[1]) { try { pair[1].remove(); } catch(e){} }
+    });
+    _lwChart = _lwVolChart = _lwRSIChart = _lwMACDChart = _lwStochChart = null;
+    // Hide sub-panes
+    ['tradingRSIChart','tradingMACDChart','tradingStochChart'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
 }
 
 function loadTradingChart() {
@@ -3439,150 +3456,166 @@ function loadTradingChart() {
     });
 }
 
-    // ── 1. Try yfinance interactive chart ──────────────────────────────────
-    fetch('/api/trading/ohlcv', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ ticker: ticker, interval: interval, period: 'auto' })
-    })
-    .then(function(resp) { return resp.json(); })
-    .then(function(data) {
-        if (!data.success || !data.bars || data.bars.length === 0) {
-            throw new Error(data.error || 'No data');
-        }
-        _renderLWChart(data, ticker, symbol, interval, style);
-        document.getElementById('tradingChartLabel').textContent =
-            ticker + ' \u00b7 ' + interval + ' \u00b7 ' + data.bars.length + ' bars';
-        document.getElementById('tradingChartSource').textContent  = 'yfinance';
-        document.getElementById('tradingChartSource').className    = 'badge bg-success';
-        document.getElementById('tradingImgWrap').style.display    = 'none';
-        show('tradingChartResult');
-    })
-    .catch(function(yferr) {
-        console.warn('yfinance chart failed, falling back to chart-img:', yferr);
-        // ── 2. Fallback: chart-img screenshot ─────────────────────────────
-        fetch('/api/trading/chart', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ symbol: symbol, interval: interval, style: style,
-                                      studies: studies, width: 1200, height: 600 })
-        })
-        .then(function(resp) {
-            if (!resp.ok) return resp.json().then(function(d){ throw new Error(d.details||d.error||'HTTP '+resp.status); });
-            return resp.blob();
-        })
-        .then(function(blob) {
-            _destroyLWCharts();
-            var url = URL.createObjectURL(blob);
-            document.getElementById('tradingChartImg').src   = url;
-            var dl = document.getElementById('tradingChartDownload');
-            dl.href = url; dl.download = ticker + '_' + interval + '.png'; dl.style.display = '';
-            document.getElementById('tradingLWChart').style.display     = 'none';
-            document.getElementById('tradingVolumeChart').style.display = 'none';
-            document.getElementById('tradingImgWrap').style.display     = 'block';
-            document.getElementById('tradingChartSource').textContent   = 'chart-img';
-            document.getElementById('tradingChartSource').className     = 'badge bg-secondary';
-            document.getElementById('tradingChartLabel').textContent    =
-                symbol + ' \u00b7 ' + interval + ' \u00b7 ' + style;
-            show('tradingChartResult');
-        })
-        .catch(function(err) {
-            document.getElementById('tradingChartErrorMsg').textContent = String(err);
-            show('tradingChartError');
-        });
-    })
-    .finally(function() {
-        btn.disabled  = false;
-        btn.innerHTML = '&#9654; Load Chart';
-    });
-}
 
 function _renderLWChart(data, ticker, symbol, interval, style) {
     _destroyLWCharts();
 
-    var bars    = data.bars;
-    var lwDiv   = document.getElementById('tradingLWChart');
-    var volDiv  = document.getElementById('tradingVolumeChart');
+    var bars   = data.bars;
+    var lwDiv  = document.getElementById('tradingLWChart');
+    var volDiv = document.getElementById('tradingVolumeChart');
     lwDiv.style.display  = 'block';
     volDiv.style.display = 'block';
 
-    var darkLayout = {
-        background: { type: 'solid', color: '#0d1117' },
-        textColor:  '#8892a4',
-        grid:       { vertLines: { color: '#1e2d47' }, horzLines: { color: '#1e2d47' } },
-        crosshair:  { vertLine: { color: '#00c9a7' }, horzLine: { color: '#00c9a7' } },
-        timeScale:  { borderColor: '#1e2d47' },
-        rightPriceScale: { borderColor: '#1e2d47' },
+    // Which indicators are checked?
+    var checked = {};
+    document.querySelectorAll('.trading-indicator').forEach(function(cb) {
+        checked[cb.value] = cb.checked;
+    });
+    var hasRSI   = checked['Relative Strength Index'];
+    var hasMACD  = checked['MACD'];
+    var hasBB    = checked['Bollinger Bands'];
+    var hasEMA20 = checked['EMA:20'];
+    var hasEMA50 = checked['EMA:50'];
+    var hasEMA200= checked['EMA:200'];
+    var hasStoch = checked['Stochastic'];
+
+    var darkOpts = {
+        autoSize: true,
+        layout: { background: { type: 'solid', color: '#000000' }, textColor: '#8892a4' },
+        grid: { vertLines: { color: '#111' }, horzLines: { color: '#111' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        timeScale: { borderColor: '#1e1e1e', timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderColor: '#1e1e1e' },
     };
 
-    // ── Main price chart ──────────────────────────────────────────────────
-    _lwChart = LightweightCharts.createChart(lwDiv, Object.assign({
-        width:  lwDiv.clientWidth || 900,
-        height: 500,
-        localization: { priceFormatter: function(p){ return '$'+p.toFixed(2); } },
-    }, darkLayout));
+    // ── helpers ──────────────────────────────────────────────────────────
+    function _barField(field) {
+        return bars.filter(function(b){ return b[field] != null; })
+                   .map(function(b){ return { time: b.time, value: b[field] }; });
+    }
+
+    // ── Main price chart ─────────────────────────────────────────────────
+    _lwChart = LightweightCharts.createChart(lwDiv, darkOpts);
 
     var useLine = (style === 'line' || style === 'area' || style === 'baseline');
     if (useLine) {
-        var lineSeries = _lwChart.addLineSeries({
-            color: '#00c9a7',
-            lineWidth: 2,
-            lastValueVisible: true,
-            priceLineVisible: true,
-        });
-        lineSeries.setData(bars.map(function(b){ return { time: b.time, value: b.close }; }));
+        var ls = _lwChart.addLineSeries({ color: '#00c9a7', lineWidth: 2, priceLineVisible: true });
+        ls.setData(bars.map(function(b){ return { time: b.time, value: b.close }; }));
     } else {
-        var candleSeries = _lwChart.addCandlestickSeries({
-            upColor:          '#26c281',
-            downColor:        '#f87171',
-            borderUpColor:    '#26c281',
-            borderDownColor:  '#f87171',
-            wickUpColor:      '#26c281',
-            wickDownColor:    '#f87171',
+        var cs = _lwChart.addCandlestickSeries({
+            upColor: '#26c281', downColor: '#f87171',
+            borderUpColor: '#26c281', borderDownColor: '#f87171',
+            wickUpColor: '#26c281', wickDownColor: '#f87171',
         });
-        candleSeries.setData(bars.map(function(b){
+        cs.setData(bars.map(function(b){
             return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close };
         }));
     }
 
-    // ── Volume sub-chart ─────────────────────────────────────────────────
-    _lwVolChart = LightweightCharts.createChart(volDiv, Object.assign({
-        width:  volDiv.clientWidth || 900,
-        height: 120,
-        rightPriceScale: { visible: true, scaleMargins: { top: 0.1, bottom: 0 } },
-        timeScale:       { visible: false },
-    }, darkLayout));
+    // EMA overlays
+    if (hasEMA20) {
+        var e20 = _lwChart.addLineSeries({ color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA20' });
+        e20.setData(_barField('ema20'));
+    }
+    if (hasEMA50) {
+        var e50 = _lwChart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA50' });
+        e50.setData(_barField('ema50'));
+    }
+    if (hasEMA200) {
+        var e200 = _lwChart.addLineSeries({ color: '#ef4444', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA200' });
+        e200.setData(_barField('ema200'));
+    }
 
-    var volSeries = _lwVolChart.addHistogramSeries({
-        color:    'rgba(0,201,167,0.5)',
-        priceFormat: { type: 'volume' },
-    });
-    volSeries.setData(bars.map(function(b){
-        return {
-            time:  b.time,
-            value: b.volume,
-            color: b.close >= b.open ? 'rgba(38,194,129,0.5)' : 'rgba(248,113,113,0.5)',
-        };
-    }));
+    // Bollinger Bands overlay
+    if (hasBB) {
+        var bbU = _lwChart.addLineSeries({ color: 'rgba(168,85,247,0.7)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, title: 'BB+2σ' });
+        bbU.setData(_barField('bb_upper'));
+        var bbM = _lwChart.addLineSeries({ color: 'rgba(168,85,247,0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false });
+        bbM.setData(_barField('bb_mid'));
+        var bbL = _lwChart.addLineSeries({ color: 'rgba(168,85,247,0.7)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, title: 'BB−2σ' });
+        bbL.setData(_barField('bb_lower'));
+    }
 
-    // Keep time scales in sync
-    _lwChart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
-        if (range) _lwVolChart.timeScale().setVisibleLogicalRange(range);
-    });
-    _lwVolChart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
-        if (range) _lwChart.timeScale().setVisibleLogicalRange(range);
-    });
-
-    // Fit content
     _lwChart.timeScale().fitContent();
+
+    // ── Volume sub-pane ──────────────────────────────────────────────────
+    _lwVolChart = LightweightCharts.createChart(volDiv, Object.assign({}, darkOpts, {
+        rightPriceScale: { visible: true, scaleMargins: { top: 0.1, bottom: 0 }, borderColor: '#1e1e1e' },
+        timeScale: { visible: false },
+    }));
+    var volS = _lwVolChart.addHistogramSeries({ color: 'rgba(0,201,167,0.5)', priceFormat: { type: 'volume' } });
+    volS.setData(bars.map(function(b){
+        return { time: b.time, value: b.volume, color: b.close >= b.open ? 'rgba(38,194,129,0.5)' : 'rgba(248,113,113,0.5)' };
+    }));
     _lwVolChart.timeScale().fitContent();
 
-    // Resize on window resize
-    window._lwResizeHandler = function() {
-        if (_lwChart)    _lwChart.resize(lwDiv.clientWidth, 500);
-        if (_lwVolChart) _lwVolChart.resize(volDiv.clientWidth, 120);
-    };
-    window.removeEventListener('resize', window._lwResizeHandler);
-    window.addEventListener('resize', window._lwResizeHandler);
+    // ── RSI sub-pane ─────────────────────────────────────────────────────
+    if (hasRSI) {
+        var rsiDiv = document.getElementById('tradingRSIChart');
+        rsiDiv.style.display = 'block';
+        _lwRSIChart = LightweightCharts.createChart(rsiDiv, Object.assign({}, darkOpts, {
+            rightPriceScale: { visible: true, scaleMargins: { top: 0.1, bottom: 0.1 }, borderColor: '#1e1e1e' },
+            timeScale: { visible: false },
+        }));
+        var rsiS = _lwRSIChart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'RSI' });
+        rsiS.setData(_barField('rsi'));
+        // 70 / 30 reference lines
+        var rsiOB = _lwRSIChart.addLineSeries({ color: 'rgba(248,113,113,0.5)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+        rsiOB.setData(bars.map(function(b){ return { time: b.time, value: 70 }; }));
+        var rsiOS = _lwRSIChart.addLineSeries({ color: 'rgba(38,194,129,0.5)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+        rsiOS.setData(bars.map(function(b){ return { time: b.time, value: 30 }; }));
+        _lwRSIChart.timeScale().fitContent();
+    }
+
+    // ── MACD sub-pane ────────────────────────────────────────────────────
+    if (hasMACD) {
+        var macdDiv = document.getElementById('tradingMACDChart');
+        macdDiv.style.display = 'block';
+        _lwMACDChart = LightweightCharts.createChart(macdDiv, Object.assign({}, darkOpts, {
+            rightPriceScale: { visible: true, scaleMargins: { top: 0.1, bottom: 0.1 }, borderColor: '#1e1e1e' },
+            timeScale: { visible: false },
+        }));
+        // MACD histogram
+        var macdH = _lwMACDChart.addHistogramSeries({ priceFormat: { type: 'price', precision: 4 } });
+        macdH.setData(bars.filter(function(b){ return b.macd_hist != null; }).map(function(b){
+            return { time: b.time, value: b.macd_hist, color: b.macd_hist >= 0 ? 'rgba(38,194,129,0.6)' : 'rgba(248,113,113,0.6)' };
+        }));
+        // MACD line
+        var macdL = _lwMACDChart.addLineSeries({ color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
+        macdL.setData(_barField('macd'));
+        // Signal line
+        var sigL = _lwMACDChart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'Signal' });
+        sigL.setData(_barField('macd_sig'));
+        _lwMACDChart.timeScale().fitContent();
+    }
+
+    // ── Stochastic sub-pane ──────────────────────────────────────────────
+    if (hasStoch) {
+        var stochDiv = document.getElementById('tradingStochChart');
+        stochDiv.style.display = 'block';
+        _lwStochChart = LightweightCharts.createChart(stochDiv, Object.assign({}, darkOpts, {
+            rightPriceScale: { visible: true, scaleMargins: { top: 0.1, bottom: 0.1 }, borderColor: '#1e1e1e' },
+            timeScale: { visible: false },
+        }));
+        var skS = _lwStochChart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: '%K' });
+        skS.setData(_barField('stoch_k'));
+        var sdS = _lwStochChart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: '%D' });
+        sdS.setData(_barField('stoch_d'));
+        // 80 / 20 levels
+        var stOB = _lwStochChart.addLineSeries({ color: 'rgba(248,113,113,0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+        stOB.setData(bars.map(function(b){ return { time: b.time, value: 80 }; }));
+        var stOS = _lwStochChart.addLineSeries({ color: 'rgba(38,194,129,0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false });
+        stOS.setData(bars.map(function(b){ return { time: b.time, value: 20 }; }));
+        _lwStochChart.timeScale().fitContent();
+    }
+
+    // ── Sync all time scales ─────────────────────────────────────────────
+    var allCharts = [_lwChart, _lwVolChart, _lwRSIChart, _lwMACDChart, _lwStochChart].filter(Boolean);
+    allCharts.forEach(function(src) {
+        src.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
+            if (!range) return;
+            allCharts.forEach(function(dst) { if (dst !== src) dst.timeScale().setVisibleLogicalRange(range); });
+        });
+    });
 }
 
