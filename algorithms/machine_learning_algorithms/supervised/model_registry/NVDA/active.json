@@ -1,36 +1,36 @@
 {
   "ticker": "NVDA",
-  "created_at": "2026-05-26T21:28:17.085541Z",
+  "created_at": "2026-05-27T04:48:03.458023Z",
   "targets": {
     "target_5d": {
       "path": "/Users/aaryas127/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_5d",
       "model_type": "rf",
       "metric_value": 0.400308,
-      "created_at": "2026-05-26T21:28:17.085541Z"
+      "created_at": "2026-05-27T04:48:03.458023Z"
     },
     "target_1d": {
       "path": "/Users/aaryas127/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_1d",
       "model_type": "xgb",
       "metric_value": 0.348033,
-      "created_at": "2026-05-26T21:28:17.085541Z"
+      "created_at": "2026-05-27T04:48:03.458023Z"
     },
     "target_vol_5d": {
       "path": "/Users/aaryas127/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_vol_5d",
       "model_type": "xgb",
       "metric_value": 0.174908,
-      "created_at": "2026-05-26T21:28:17.085541Z"
+      "created_at": "2026-05-27T04:48:03.458023Z"
     },
     "target_dir_1d": {
       "path": "/Users/aaryas127/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_dir_1d",
       "model_type": "xgb",
       "metric_value": 0.355372,
-      "created_at": "2026-05-26T21:28:17.085541Z"
+      "created_at": "2026-05-27T04:48:03.458023Z"
     },
     "target_regime": {
       "path": "/Users/aaryas127/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_regime",
       "model_type": "rf",
       "metric_value": 0.980336,
-      "created_at": "2026-05-26T21:28:17.085541Z"
+      "created_at": "2026-05-27T04:48:03.458023Z"
     }
   }
 }

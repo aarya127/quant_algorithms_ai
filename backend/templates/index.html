@@ -645,6 +645,13 @@
                                 <i class="fas fa-project-diagram"></i> Models
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="ml-signals-tab" data-bs-toggle="pill"
+                                    data-bs-target="#ml-signals" type="button" role="tab"
+                                    onclick="loadMLSignals()">
+                                <i class="fas fa-bolt"></i> ML Signals
+                            </button>
+                        </li>
                     </ul>
 
                     <!-- Tab Content -->
@@ -1428,6 +1435,66 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- ML Signals Tab -->
+                        <div class="tab-pane fade" id="ml-signals" role="tabpanel">
+                            <!-- Controls row -->
+                            <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+                                <div class="d-flex align-items-center gap-2">
+                                    <label class="text-muted small mb-0">Ticker</label>
+                                    <input id="mlTicker" type="text" class="form-control form-control-sm"
+                                           value="NVDA" style="width:90px;text-transform:uppercase">
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="loadMLSignals()">
+                                    <i class="fas fa-sync-alt"></i> Refresh Prediction
+                                </button>
+                            </div>
+
+                            <!-- Prediction card -->
+                            <div class="row g-3 mb-3">
+                                <div class="col-12">
+                                    <div class="card border-0 shadow-sm">
+                                        <div class="card-header d-flex justify-content-between align-items-center">
+                                            <span><i class="fas fa-brain me-2"></i>Latest Prediction</span>
+                                            <span id="mlPredDate" class="text-muted small"></span>
+                                        </div>
+                                        <div class="card-body" id="mlPredBody">
+                                            <div class="text-center text-muted py-3">
+                                                <div class="spinner-border spinner-border-sm me-2"></div>
+                                                Loading prediction…
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Drift + Registry row -->
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-5">
+                                    <div class="card border-0 shadow-sm h-100">
+                                        <div class="card-header"><i class="fas fa-exclamation-triangle me-2"></i>Drift Monitor</div>
+                                        <div class="card-body p-0" id="mlDriftBody">
+                                            <div class="text-center text-muted py-3">
+                                                <div class="spinner-border spinner-border-sm me-2"></div>
+                                                Loading drift report…
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-7">
+                                    <div class="card border-0 shadow-sm h-100">
+                                        <div class="card-header"><i class="fas fa-database me-2"></i>Model Registry</div>
+                                        <div class="card-body p-0" id="mlRegistryBody">
+                                            <div class="text-center text-muted py-3">
+                                                <div class="spinner-border spinner-border-sm me-2"></div>
+                                                Loading registry…
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </section>

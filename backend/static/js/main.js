@@ -1465,9 +1465,185 @@ function displayNews(newsItems) {
 // Load Quant Analysis
 async function loadQuantAnalysis() {
     // Refresh AOS animations when switching to quant section
-    setTimeout(() => {
-        AOS.refresh();
-    }, 100);
+    setTimeout(() => { AOS.refresh(); }, 100);
+
+    // Update the live model count in the quant stats header
+    try {
+        const resp = await fetch('/api/model/status');
+        const data = await resp.json();
+        if (data.success && data.registry) {
+            let totalTargets = 0;
+            for (const ticker of Object.values(data.registry)) {
+                totalTargets += Object.keys(ticker.targets || {}).length;
+            }
+            const el = document.getElementById('modelCount');
+            if (el) el.textContent = totalTargets;
+        }
+    } catch (e) {
+        console.warn('Could not update model count:', e);
+    }
+}
+
+// ─── ML Signals panel ────────────────────────────────────────────────────────
+
+async function loadMLSignals() {
+    const ticker = (document.getElementById('mlTicker')?.value || 'NVDA')
+                   .trim().toUpperCase();
+
+    // Kick off all three fetches in parallel
+    const [predResp, driftResp, statusResp] = await Promise.allSettled([
+        fetch(`/api/predict/${ticker}`),
+        fetch(`/api/drift/${ticker}`),
+        fetch('/api/model/status')
+    ]);
+
+    // --- Prediction panel ---
+    const predBody = document.getElementById('mlPredBody');
+    const predDate = document.getElementById('mlPredDate');
+    if (predResp.status === 'fulfilled' && predResp.value.ok) {
+        const d = await predResp.value.json();
+        if (d.success) {
+            if (predDate) predDate.textContent = d.date || '';
+            const signal = (d.signal || 'neutral').toLowerCase();
+            const signalColor = signal === 'long' ? 'success' : signal === 'short' ? 'danger' : 'secondary';
+            const conf = (d.confidence || 'medium').toLowerCase();
+            const confColor = conf === 'high' ? 'success' : conf === 'low' ? 'danger' : 'warning';
+            const anomaly = d.anomaly_flag;
+            const preds = d.predictions || {};
+
+            const predRows = [
+                ['1d Return',  preds.ret_1d,    v => (v*100).toFixed(2)+'%'],
+                ['5d Return',  preds.ret_5d,    v => (v*100).toFixed(2)+'%'],
+                ['Vol 5d',     preds.vol_5d,    v => (v*100).toFixed(2)+'%'],
+                ['Regime',     preds.regime,    v => v],
+                ['Dir 1d',     preds.dir_1d,    v => v === 1 ? '▲ Up' : v === -1 ? '▼ Down' : '– Flat'],
+            ].map(([label, val, fmt]) => {
+                const cell = val !== undefined && val !== null ? fmt(val) : '—';
+                return `<tr><td class="text-muted small">${label}</td>
+                         <td class="fw-semibold small">${cell}</td></tr>`;
+            }).join('');
+
+            if (predBody) predBody.innerHTML = `
+                <div class="row g-3 align-items-center mb-3">
+                    <div class="col-auto">
+                        <span class="badge bg-${signalColor} fs-5 px-3 py-2">${signal.toUpperCase()}</span>
+                    </div>
+                    <div class="col-auto">
+                        <span class="badge bg-${confColor} text-dark">Confidence: ${conf.toUpperCase()}</span>
+                    </div>
+                    <div class="col-auto">
+                        ${anomaly
+                            ? '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation"></i> Anomaly</span>'
+                            : '<span class="badge bg-success"><i class="fas fa-check"></i> Normal</span>'}
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tbody>${predRows}</tbody>
+                    </table>
+                </div>`;
+        } else {
+            if (predBody) predBody.innerHTML =
+                `<div class="alert alert-warning mb-0">${d.error || 'No prediction available'}</div>`;
+        }
+    } else {
+        if (predBody) predBody.innerHTML =
+            '<div class="alert alert-secondary mb-0">Prediction endpoint unavailable. Run the pipeline first.</div>';
+    }
+
+    // --- Drift panel ---
+    const driftBody = document.getElementById('mlDriftBody');
+    if (driftResp.status === 'fulfilled' && driftResp.value.ok) {
+        const d = await driftResp.value.json();
+        if (d.success) {
+            const pct = d.n_features_checked > 0
+                ? Math.round(d.n_drift_flags / d.n_features_checked * 100)
+                : 0;
+            const statusColor = d.overall_status === 'ok' ? 'success'
+                               : d.overall_status === 'warning' ? 'warning' : 'danger';
+            const flagRows = (d.drift_flags || []).slice(0, 8).map(f =>
+                `<tr>
+                    <td class="small text-truncate" style="max-width:120px" title="${f.feature}">${f.feature}</td>
+                    <td class="small text-end">${(+f.latest).toFixed(2)}</td>
+                    <td class="small text-end">${(+f.mean).toFixed(2)}</td>
+                    <td class="small text-end ${Math.abs(f.z_score) > 4 ? 'text-danger fw-bold' : ''}">${(+f.z_score).toFixed(1)}</td>
+                </tr>`
+            ).join('');
+            if (driftBody) driftBody.innerHTML = `
+                <div class="p-3">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="badge bg-${statusColor} text-uppercase">${d.overall_status}</span>
+                        <small class="text-muted">${d.n_drift_flags}/${d.n_features_checked} features (${pct}%)</small>
+                    </div>
+                    ${d.drift_flags && d.drift_flags.length > 0 ? `
+                    <div class="table-responsive" style="max-height:220px;overflow-y:auto">
+                        <table class="table table-sm mb-0">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th class="small">Feature</th>
+                                    <th class="small text-end">Latest</th>
+                                    <th class="small text-end">Mean</th>
+                                    <th class="small text-end">Z</th>
+                                </tr>
+                            </thead>
+                            <tbody>${flagRows}</tbody>
+                        </table>
+                    </div>` : '<p class="text-success small mb-0"><i class="fas fa-check-circle"></i> No drift flags</p>'}
+                </div>`;
+        } else {
+            if (driftBody) driftBody.innerHTML =
+                `<div class="p-3"><div class="alert alert-warning mb-0">${d.error}</div></div>`;
+        }
+    } else {
+        if (driftBody) driftBody.innerHTML =
+            '<div class="p-3 text-muted small">Drift data unavailable.</div>';
+    }
+
+    // --- Registry panel ---
+    const regBody = document.getElementById('mlRegistryBody');
+    if (statusResp.status === 'fulfilled' && statusResp.value.ok) {
+        const d = await statusResp.value.json();
+        if (d.success && d.registry) {
+            const rows = [];
+            for (const [tk, info] of Object.entries(d.registry)) {
+                for (const [target, meta] of Object.entries(info.targets || {})) {
+                    const metric = meta.metric || '—';
+                    const score = meta[metric] !== undefined
+                        ? (+meta[metric]).toFixed(4) : '—';
+                    rows.push(`<tr>
+                        <td class="small fw-semibold">${target.replace('target_','')}</td>
+                        <td class="small">${meta.model_type || '—'}</td>
+                        <td class="small">${metric}</td>
+                        <td class="small text-end">${score}</td>
+                        <td class="small text-muted">${(meta.created_at || '').slice(0,10)}</td>
+                    </tr>`);
+                }
+            }
+            const createdAt = Object.values(d.registry)[0]?.created_at || '';
+            if (regBody) regBody.innerHTML = `
+                ${createdAt ? `<div class="px-3 pt-2 text-muted small">Registry built: ${createdAt.slice(0,10)}</div>` : ''}
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="sticky-top bg-white">
+                            <tr>
+                                <th class="small">Target</th>
+                                <th class="small">Model</th>
+                                <th class="small">Metric</th>
+                                <th class="small text-end">Score</th>
+                                <th class="small">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows.join('')}</tbody>
+                    </table>
+                </div>`;
+        } else {
+            if (regBody) regBody.innerHTML =
+                '<div class="p-3 text-muted small">Registry not available. Run the pipeline first.</div>';
+        }
+    } else {
+        if (regBody) regBody.innerHTML =
+            '<div class="p-3 text-muted small">Registry endpoint unavailable.</div>';
+    }
 }
 
 // View Research Paper
