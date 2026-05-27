@@ -16,7 +16,14 @@ from config import SYMBOL, OUT_DIR
 # helpers
 # ─────────────────────────────────────────────────────────────────────────────
 def _save(fig, name):
-    path = OUT_DIR / name
+    if name.startswith("vA_"):
+        subdir = OUT_DIR / "plots" / "vA"
+    elif name.startswith("vB_"):
+        subdir = OUT_DIR / "plots" / "vB"
+    else:
+        subdir = OUT_DIR / "plots"
+    subdir.mkdir(parents=True, exist_ok=True)
+    path = subdir / name
     fig.savefig(path, dpi=130, bbox_inches="tight")
     plt.close(fig)
     print(f"  ✓ {name}")
