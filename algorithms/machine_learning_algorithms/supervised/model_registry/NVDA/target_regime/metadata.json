@@ -1,0 +1,18 @@
+{
+  "ticker": "NVDA",
+  "target": "target_regime",
+  "task": "classification",
+  "model_type": "rf",
+  "feature_version": "B",
+  "created_at": "2026-05-26T21:28:17.085541Z",
+  "primary_metric": "f1_w",
+  "metric_value": 0.980336,
+  "n_features": 25,
+  "metrics": {
+    "acc": 0.9803921568627451,
+    "bal_acc": 0.9848484848484849,
+    "f1_w": 0.9803361573107415,
+    "f1_macro": 0.9864001087991295,
+    "roc_auc": 1.0
+  }
+}

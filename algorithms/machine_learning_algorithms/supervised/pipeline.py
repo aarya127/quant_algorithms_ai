@@ -148,6 +148,12 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     X_cv         = X_s[:, mask]
     sel_features = [features[i] for i in range(len(features)) if mask[i]]
 
+    # serving_scaler: StandardScaler fit on imputed-but-unscaled selected columns
+    # This lets predictor.py transform only the Lasso-selected features (correct shape)
+    serving_scaler = StandardScaler()
+    serving_scaler.fit(X_raw[:, mask])
+    col_med_sel = col_med[mask]                       # medians for selected cols only
+
     X_h_raw = df.loc[holdout_idx, features].values.astype(float)
     for j in range(X_h_raw.shape[1]):
         X_h_raw[np.isnan(X_h_raw[:, j]), j] = col_med[j]
@@ -158,7 +164,28 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     X_h_ev  = X_h[valid_h]
     y_h_ev  = y_h[valid_h]
 
-    results     = {}
+    # ── shared preprocessing artifacts (for ensemble + registry) ─────────────
+    train_stats = {
+        features[i]: {
+            "mean": float(np.nanmean(X_raw[:, i])),
+            "std":  float(np.nanstd(X_raw[:, i])),
+            "p05":  float(np.nanpercentile(X_raw[:, i],  5)),
+            "p95":  float(np.nanpercentile(X_raw[:, i], 95)),
+        }
+        for i in range(len(features))
+    }
+
+    results     = {
+        "_meta": {
+            "scaler":          scaler,
+            "serving_scaler":  serving_scaler,
+            "col_med":         col_med,
+            "col_med_sel":     col_med_sel,
+            "sel_features":    sel_features,
+            "valid_mask":      valid_h,
+            "train_stats":     train_stats,
+        }
+    }
     param_dists = (reg_param_dists() if task == "regression"
                    else clf_param_dists()) if USE_TUNING else {}
     h_scoring   = _tune_scoring(task, target) if USE_TUNING else None
@@ -181,6 +208,7 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
                     "y_true":      y_h_ev,
                     "y_pred":      yhat,
                     "importances": _get_feature_importances(m, name, sel_features),
+                    "model_obj":   m,
                 }
             except Exception as e:
                 results[name] = {"error": str(e)}
@@ -236,11 +264,13 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
                     yhat  = m.predict(X_h_ev).astype(float)
                     proba = m.predict_proba(X_h_ev) if hasattr(m, "predict_proba") else None
                 results[name] = {
-                    "metrics":     clf_metrics(y_h_ev.astype(int), yhat.astype(int), proba, target),
-                    "y_true":      y_h_ev,
-                    "y_pred":      yhat,
-                    "proba":       proba,
-                    "importances": _get_feature_importances(m, name, sel_features),
+                    "metrics":       clf_metrics(y_h_ev.astype(int), yhat.astype(int), proba, target),
+                    "y_true":        y_h_ev,
+                    "y_pred":        yhat,
+                    "proba":         proba,
+                    "importances":   _get_feature_importances(m, name, sel_features),
+                    "model_obj":     m,
+                    "label_encoder": le,
                 }
             except Exception as e:
                 results[name] = {"error": str(e)}

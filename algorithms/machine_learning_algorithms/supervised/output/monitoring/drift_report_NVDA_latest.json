@@ -1,0 +1,72 @@
+{
+  "date": "2026-05-06",
+  "ticker": "NVDA",
+  "n_features_checked": 37,
+  "n_drift_flags": 7,
+  "overall_status": "warning",
+  "drift_flags": [
+    {
+      "feature": "Open",
+      "latest_value": 1.238402,
+      "training_mean": -0.147623,
+      "training_std": 1.023434,
+      "z_score": 1.35,
+      "in_p5_p95": false,
+      "status": "drift"
+    },
+    {
+      "feature": "insdr_change",
+      "latest_value": 1.20249,
+      "training_mean": -0.296773,
+      "training_std": 0.903911,
+      "z_score": 1.66,
+      "in_p5_p95": false,
+      "status": "drift"
+    },
+    {
+      "feature": "SMA_200",
+      "latest_value": 1.729807,
+      "training_mean": -0.37629,
+      "training_std": 0.742996,
+      "z_score": 2.83,
+      "in_p5_p95": false,
+      "status": "drift"
+    },
+    {
+      "feature": "qqq_corr_20d",
+      "latest_value": -2.65998,
+      "training_mean": -0.063451,
+      "training_std": 0.891805,
+      "z_score": -2.91,
+      "in_p5_p95": false,
+      "status": "drift"
+    },
+    {
+      "feature": "yield_curve_slope",
+      "latest_value": 1.864767,
+      "training_mean": -0.312453,
+      "training_std": 0.842749,
+      "z_score": 2.58,
+      "in_p5_p95": false,
+      "status": "drift"
+    },
+    {
+      "feature": "SMA_20",
+      "latest_value": 1.31421,
+      "training_mean": -0.144009,
+      "training_std": 1.063835,
+      "z_score": 1.37,
+      "in_p5_p95": false,
+      "status": "drift"
+    },
+    {
+      "feature": "OBV",
+      "latest_value": 1.440634,
+      "training_mean": -0.186373,
+      "training_std": 0.989555,
+      "z_score": 1.64,
+      "in_p5_p95": false,
+      "status": "drift"
+    }
+  ]
+}

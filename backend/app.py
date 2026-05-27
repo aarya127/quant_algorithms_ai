@@ -294,6 +294,81 @@ def indices_history():
             pass
     return jsonify({'success': True, 'history': result})
 
+# ---------------------------------------------------------------------------
+# Stage 14A — ML prediction endpoints
+# ---------------------------------------------------------------------------
+
+try:
+    from predictor import predict_latest, check_drift, model_status as _model_status
+    _PREDICTOR_LOADED = True
+except Exception as _pred_err:
+    _PREDICTOR_LOADED = False
+    print(f"[STARTUP] predictor.py not loaded: {_pred_err}", flush=True)
+
+
+@app.route('/api/predict/<ticker>')
+def api_predict(ticker):
+    """
+    Return the latest ML prediction for a ticker.
+
+    GET /api/predict/NVDA
+    Response:
+      { ticker, date, model_version, predictions: {...},
+        signal, confidence, anomaly_flag }
+    """
+    if not _PREDICTOR_LOADED:
+        return jsonify({'success': False,
+                        'error': 'predictor not available — run the supervised pipeline first'}), 503
+    ticker = ticker.upper().strip()
+    try:
+        result = predict_latest(ticker)
+        return jsonify({'success': True, **result})
+    except FileNotFoundError as e:
+        return jsonify({'success': False, 'error': str(e)}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/drift/<ticker>')
+def api_drift(ticker):
+    """
+    Return a drift report comparing the latest feature values against the
+    training distribution stored in the model registry.
+
+    GET /api/drift/NVDA
+    Response:
+      { date, ticker, n_features_checked, n_drift_flags,
+        overall_status, drift_flags: [...] }
+    """
+    if not _PREDICTOR_LOADED:
+        return jsonify({'success': False,
+                        'error': 'predictor not available'}), 503
+    ticker = ticker.upper().strip()
+    try:
+        report = check_drift(ticker)
+        return jsonify({'success': True, **report})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/model/status')
+def api_model_status():
+    """
+    Return a summary of all models registered in the local registry.
+
+    GET /api/model/status
+    Response:
+      { NVDA: { created_at, targets: { target_5d: { model_type, metric, ... } } } }
+    """
+    if not _PREDICTOR_LOADED:
+        return jsonify({'success': False,
+                        'error': 'predictor not available'}), 503
+    try:
+        return jsonify({'success': True, 'registry': _model_status()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/dashboard')
 def dashboard_data():
     """Get dashboard overview data"""
