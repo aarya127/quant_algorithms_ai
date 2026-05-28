@@ -170,9 +170,7 @@ class ARIMAModel:
             print(f"    Day {i}: ${fc:.2f}  [{lo:.2f}, {hi:.2f}]")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # ARIMAXSuite — ARMA / ARIMAX vs naive baselines, rolling walk-forward backtest
-# ─────────────────────────────────────────────────────────────────────────────
 """
 ARIMAXSuite compares:
   1.  Zero-return naive baseline  (always predict μ of training window)

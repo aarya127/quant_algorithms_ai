@@ -16,9 +16,7 @@ from models import (reg_model_set, clf_model_set, _get_feature_importances,
                     reg_param_dists, clf_param_dists, _tune_scoring, tune_model)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # fold runner (cross-validation)
-# ─────────────────────────────────────────────────────────────────────────────
 def run_folds(df, folds, features, target, task):
     """
     Walk-forward cross-validation across all folds.
@@ -109,9 +107,7 @@ def run_folds(df, folds, features, target, task):
     return fold_records, feat_counter
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # final refit + holdout evaluation
-# ─────────────────────────────────────────────────────────────────────────────
 def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     """
     Refit each model on the full CV set, evaluate on the holdout.
@@ -124,7 +120,7 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     is_binary_imb = (target in BINARY_CLF)
     is_multi      = (target in MULTI_CLF)
 
-    # ── preprocessing: fit on CV, apply to holdout ────────────────────────────
+    # preprocessing: fit on CV, apply to holdout
     X_raw = df.loc[cv_idx, features].values.astype(float)
     y_all = df.loc[cv_idx, target].values.astype(float)
 
@@ -164,7 +160,7 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     X_h_ev  = X_h[valid_h]
     y_h_ev  = y_h[valid_h]
 
-    # ── shared preprocessing artifacts (for ensemble + registry) ─────────────
+    # shared preprocessing artifacts (for ensemble + registry)
     train_stats = {
         features[i]: {
             "mean": float(np.nanmean(X_raw[:, i])),
@@ -190,7 +186,7 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
                    else clf_param_dists()) if USE_TUNING else {}
     h_scoring   = _tune_scoring(task, target) if USE_TUNING else None
 
-    # ── regression ─────────────────────────────────────────────────────────────
+    # regression
     if task == "regression":
         y_bl = target_baseline(y_all, len(y_h_ev), target)
         results["baseline"] = {"metrics": reg_metrics(y_h_ev, y_bl),
@@ -213,7 +209,7 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
             except Exception as e:
                 results[name] = {"error": str(e)}
 
-    # ── classification ────────────────────────────────────────────────────────
+    # classification
     else:
         le       = LabelEncoder()
         y_cv_enc = le.fit_transform(y_all.astype(int))

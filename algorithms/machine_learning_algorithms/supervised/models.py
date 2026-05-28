@@ -96,9 +96,7 @@ def _get_feature_importances(model, name, sel_features):
         return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Stage 7C — Hyperparameter tuning
-# ─────────────────────────────────────────────────────────────────────────────
 def reg_param_dists():
     """RandomizedSearch parameter distributions for regression models.
     Ranges aligned with guide recommendations for small datasets (~251 rows).

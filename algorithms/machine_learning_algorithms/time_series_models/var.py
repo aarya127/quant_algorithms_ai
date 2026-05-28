@@ -60,9 +60,7 @@ _VAR_TICKERS = [
 ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _save(fig, name: str) -> None:
     path = OUT_DIR / name
@@ -92,9 +90,7 @@ def load_var_data(period: str = '3y') -> pd.DataFrame:
     return df.dropna()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Lag selection
-# ─────────────────────────────────────────────────────────────────────────────
 
 def select_lag(df: pd.DataFrame, max_lags: int = 10) -> pd.DataFrame:
     """Return AIC / BIC / HQIC / FPE table across lag orders."""
@@ -128,9 +124,7 @@ def select_lag(df: pd.DataFrame, max_lags: int = 10) -> pd.DataFrame:
     return df_out, best_bic   # BIC most penalises extra params → conservative
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Fit VAR
-# ─────────────────────────────────────────────────────────────────────────────
 
 def fit_var(df: pd.DataFrame, lag: int):
     """Fit VAR(lag) and return fitted result."""
@@ -139,9 +133,7 @@ def fit_var(df: pd.DataFrame, lag: int):
     return model.fit(lag)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Granger causality
-# ─────────────────────────────────────────────────────────────────────────────
 
 def granger_causality(result, df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -176,9 +168,7 @@ def granger_causality(result, df: pd.DataFrame) -> pd.DataFrame:
     return df_out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Impulse Response Functions
-# ─────────────────────────────────────────────────────────────────────────────
 
 def plot_irf(result, ticker: str = 'NVDA', periods: int = 10) -> None:
     """
@@ -219,9 +209,7 @@ def plot_irf(result, ticker: str = 'NVDA', periods: int = 10) -> None:
     _save(fig, f'{ticker}_var_irf.png')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Forecast Error Variance Decomposition
-# ─────────────────────────────────────────────────────────────────────────────
 
 def plot_fevd(result, ticker: str = 'NVDA', periods: int = 10) -> None:
     """
@@ -261,9 +249,7 @@ def plot_fevd(result, ticker: str = 'NVDA', periods: int = 10) -> None:
     _save(fig, f'{ticker}_var_fevd.png')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 5-day forecast vs naive
-# ─────────────────────────────────────────────────────────────────────────────
 
 def plot_var_forecast(result, df: pd.DataFrame, ticker: str = 'NVDA',
                       horizon: int = 5) -> None:
@@ -293,9 +279,7 @@ def plot_var_forecast(result, df: pd.DataFrame, ticker: str = 'NVDA',
     _save(fig, f'{ticker}_var_forecast.png')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run(ticker: str = 'NVDA') -> None:
     print(f'\n[var]  {ticker}')

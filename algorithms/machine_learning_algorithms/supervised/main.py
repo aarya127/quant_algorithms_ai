@@ -89,11 +89,11 @@ def main():
             if target == "target_large_move":
                 plot_pr_combined(h_res, target, version)
 
-    # ── summary plots ─────────────────────────────────────────────────────────
+    # summary plots 
     plot_version_comparison(all_holdout, REG_TARGETS, "regression")
     plot_version_comparison(all_holdout, CLF_TARGETS, "classification")
 
-    # ── save CSVs ─────────────────────────────────────────────────────────────
+    # save CSVs
     all_cv_df = pd.concat(all_cv_rows, ignore_index=True)
     all_cv_df.to_csv(OUT_DIR / "cv_all_results.csv", index=False)
     print(f"\n  ✓ cv_all_results.csv")
@@ -110,13 +110,13 @@ def main():
     holdout_df.to_csv(OUT_DIR / "holdout_results.csv", index=False)
     print(f"  ✓ holdout_results.csv")
 
-    # ── Stage 13A: ensemble layer ─────────────────────────────────────────────
+    # Stage 13A: ensemble layer 
     run_ensemble(all_holdout, df, holdout_idx, SYMBOL, OUT_DIR)
 
-    # ── Stage 14A: local model registry ──────────────────────────────────────
+    # Stage 14A: local model registry
     save_registry(all_holdout, SYMBOL, _REGISTRY_DIR)
 
-    # ── beat-the-baseline summary ─────────────────────────────────────────────
+    # beat-the-baseline summary
     print("\n\n" + "═"*70)
     print("  DOES THE MODEL BEAT THE NAIVE BASELINE?  (holdout, Version A)")
     print("═"*70)

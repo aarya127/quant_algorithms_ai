@@ -179,9 +179,7 @@ class GARCHModel:
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # GARCHSuite — multi-model comparison using arch-py
-# ─────────────────────────────────────────────────────────────────────────────
 """
 GARCHSuite compares four GARCH-family models:
   1.  GARCH(1,1)  — Bollerslev (1986). Benchmark.
@@ -222,7 +220,7 @@ from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
-# ── Import the arch package, bypassing local arch.py in the same directory
+# Import the arch package, bypassing local arch.py in the same directory
 _this_dir   = str(Path(__file__).parent.resolve())
 _saved_path = sys.path[:]
 sys.path = [p for p in sys.path if p not in ('', '.', _this_dir)]
@@ -257,7 +255,7 @@ def _rv20(returns: pd.Series) -> pd.Series:
     return returns.rolling(20).std() * np.sqrt(252)
 
 
-# ── model specs ──────────────────────────────────────────────────────────────
+# model specs
 
 _MODEL_SPECS = [
     ('GARCH(1,1)',   dict(vol='GARCH', p=1, q=1, dist='normal')),
@@ -320,7 +318,7 @@ def _vol_forecast_1d_5d(res, returns: pd.Series) -> tuple[float, float]:
         return np.nan, np.nan
 
 
-# ── plots ─────────────────────────────────────────────────────────────────────
+# plots
 
 def plot_conditional_vol(results: dict, returns: pd.Series, ticker: str) -> None:
     """All four conditional volatility paths on one chart."""
@@ -424,7 +422,7 @@ def plot_vs_realized(results: dict, returns: pd.Series, ticker: str) -> None:
     _save_suite(fig, f'{ticker}_garch_vs_realized.png')
 
 
-# ── entry point ───────────────────────────────────────────────────────────────
+# entry point
 
 def run_suite(ticker: str = 'NVDA') -> None:
     print(f'\n[garch suite]  {ticker}')

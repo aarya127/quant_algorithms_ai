@@ -44,7 +44,7 @@ drop_log   = []
 ffill_log  = []
 median_log = []
 
-# ── 1. Drop columns above null threshold ─────────────────────────────────────
+# 1. Drop columns above null threshold
 NULL_DROP_THRESHOLD = 0.50   # drop if >50% of rows are null
 
 null_pct = df.isnull().mean()
@@ -57,7 +57,7 @@ print(f"[1] Dropped {len(cols_to_drop)} column(s) with >{NULL_DROP_THRESHOLD:.0%
 for col, reason in drop_log:
     print(f"      ✗  {col:<30}  ({reason})")
 
-# ── 2. ffill → bfill for time-series / forward-carried columns ───────────────
+# 2. ffill → bfill for time-series / forward-carried columns
 # These are columns where "last known value" is the correct imputation:
 #   - fundamentals update quarterly → carry forward between earnings
 #   - sentiment: carry the most recent sentiment until a new article appears
@@ -98,7 +98,7 @@ print(f"\n[2] ffill→bfill applied to {len(ffill_log)} column(s):")
 for col, before, after in ffill_log:
     print(f"      ↑  {col:<30}  {before} → {after} nulls remaining")
 
-# ── 3. Median fill as backstop for any remaining numeric nulls ────────────────
+# 3. Median fill as backstop for any remaining numeric nulls
 numeric_cols = df.select_dtypes(include="number").columns
 remaining_null = df[numeric_cols].isnull().any()
 cols_needing_median = remaining_null[remaining_null].index.tolist()
@@ -116,7 +116,7 @@ if median_log:
 else:
     print(f"\n[3] No remaining nulls after ffill — median fill not needed.")
 
-# ── 4. Final null audit ───────────────────────────────────────────────────────
+# 4. Final null audit
 remaining = df.isnull().sum()
 remaining = remaining[remaining > 0]
 print(f"\n[4] Remaining nulls after all steps:")
@@ -126,7 +126,7 @@ else:
     for col, n in remaining.items():
         print(f"      !  {col:<30}  {n} nulls ({n/len(df):.1%})")
 
-# ── 4b. Drop zero-variance (constant) columns ────────────────────────────────
+# 4b. Drop zero-variance (constant) columns
 numeric_cols_now = df.select_dtypes(include="number").columns
 zero_var = [c for c in numeric_cols_now if df[c].std() == 0]
 if zero_var:
@@ -139,7 +139,7 @@ if zero_var:
 else:
     print("\n[4b] No zero-variance columns found.")
 
-# ── 5. Save ───────────────────────────────────────────────────────────────────
+# 5. Save
 df.to_csv(dst)
 print(f"\nOutput: {dst}  ({df.shape[0]} rows × {df.shape[1]} cols)")
 print(f"Dropped {len(cols_to_drop)} col(s), kept {df.shape[1]} of {len(original_cols)} original.")

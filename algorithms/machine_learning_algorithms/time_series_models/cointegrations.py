@@ -46,9 +46,7 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 _PEERS = ['AMD', 'SMH', 'SOXX', 'QQQ', 'AVGO', 'TSM']
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _save(fig, name: str) -> None:
     path = OUT_DIR / name
@@ -71,9 +69,7 @@ def load_prices(tickers: list, period: str = '3y') -> pd.DataFrame:
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Engle-Granger test
-# ─────────────────────────────────────────────────────────────────────────────
 
 def engle_granger(y: pd.Series, x: pd.Series) -> dict:
     """
@@ -104,9 +100,7 @@ def engle_granger(y: pd.Series, x: pd.Series) -> dict:
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Half-life and Hurst exponent
-# ─────────────────────────────────────────────────────────────────────────────
 
 def half_life(spread: pd.Series) -> float:
     """
@@ -158,9 +152,7 @@ def hurst_exponent(series: pd.Series, max_lag: int = 20) -> float:
     return round(H, 4)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Johansen test
-# ─────────────────────────────────────────────────────────────────────────────
 
 def johansen_test(y: pd.Series, x: pd.Series) -> dict:
     """
@@ -189,9 +181,7 @@ def johansen_test(y: pd.Series, x: pd.Series) -> dict:
         return {'error': str(e)}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Spread z-score and trading signal
-# ─────────────────────────────────────────────────────────────────────────────
 
 def compute_zscore(spread: pd.Series, window: int = 60) -> pd.Series:
     """Rolling z-score of the spread (lookback = window days)."""
@@ -260,9 +250,7 @@ def plot_spread(base: str, peer: str,
     _save(fig, f'{pair_name}_spread.png')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run(base: str = 'NVDA') -> None:
     print(f'\n[cointegrations]  {base} vs {_PEERS}')

@@ -19,9 +19,8 @@ import datetime
 
 from sentiment.finbert import FinBertAnalyzer
 
-# ---------------------------------------------------------------------------
+
 # Canadian stock universe (TSX)
-# ---------------------------------------------------------------------------
 canadian_stocks: dict[str, str] = {
     "AC.TO":    "Air Canada",
     "TD.TO":    "TD Bank",

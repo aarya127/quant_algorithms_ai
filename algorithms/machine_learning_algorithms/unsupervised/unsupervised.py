@@ -1,6 +1,5 @@
 """
 unsupervised.py  —  Regime clustering + anomaly detection
-=========================================================
 Usage:
     python algorithms/machine_learning_algorithms/unsupervised/unsupervised.py NVDA
 
@@ -35,7 +34,7 @@ from sklearn.metrics import silhouette_score
 
 warnings.filterwarnings("ignore")
 
-# ── paths ─────────────────────────────────────────────────────────────────────
+# paths
 HERE       = Path(__file__).parent
 ROOT       = HERE.parent                                          # machine_learning_algorithms/
 PIPELINES  = ROOT / "data_pipelines"
@@ -48,16 +47,14 @@ SYMBOL = sys.argv[1] if len(sys.argv) > 1 else "NVDA"
 NORM_CSV  = PIPELINES / f"{SYMBOL}_features_normalized.csv"
 FEAT_FILE = FD_OUTPUT  / "recommended_features.txt"
 
-# ── config ────────────────────────────────────────────────────────────────────
+# config
 TRAIN_FRAC      = 0.80
 PCA_COMPONENTS  = 16          # 90 % variance from factor_discovery
 K_RANGE         = range(2, 7)
 IF_CONTAMINATION = 0.05       # expected fraction of anomalies
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # helpers
-# ─────────────────────────────────────────────────────────────────────────────
 def _save(fig: plt.Figure, name: str):
     path = OUT_DIR / name
     fig.savefig(path, dpi=130, bbox_inches="tight")
@@ -65,9 +62,7 @@ def _save(fig: plt.Figure, name: str):
     print(f"  ✓ {name}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 0. load
-# ─────────────────────────────────────────────────────────────────────────────
 print(f"\n=== unsupervised: {SYMBOL} ===")
 
 df = pd.read_csv(NORM_CSV, parse_dates=["Date"]).sort_values("Date").reset_index(drop=True)
@@ -82,9 +77,7 @@ print(f"Saving to : {OUT_DIR}\n")
 X_all  = df[features].values.astype(float)
 dates  = df["Date"].values
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 1. temporal train / test split
-# ─────────────────────────────────────────────────────────────────────────────
 n_train = int(len(df) * TRAIN_FRAC)
 n_test  = len(df) - n_train
 
@@ -97,9 +90,7 @@ print(f"[1] Temporal split")
 print(f"    Train : {n_train} rows  ({pd.Timestamp(dates_train[0]).date()} → {pd.Timestamp(dates_train[-1]).date()})")
 print(f"    Test  : {n_test}  rows  ({pd.Timestamp(dates_test[0]).date()} → {pd.Timestamp(dates_test[-1]).date()})")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 2. PCA — fit on train, transform all
-# ─────────────────────────────────────────────────────────────────────────────
 print(f"\n[2] PCA ({PCA_COMPONENTS} components → ~90 % variance, fit on train)")
 
 pca = PCA(n_components=PCA_COMPONENTS, random_state=42)
@@ -123,9 +114,7 @@ ax.legend()
 ax.grid(True, alpha=0.3)
 _save(fig, "pca_variance_train.png")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 3. elbow + silhouette → choose k
-# ─────────────────────────────────────────────────────────────────────────────
 print("\n[3] K-Means elbow + silhouette (fit on train PCA)")
 
 inertias, silhouettes = [], []
@@ -160,9 +149,7 @@ fig.suptitle(f"{SYMBOL} — K-Means selection", fontsize=12)
 plt.tight_layout()
 _save(fig, "kmeans_selection.png")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 4. K-Means final fit (best_k) on train → label all
-# ─────────────────────────────────────────────────────────────────────────────
 print(f"\n[4] K-Means (k={best_k}) — fit on train, label all rows")
 
 km_final = KMeans(n_clusters=best_k, random_state=42, n_init=20)
@@ -181,9 +168,7 @@ if "realized_vol_20d" in df.columns:
 train_dist = pd.Series(km_labels_all[:n_train]).value_counts().sort_index()
 print(f"    Train cluster distribution: {train_dist.to_dict()}")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 5. GMM — BIC over k, final model
-# ─────────────────────────────────────────────────────────────────────────────
 print("\n[5] GMM BIC curve (fit on train PCA)")
 
 bics = []
@@ -226,9 +211,7 @@ ax.legend()
 ax.grid(True, alpha=0.3)
 _save(fig, "gmm_bic.png")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 6. Isolation Forest — fit on train raw features → label all
-# ─────────────────────────────────────────────────────────────────────────────
 print(f"\n[6] Isolation Forest (contamination={IF_CONTAMINATION}) — fit on train raw features")
 
 iso = IsolationForest(contamination=IF_CONTAMINATION, random_state=42, n_estimators=200)
@@ -245,21 +228,17 @@ n_anomaly_test  = (iso_labels_all[n_train:] == -1).sum()
 print(f"    Anomalies in train: {n_anomaly_train} / {n_train}  ({n_anomaly_train/n_train*100:.1f}%)")
 print(f"    Anomalies in test : {n_anomaly_test} / {n_test}  ({n_anomaly_test/n_test*100:.1f}%)")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 7. save output CSV
-# ─────────────────────────────────────────────────────────────────────────────
 out_csv = PIPELINES / f"{SYMBOL}_features_with_regimes.csv"
 df.to_csv(out_csv, index=False)
 print(f"\n[7] Saved → {out_csv.name}  ({len(df)} rows × {len(df.columns)} cols)")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 8. plots
-# ─────────────────────────────────────────────────────────────────────────────
 print("\n[8] Generating plots")
 
 dates_dt = pd.to_datetime(dates)
 
-# ── 8a. PCA 2D scatter — K-Means clusters ────────────────────────────────────
+# 8a. PCA 2D scatter — K-Means clusters
 pca2d = PCA(n_components=2, random_state=42)
 pca2d.fit(X_train)
 Z2d_all = pca2d.transform(X_all)
@@ -289,7 +268,7 @@ for k, ax in zip(["cluster_kmeans", "cluster_gmm"], axes):
 plt.tight_layout()
 _save(fig, "pca2d_clusters.png")
 
-# ── 8b. regime timeline — K-Means ────────────────────────────────────────────
+# 8b. regime timeline — K-Means
 km_colors = sns.color_palette("tab10", best_k)
 fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
 
@@ -336,7 +315,7 @@ if best_k <= 4:
 plt.tight_layout()
 _save(fig, "regime_timeline_kmeans.png")
 
-# ── 8c. GMM probability bands ────────────────────────────────────────────────
+# 8c. GMM probability bands
 fig, ax = plt.subplots(figsize=(14, 4))
 bottom = np.zeros(len(df))
 gmm_pal = sns.color_palette("tab10", k_final)
@@ -358,7 +337,7 @@ plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
 ax.grid(True, alpha=0.2)
 _save(fig, "gmm_probabilities.png")
 
-# ── 8d. anomaly score over time ───────────────────────────────────────────────
+# 8d. anomaly score over time
 fig, ax = plt.subplots(figsize=(14, 4))
 scores = df["anomaly_score"].values
 ax.plot(dates_dt, scores, color="#607D8B", linewidth=0.8, alpha=0.8)
@@ -378,7 +357,7 @@ plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
 ax.grid(True, alpha=0.2)
 _save(fig, "anomaly_score.png")
 
-# ── 8e. regime stats summary ──────────────────────────────────────────────────
+# 8e. regime stats summary
 print("\n[9] Regime statistics (K-Means, full dataset)")
 stat_cols = ["realized_vol_20d", "daily_return", "vix_level", "volume_zscore"]
 stat_cols = [c for c in stat_cols if c in df.columns]
@@ -395,8 +374,6 @@ ax.set_ylabel("Regime (cluster)")
 plt.tight_layout()
 _save(fig, "regime_stats_heatmap.png")
 
-# ─────────────────────────────────────────────────────────────────────────────
 # done
-# ─────────────────────────────────────────────────────────────────────────────
 print(f"\n=== unsupervised complete — outputs in {OUT_DIR} ===")
 print(f"    {SYMBOL}_features_with_regimes.csv ready for supervised modeling")

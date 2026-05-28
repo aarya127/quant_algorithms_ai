@@ -13,23 +13,21 @@ import pandas as pd
 from pathlib import Path
 from scipy.stats import spearmanr
 
-# ── base models included in each ensemble ─────────────────────────────────────
+# base models included in each ensemble
 _REG_MODELS = ["ridge", "xgb", "lgb"]
 _CLF_MODELS = ["logistic", "xgb", "lgb"]
 
-# ── static weights (Stage 13A — no Sharpe weighting yet) ─────────────────────
+# static weights (Stage 13A — no Sharpe weighting yet)
 #   calm regime  (regime == 0) → trust ML more  (XGB/LGB upweighted)
 #   stress regime (regime != 0) → trust conservative model (Ridge upweighted)
 _W_CALM   = {"ridge": 0.20, "xgb": 0.40, "lgb": 0.40}
 _W_STRESS = {"ridge": 0.40, "xgb": 0.30, "lgb": 0.30}
 
-# ── weighted ensemble (static, regime-agnostic) ───────────────────────────────
+# weighted ensemble (static, regime-agnostic)
 _W_STATIC = {"ridge": 0.20, "xgb": 0.40, "lgb": 0.40}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _expand(y_subset, valid_mask):
     """Expand a valid-row-only array back to full holdout_n (NaN elsewhere)."""
@@ -89,9 +87,7 @@ def _vmask(df, holdout_idx, target):
     return np.ones(len(holdout_idx), dtype=bool)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # main entry point
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_ensemble(all_holdout, df, holdout_idx, ticker, out_dir):
     """
@@ -117,10 +113,10 @@ def run_ensemble(all_holdout, df, holdout_idx, ticker, out_dir):
               if "Date" in df.columns else np.arange(full_n))
     rows   = {"date": dates, "ticker": ticker}
 
-    # ── prefer version B (includes regime features) ───────────────────────────
+    # prefer version B (includes regime features)
     version = "B"
 
-    # ── Step 1: regime predictions (needed for regime-aware ensemble) ─────────
+    # Step 1: regime predictions (needed for regime-aware ensemble)
     regime_vm   = _vmask(df, holdout_idx, "target_regime")
     regime_full = None
     for m in ["xgb", "lgb", "rf"]:
@@ -132,7 +128,7 @@ def run_ensemble(all_holdout, df, holdout_idx, ticker, out_dir):
             rows["pred_regime"] = regime_full
             break
 
-    # ── Step 2: regression ensembles ─────────────────────────────────────────
+    # Step 2: regression ensembles
     for target in ["target_1d", "target_5d", "target_vol_5d"]:
         suffix = target.replace("target_", "")   # "1d", "5d", "vol_5d"
         vm     = _vmask(df, holdout_idx, target)
@@ -171,7 +167,7 @@ def run_ensemble(all_holdout, df, holdout_idx, ticker, out_dir):
         if target in df.columns:
             rows[f"actual_{suffix}"] = df.loc[holdout_idx, target].values
 
-    # ── Step 3: classification probability ensembles ──────────────────────────
+    # Step 3: classification probability ensembles
     for target, suffix in [("target_dir_1d", "dir_1d"),
                             ("target_large_move", "large_move")]:
         vm     = _vmask(df, holdout_idx, target)
@@ -190,7 +186,7 @@ def run_ensemble(all_holdout, df, holdout_idx, ticker, out_dir):
         if avg_p.shape[1] >= 2:
             rows[f"proba_ensemble_{suffix}"] = avg_p[:, 1]
 
-    # ── Step 4: summary comparison table ─────────────────────────────────────
+    # Step 4: summary comparison table
     print(f"\n{'═'*66}")
     print(f"  ENSEMBLE PREDICTIONS — {ticker}  (holdout n={full_n})")
     print(f"{'═'*66}")
@@ -225,7 +221,7 @@ def run_ensemble(all_holdout, df, holdout_idx, ticker, out_dir):
             ic_val   = ic if not np.isnan(ic) else 0.0
             print(f"    {label:28s}  IC={ic_val:+.4f}  dir_acc={dir_acc:.3f}")
 
-    # ── Step 5: align + save CSV ──────────────────────────────────────────────
+    # Step 5: align + save CSV
     aligned = {}
     for k, v in rows.items():
         arr = np.asarray(v)

@@ -657,7 +657,7 @@ class DataExtractor:
                 df.index.name = "Date"
                 return df
 
-            # ── Quarterly tier ────────────────────────────────────────────
+            # Quarterly tier
             q_rows = pd.DataFrame()
             q_prep = _prep(q_inc)
             if not q_prep.empty:
@@ -670,7 +670,7 @@ class DataExtractor:
                         .replace([float("inf"), float("-inf")], float("nan"))
                     )
 
-            # ── Annual tier (fills earlier dates) ─────────────────────────
+            # Annual tier (fills earlier dates)
             a_rows = pd.DataFrame()
             a_prep = _prep(a_inc)
             if not a_prep.empty:

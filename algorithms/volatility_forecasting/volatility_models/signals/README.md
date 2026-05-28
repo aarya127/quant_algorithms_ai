@@ -193,7 +193,6 @@ Tests signal under degraded liquidity:
 
 ```
 SIGNAL STRESS TEST REPORT
-======================================================================
 
 COST SENSITIVITY (Net Edge in bps)
 ----------------------------------------------------------------------
@@ -210,7 +209,6 @@ LIQUIDITY SENSITIVITY
 ✗ FAIL   volume_50pct_drop
 ✗ FAIL   both_50pct_drop
 
-======================================================================
 ```
 
 ---
@@ -255,55 +253,42 @@ Stress Tests → Sensitivity analysis
 ## Example Output
 
 ```
-======================================================================
 TRADING SIGNAL REPORT (RESEARCH ONLY)
-======================================================================
 
 Timestamp: 2026-02-28 14:30:00
 Signal: LONG_CALL
 Confidence: 75.00%
 
-======================================================================
 VOLATILITY ANALYSIS
-======================================================================
 Model IV: 0.2500 (25.00%)
 Market IV: 0.2200 (22.00%)
 IV Differential: 3.00%
 Raw Edge: 300 bps
 
-======================================================================
 TRANSACTION COST ESTIMATES
-======================================================================
 Bid-Ask Spread: 120 bps
 Commission: 130 bps
 Total Costs: 250 bps
 
 ✓ NET EDGE: 50 bps
 
-======================================================================
 REALITY CHECKS
-======================================================================
 Liquidity: ✓ PASS
 Spread: ✓ PASS
 Strike Available: ✓ PASS
 
-======================================================================
 RATIONALE
-======================================================================
 LONG_CALL: Model IV=0.250 vs Market IV=0.220. Net edge: 50 bps after 
 costs. Market underpricing volatility by 3%, presenting potential 
 opportunity.
 
-======================================================================
 ⚠️ DISCLAIMER
-======================================================================
 This is SIGNAL RESEARCH, not a trading recommendation.
 Real trading requires:
   - Live market data and execution systems
   - Full transaction cost modeling
   - Risk management and position limits
   - Regulatory compliance
-======================================================================
 ```
 
 ---

@@ -37,7 +37,7 @@ from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
-# ── Work around name collision: this file is arch.py, same as the arch package.
+# Work around name collision: this file is arch.py, same as the arch package.
 # Temporarily remove directories that would resolve to this file so the
 # installed arch package is found instead.
 _this_dir  = str(Path(__file__).parent.resolve())
@@ -54,9 +54,7 @@ OUT_DIR = Path(__file__).parent / 'output' / 'arch'
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _save(fig, name: str) -> None:
     path = OUT_DIR / name
@@ -75,9 +73,7 @@ def load_returns(ticker: str, period: str = '3y') -> pd.Series:
     return returns
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Model fitting
-# ─────────────────────────────────────────────────────────────────────────────
 
 def fit_models(returns: pd.Series) -> pd.DataFrame:
     """
@@ -138,9 +134,7 @@ def get_conditional_vol(returns: pd.Series, model_spec: str, q: int = 1) -> pd.S
         return pd.Series(dtype=float)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Plots
-# ─────────────────────────────────────────────────────────────────────────────
 
 def plot_comparison(df_comp: pd.DataFrame, ticker: str) -> None:
     """AIC and BIC bar charts across all model variants."""
@@ -191,9 +185,7 @@ def plot_vol_paths(returns: pd.Series, ticker: str) -> None:
     _save(fig, f'{ticker}_arch_vol_path.png')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run(ticker: str = 'NVDA') -> None:
     print(f'\n[arch]  {ticker}')
