@@ -1645,7 +1645,7 @@ def trading_ohlcv():
         high  = hist['High']
         low   = hist['Low']
 
-        # ── Indicators (NaN → None so JSON serialises cleanly) ──────────────
+        # Indicators (NaN → None so JSON serialises cleanly)
         def _s(series):
             """Round a pandas Series, coerce NaN→None for JSON."""
             return {ts: (None if _np.isnan(v) else round(float(v), 4))
@@ -1695,7 +1695,7 @@ def trading_ohlcv():
         tp  = (high + low + close) / 3
         cci = _s((tp - tp.rolling(20).mean()) / (0.015 * tp.rolling(20).std()))
 
-        # ── Build bars array ─────────────────────────────────────────────────
+        # Build bars array
         bars = []
         for ts, row in hist.iterrows():
             t = int(ts.timestamp())

@@ -45,7 +45,7 @@ from sklearn.preprocessing import StandardScaler
 warnings.filterwarnings("ignore")
 sns.set_theme(style="darkgrid", palette="muted")
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# Config
 SYMBOL   = sys.argv[1].upper() if len(sys.argv) > 1 else "NVDA"
 ML_DIR   = Path(__file__).resolve().parents[1]
 DATA_DIR = ML_DIR / "data_pipelines"
@@ -93,9 +93,7 @@ def save(fig, name):
 # Master score table
 score_df = pd.DataFrame(index=FEATURE_COLS)
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 1. CORRELATION PRUNING
-# ═══════════════════════════════════════════════════════════════════════════════
 print("[1] Correlation pruning (threshold = 0.95)")
 
 corr_matrix = X_full.corr().abs()
@@ -125,9 +123,7 @@ FEATURE_COLS_PRUNED = [c for c in FEATURE_COLS if c not in to_drop_corr]
 X_pruned = X_full[FEATURE_COLS_PRUNED]
 print(f"    Remaining features after pruning: {len(FEATURE_COLS_PRUNED)}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 2. VARIANCE THRESHOLD
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[2] Variance threshold (< 0.01 → drop)")
 
 variances = X_pruned.var()
@@ -142,9 +138,7 @@ else:
 FEATURE_COLS_PRUNED = list(X_pruned.columns)
 print(f"    Remaining features: {len(FEATURE_COLS_PRUNED)}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 3. MUTUAL INFORMATION
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[3] Mutual information")
 
 for target in REG_TARGETS + CLF_TARGETS:
@@ -171,9 +165,7 @@ for target in REG_TARGETS + CLF_TARGETS:
     top5 = mi_s.head(5).index.tolist()
     print(f"    {target:<22}  top5: {top5}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 4. L1 — LASSO (regression targets only)
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[4] L1 Lasso (hard selection)")
 
 lasso_selected = {}
@@ -206,9 +198,7 @@ for target in REG_TARGETS:
     fig.tight_layout()
     save(fig, f"lasso_{target}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 5. L2 — RIDGE (regression targets only)
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[5] L2 Ridge (soft ranking)")
 
 ridge_top = {}
@@ -238,9 +228,7 @@ for target in REG_TARGETS:
     fig.tight_layout()
     save(fig, f"ridge_{target}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 6. L1 vs L2 COMPARISON
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[6] L1 vs L2 comparison")
 
 for target in REG_TARGETS:
@@ -275,9 +263,7 @@ for target in REG_TARGETS:
     fig.tight_layout()
     save(fig, f"l1_vs_l2_{target}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 7. PCA
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[7] PCA")
 
 X_pca = X_pruned.dropna()
@@ -336,9 +322,7 @@ save(fig, "pca_loadings")
 for i, pc in enumerate(["PC1", "PC2", "PC3"]):
     score_df.loc[FEATURE_COLS_PRUNED, f"pca_{pc}_loading"] = loadings[pc].abs()
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 8. SUMMARY — recommended feature set
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[8] Building recommended feature set")
 
 # A feature is "recommended" if it clears at least 2 of these 3 bars:

@@ -28,9 +28,7 @@ from registry import load_registry   # noqa: E402
 _DRIFT_Z_THRESH = 3.0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # internal helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _features_df(ticker: str) -> pd.DataFrame:
     """Load the latest features CSV for ticker."""
@@ -77,9 +75,7 @@ def _preprocess_row(row_df: pd.DataFrame, reg: dict) -> np.ndarray:
     return X
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # public API
-# ─────────────────────────────────────────────────────────────────────────────
 
 def predict_latest(ticker: str) -> dict:
     """
@@ -139,7 +135,7 @@ def predict_latest(ticker: str) -> dict:
         if out["model_version"] is None:
             out["model_version"] = f"{meta['model_type']}_{target}_v1"
 
-    # ── derive signal + confidence ─────────────────────────────────────────────
+    # derive signal + confidence
     ret5 = out["predictions"].get("predicted_5d_return")
     vol  = out["predictions"].get("predicted_vol_5d")
 
@@ -158,7 +154,7 @@ def predict_latest(ticker: str) -> dict:
         if "anomaly_iso" in df.columns else 0
     )
 
-    # ── log the prediction ─────────────────────────────────────────────────────
+    # log the prediction
     _log_prediction(out)
 
     return out
@@ -263,9 +259,7 @@ def model_status() -> dict:
     return status
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # prediction logging
-# ─────────────────────────────────────────────────────────────────────────────
 
 _PRED_LOG = _MONITORING / "prediction_log.csv"
 

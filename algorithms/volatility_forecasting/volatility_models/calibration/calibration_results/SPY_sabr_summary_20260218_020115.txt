@@ -1,5 +1,4 @@
 Volatility Calibration Summary
-============================================================
 
 Ticker: SPY
 Model: SABR

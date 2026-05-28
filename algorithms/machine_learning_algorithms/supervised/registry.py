@@ -21,7 +21,7 @@ import numpy as np
 import joblib
 from pathlib import Path
 
-# ── targets registered (key targets for serving) ──────────────────────────────
+# targets registered (key targets for serving)
 _SAVE_TARGETS = {
     "target_5d":      "regression",
     "target_1d":      "regression",
@@ -46,9 +46,7 @@ def _best_model(model_res, primary_metric):
     return best_name, best_val
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # save
-# ─────────────────────────────────────────────────────────────────────────────
 
 def save_registry(all_holdout, ticker, registry_dir):
     """
@@ -86,7 +84,7 @@ def save_registry(all_holdout, ticker, registry_dir):
             print(f"  ✗ {target}  — model_obj missing (pipeline not updated?)")
             continue
 
-        # ── per-target directory ───────────────────────────────────────────────
+        # per-target directory
         tgt_dir = reg_root / target
         tgt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -150,9 +148,7 @@ def save_registry(all_holdout, ticker, registry_dir):
     print(f"  ✓ active.json  ({len(active)} targets registered)")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # load
-# ─────────────────────────────────────────────────────────────────────────────
 
 def load_registry(ticker, registry_dir, target="target_5d"):
     """

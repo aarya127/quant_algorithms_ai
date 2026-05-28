@@ -109,30 +109,22 @@ if success:
 ### Example Output
 
 ```
-======================================================================
 VOLATILITY CALIBRATION PIPELINE - SPY
-======================================================================
 
-======================================================================
 STEP 1: DATA ACQUISITION
-======================================================================
 2026-02-18 10:30:15 - INFO - Fetching option chain data for SPY...
 2026-02-18 10:30:18 - INFO - Successfully retrieved 847 option quotes
 2026-02-18 10:30:18 - INFO - Expiration dates: 12 unique maturities
 2026-02-18 10:30:18 - INFO - Current spot price: $450.32
 2026-02-18 10:30:18 - INFO - Data acquisition completed successfully
 
-======================================================================
 STEP 2: DATA VALIDATION
-======================================================================
 2026-02-18 10:30:18 - INFO - All required fields present
 2026-02-18 10:30:18 - INFO - IV range: 0.1234 to 0.4567
 2026-02-18 10:30:18 - INFO - Moneyness range: 0.850 to 1.150
 2026-02-18 10:30:18 - INFO - Data validation completed
 
-======================================================================
 STEP 3: SABR MODEL CALIBRATION
-======================================================================
 2026-02-18 10:30:18 - INFO - Creating SABR objective function...
 2026-02-18 10:30:18 - INFO - Setting up constraint handler...
 2026-02-18 10:30:18 - INFO - Initial parameters: {'alpha': 0.2, 'nu': 0.3, 'rho': 0.0}
@@ -146,24 +138,18 @@ STEP 3: SABR MODEL CALIBRATION
 2026-02-18 10:31:45 - INFO - Final objective value: 0.002345
 2026-02-18 10:31:45 - INFO - Function evaluations: 4521
 
-======================================================================
 STEP 4: CONSTRAINT VALIDATION
-======================================================================
 2026-02-18 10:31:45 - INFO -   alpha > 0: PASS
 2026-02-18 10:31:45 - INFO -   nu > 0: PASS
 2026-02-18 10:31:45 - INFO -   -1 < rho < 1: PASS
 2026-02-18 10:31:45 - INFO - All constraints satisfied
 
-======================================================================
 STEP 5: EXPORT RESULTS
-======================================================================
 2026-02-18 10:31:45 - INFO - Saved parameters to: calibration_results/SPY_sabr_params_20260218_103145.csv
 2026-02-18 10:31:45 - INFO - Saved market data to: calibration_results/SPY_market_data_20260218_103145.csv
 2026-02-18 10:31:45 - INFO - Saved summary to: calibration_results/SPY_sabr_summary_20260218_103145.txt
 
-======================================================================
 PIPELINE COMPLETED SUCCESSFULLY
-======================================================================
 2026-02-18 10:31:45 - INFO - Total execution time: 90.23 seconds
 ```
 
@@ -292,7 +278,6 @@ strike,market_iv,expiry,market_price
 **Summary TXT:**
 ```
 Volatility Calibration Summary
-============================================================
 
 Ticker: SPY
 Model: SABR

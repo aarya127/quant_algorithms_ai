@@ -45,7 +45,7 @@ out = Path(__file__).parent / f"{SYMBOL}_features.csv"
 dt = DataTransformer()
 today = datetime.date.today().isoformat()
 
-# ── Detect incremental opportunity ──────────────────────────────────────────
+# Detect incremental opportunity
 _force_full = PERIOD.lower() == "full"
 _existing: pd.DataFrame | None = None
 
@@ -78,7 +78,7 @@ if df_new is None or df_new.empty:
     print("No new data returned — CSV unchanged.")
     sys.exit(0)
 
-# ── Merge & de-duplicate ─────────────────────────────────────────────────────
+# Merge & de-duplicate
 if _existing is not None and not df_new.empty:
     # Align columns: add any new columns to the existing frame as NaN
     for col in df_new.columns:

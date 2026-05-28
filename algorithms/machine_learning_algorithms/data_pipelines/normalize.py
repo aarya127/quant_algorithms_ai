@@ -53,7 +53,7 @@ df.index.name = "Date"
 print(f"=== normalize: {SYMBOL} ===")
 print(f"Input : {df.shape[0]} rows × {df.shape[1]} cols\n")
 
-# ── 1. Define targets ─────────────────────────────────────────────────────────
+# 1. Define targets
 log_ret = df["log_return"]
 
 # Regression
@@ -92,7 +92,7 @@ for tc in TARGET_COLS:
         print(f"      {tc:<22}  {non_null} rows  "
               f"mean={df[tc].mean():.5f}  std={df[tc].std():.5f}")
 
-# ── 2. Separate features from targets ─────────────────────────────────────────
+# 2. Separate features from targets
 # Non-numeric / metadata columns — excluded from scaling
 META_COLS = ["symbol", "fund_quarter_end", "opt_as_of"]
 meta_present = [c for c in META_COLS if c in df.columns]
@@ -108,7 +108,7 @@ print(f"    Targets kept unscaled    : {len(TARGET_COLS)}")
 if meta_present:
     print(f"    Meta cols excluded       : {meta_present}")
 
-# ── 3. Fit StandardScaler on feature columns ──────────────────────────────────
+# 3. Fit StandardScaler on feature columns
 # Drop rows where ALL targets are NaN (the last few rows from forward shifts)
 # but keep the scaler fit on all available feature data
 scaler = StandardScaler()
@@ -123,7 +123,7 @@ print("\n[3] StandardScaler applied:")
 print(f"    Feature means (post-scale) ≈ {df_scaled[feature_cols].mean().mean():.6f}  (expect ~0)")
 print(f"    Feature stds  (post-scale) ≈ {df_scaled[feature_cols].std().mean():.6f}   (expect ~1)")
 
-# ── 4. Save outputs ───────────────────────────────────────────────────────────
+# 4. Save outputs
 out_norm    = HERE / f"{SYMBOL}_features_normalized.csv"
 out_scaler  = HERE / f"{SYMBOL}_scaler.pkl"
 out_targets = HERE / f"{SYMBOL}_targets.csv"
@@ -143,7 +143,7 @@ targets_df = df[TARGET_COLS].copy()
 targets_df.to_csv(out_targets)
 print(f"    {out_targets}  ({targets_df.shape[0]} rows × {targets_df.shape[1]} cols)")
 
-# ── 5. Class balance report ───────────────────────────────────────────────────
+# 5. Class balance report
 print("\n[5] Classification target balance:")
 for tc in ("target_dir_1d", "target_large_move", "target_regime"):
     vc = df[tc].value_counts(normalize=True).sort_index() * 100

@@ -37,7 +37,7 @@ from scipy import stats
 
 warnings.filterwarnings("ignore")
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# Config
 SYMBOL  = sys.argv[1].upper() if len(sys.argv) > 1 else "NVDA"
 HERE     = Path(__file__).parent
 DATA_DIR = HERE.parent / "data_pipelines"
@@ -62,7 +62,7 @@ print(f"Loaded {SYMBOL}: {df.shape[0]} rows × {df.shape[1]} cols")
 print(f"Date range: {df.index.min().date()} → {df.index.max().date()}")
 print(f"Saving plots to: {OUT_DIR}\n")
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# Helper
 def save(fig, name: str):
     path = OUT_DIR / f"{name}.png"
     fig.savefig(path, dpi=120, bbox_inches="tight")
@@ -70,9 +70,7 @@ def save(fig, name: str):
     print(f"  ✓ {path.name}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 1. OVERVIEW
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[1] Overview")
 
 numeric = df.select_dtypes(include="number")
@@ -84,9 +82,7 @@ desc["null_pct"] = (df.isnull().mean() * 100).round(2)
 print(desc[["count","mean","std","min","max","skew","kurtosis","null_pct"]].to_string())
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 2. TARGET VARIABLE — next-day return
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[2] Target variable")
 
 tgt = df["target_1d"].dropna()
@@ -124,9 +120,7 @@ fig.autofmt_xdate()
 save(fig, "02_target_return")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 3. PRICE & VOLUME
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[3] Price & volume")
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=FIGSIZE, sharex=True,
@@ -149,9 +143,7 @@ fig.autofmt_xdate()
 save(fig, "03_price_volume")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 4. RETURN ANALYSIS — ACF/PACF + rolling vol
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[4] Return analysis")
 
 try:
@@ -173,9 +165,7 @@ except ImportError:
     print("  (statsmodels not installed — skipping ACF/PACF)")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 5. VOLATILITY REGIMES
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[5] Volatility")
 
 fig, axes = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
@@ -198,9 +188,7 @@ fig.autofmt_xdate()
 save(fig, "05_volatility")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 6. TECHNICAL SIGNALS
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[6] Technical signals")
 
 fig, axes = plt.subplots(3, 1, figsize=(14, 9), sharex=True)
@@ -230,9 +218,7 @@ fig.autofmt_xdate()
 save(fig, "06_technical_signals")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 7. MOMENTUM
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[7] Momentum")
 
 mom_cols = ["reversal_1w", "momentum_1m", "momentum_3m", "momentum_6m", "momentum_12m"]
@@ -253,9 +239,7 @@ fig.autofmt_xdate()
 save(fig, "07_momentum")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 8. SENTIMENT vs. PRICE
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[8] Sentiment")
 
 fig, axes = plt.subplots(3, 1, figsize=(14, 9), sharex=True)
@@ -282,9 +266,7 @@ fig.autofmt_xdate()
 save(fig, "08_sentiment")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 9. MACRO / CROSS-ASSET
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[9] Macro / cross-asset")
 
 fig, axes = plt.subplots(4, 1, figsize=(14, 11), sharex=True)
@@ -316,9 +298,7 @@ fig.autofmt_xdate()
 save(fig, "09_macro")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 10. FUNDAMENTALS
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[10] Fundamentals")
 
 fund_pairs = [
@@ -345,9 +325,7 @@ fig.autofmt_xdate()
 save(fig, "10_fundamentals")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 11. CORRELATION WITH TARGET
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[11] Correlation with target")
 
 target_col = "target_1d"
@@ -394,9 +372,7 @@ fig.tight_layout()
 save(fig, "11b_correlation_heatmap")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # 12. FEATURE DISTRIBUTIONS
-# ═══════════════════════════════════════════════════════════════════════════════
 print("\n[12] Feature distributions")
 
 num_cols = df.select_dtypes(include="number").columns.tolist()

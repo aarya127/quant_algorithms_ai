@@ -43,9 +43,7 @@ OUT_DIR = Path(__file__).parent / 'output' / 'volatility_clustering'
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _save(fig, name: str) -> None:
     path = OUT_DIR / name
@@ -69,9 +67,7 @@ def load_data(ticker: str, period: str = '3y') -> pd.DataFrame:
     return df.dropna()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Plots
-# ─────────────────────────────────────────────────────────────────────────────
 
 def plot_returns_overview(df: pd.DataFrame, ticker: str) -> None:
     """Three-panel figure: returns, squared returns, rolling vol."""
@@ -165,9 +161,7 @@ def plot_regime_clustering(df: pd.DataFrame, ticker: str) -> None:
     _save(fig, f'{ticker}_regime_clustering.png')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Statistical tests
-# ─────────────────────────────────────────────────────────────────────────────
 
 def ljung_box_test(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     """
@@ -225,9 +219,7 @@ def arch_lm_test(df: pd.DataFrame, ticker: str, lags: int = 12) -> dict:
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Summary
-# ─────────────────────────────────────────────────────────────────────────────
 
 def print_summary(ticker: str, df: pd.DataFrame,
                   lb: pd.DataFrame, arch_res: dict) -> None:
@@ -262,9 +254,7 @@ def print_summary(ticker: str, df: pd.DataFrame,
     print(f'{sep}\n')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run(ticker: str = 'NVDA') -> None:
     print(f'\n[volatility_clustering]  {ticker}')

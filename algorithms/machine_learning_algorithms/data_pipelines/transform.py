@@ -200,7 +200,7 @@ class DataTransformer:
         sym = symbol.upper()
         logger.info("Building feature matrix for %s (period=%s)", sym, period)
 
-        # ── 1. Spine: OHLCV + computed technical indicators ─────────────
+        # 1. Spine: OHLCV + computed technical indicators
         # Longest rolling window is SMA_200 (200 trading days ≈ 285 calendar
         # days). Fetch a warmup buffer before the requested start so that the
         # first bar in the output period has fully-warmed indicators instead
@@ -254,46 +254,46 @@ class DataTransformer:
         logger.info("[1/11] Spine ready: %d trading days (incl. warmup)  %s → %s",
                     len(spine), spine.index.min().date(), spine.index.max().date())
 
-        # ── 2. Derived price / volatility ratios ────────────────────────
+        # 2. Derived price / volatility ratios
         spine = self._add_derived_features(spine)
         logger.info("[2/11] Derived features added: %d cols", len(spine.columns))
 
-        # ── 3. Risk / volatility features ────────────────────────────────
+        # 3. Risk / volatility features
         spine = self._add_risk_features(spine)
         risk_cols = [c for c in spine.columns if c in (
             "realized_vol_20d","realized_vol_60d","vol_of_vol",
             "skewness_20d","kurtosis_20d","downside_deviation","max_drawdown_20d")]
         logger.info("[3/11] Risk features added: %d cols", len(risk_cols))
 
-        # ── 4. Microstructure features ────────────────────────────────────
+        # 4. Microstructure features
         spine = self._add_microstructure_features(spine)
         micro_cols = [c for c in spine.columns if c in (
             "amihud_illiquidity","bid_ask_spread_proxy",
             "volume_participation","trade_imbalance")]
         logger.info("[4/11] Microstructure features added: %d cols", len(micro_cols))
 
-        # ── 5. Momentum / mean-reversion features ────────────────────────
+        # 5. Momentum / mean-reversion features
         spine = self._add_momentum_features(spine)
         mom_cols = [c for c in spine.columns if c in (
             "momentum_1m","momentum_3m","momentum_6m","momentum_12m",
             "reversal_1w","high_52w_pct","low_52w_pct","price_accel")]
         logger.info("[5/11] Momentum features added: %d cols", len(mom_cols))
 
-        # ── 6. Cross-asset / macro features ──────────────────────────────
+        # 6. Cross-asset / macro features
         spine = self._merge_macro_features(spine, start_str, end_str)
         macro_cols = [c for c in spine.columns if c in (
             "vix_level","yield_10y","yield_curve_slope",
             "spy_beta_60d","qqq_corr_20d","sox_rel_strength")]
         logger.info("[6/11] Macro/cross-asset features added: %d cols", len(macro_cols))
 
-        # ── 7. Fundamentals (broadcast across all dates) ─────────────────
+        # 7. Fundamentals (broadcast across all dates)
         spine = self._merge_fundamentals(spine, sym)
         fund_cols = [c for c in spine.columns if c.startswith('fund_')]
         logger.info("[7/11] Fundamentals merged: %d fund_ cols, first valid: %s",
                     len(fund_cols),
                     spine[fund_cols[0]].first_valid_index() if fund_cols else 'N/A')
 
-        # ── 8. News — daily article count + sentiment ────────────────────
+        # 8. News — daily article count + sentiment
         spine = self._merge_news(spine, sym, start_str, end_str)
         for _nc in ('news_sent_av', 'news_sent_polygon', 'news_sent_finnhub',
                     'news_sent_marketaux', 'news_sent_score'):
@@ -302,28 +302,28 @@ class DataTransformer:
                 logger.info("[8/11] %-24s: %d/%d rows filled (%.0f%%)",
                             _nc, _n, len(spine), _n / len(spine) * 100)
 
-        # ── 9. Insider sentiment (monthly → daily by forward-fill) ───────
+        # 9. Insider sentiment (monthly → daily by forward-fill)
         spine = self._merge_sentiment(spine, sym)
         insdr_cols = [c for c in spine.columns if c.startswith('insdr_')]
         logger.info("[9/11] Insider sentiment: %d insdr_ cols", len(insdr_cols))
 
-        # ── 10. Options snapshot — surface metrics ────────────────────────
+        # 10. Options snapshot — surface metrics
         spine = self._merge_options_snapshot(spine, sym)
         opt_cols = [c for c in spine.columns if c.startswith('opt_')]
         logger.info("[10/11] Options snapshot: %d opt_ cols", len(opt_cols))
 
-        # ── 11. Earnings calendar proximity flags ─────────────────────────
+        # 11. Earnings calendar proximity flags
         spine = self._merge_earnings(spine, sym)
         earn_cols = [c for c in spine.columns if c.startswith('earn_')]
         logger.info("[11/11] Earnings flags: %d earn_ cols", len(earn_cols))
 
-        # ── 12. Trim warmup rows now that all indicators are fully warmed ──
+        # 12. Trim warmup rows now that all indicators are fully warmed
         if _trim_cutoff is not None:
             spine = spine[spine.index >= _trim_cutoff]
         logger.info("Trimmed to requested window: %d trading days  %s → %s",
                     len(spine), spine.index.min().date(), spine.index.max().date())
 
-        # ── 13. Column ordering: symbol first, then chronological groups ──
+        # 13. Column ordering: symbol first, then chronological groups
         group_order = (
             ["symbol"]
             + [c for c in spine.columns if c in ("Open","High","Low","Close","Volume")]
@@ -885,7 +885,7 @@ class DataTransformer:
             except Exception as exc:
                 logger.warning("Macro fetch failed for %s: %s", tkr, exc)
 
-        # ── Align all series to the spine index ──────────────────────────
+        # Align all series to the spine index
         def _align(series: pd.Series) -> pd.Series:
             """Forward-fill to trading spine, limit 5 days."""
             combined = series.reindex(series.index.union(df.index)).ffill(limit=5)

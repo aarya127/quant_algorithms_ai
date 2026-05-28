@@ -12,9 +12,7 @@ from sklearn.metrics import confusion_matrix, precision_recall_curve, average_pr
 from config import SYMBOL, OUT_DIR
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # helpers
-# ─────────────────────────────────────────────────────────────────────────────
 def _save(fig, name):
     if name.startswith("vA_"):
         subdir = OUT_DIR / "plots" / "vA"
@@ -35,9 +33,7 @@ def _primary_metric(task, target):
     return "pr_auc" if target == "target_large_move" else "f1_w"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # cross-validation plots
-# ─────────────────────────────────────────────────────────────────────────────
 def plot_cv_primary(cv_df, target, task, version):
     """Primary metric across folds for all models (line chart)."""
     metric = _primary_metric(task, target)
@@ -73,9 +69,7 @@ def plot_feat_freq(feat_counter, target, version, top_n=20):
     _save(fig, f"v{version}_feat_freq_{target}.png")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # holdout plots
-# ─────────────────────────────────────────────────────────────────────────────
 def plot_holdout_bar(h_res, target, task, version):
     """Horizontal bar: primary metric for all models on the holdout set."""
     metric = _primary_metric(task, target)
@@ -192,9 +186,7 @@ def plot_feature_importance(h_res, target, task, version, top_n=20):
     _save(fig, f"v{version}_feat_imp_{target}.png")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # summary plots
-# ─────────────────────────────────────────────────────────────────────────────
 def plot_version_comparison(all_holdout, targets, task):
     """Grouped bar: Version A vs B primary metric for each model and target."""
     key = "ic" if task == "regression" else "f1_w"
