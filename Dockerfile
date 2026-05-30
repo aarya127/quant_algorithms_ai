@@ -6,6 +6,11 @@ LABEL org.opencontainers.image.title="Invest.ai Backend" \
 
 WORKDIR /app
 
+# ── System deps needed by LightGBM (OpenMP) ──────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # ── Python deps (layer-cached) ────────────────────────────────────────────────
 COPY backend/requirements.txt .
 
