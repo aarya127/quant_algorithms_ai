@@ -9,6 +9,8 @@ import datetime
 import json
 import subprocess
 import tempfile
+import threading
+import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, jsonify, request, send_file, Response
@@ -1798,6 +1800,107 @@ def trading_chart():
         return jsonify({'error': 'chart-img API error', 'status': resp.status_code, 'details': status_msg}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# ML Pipeline orchestration — /api/pipeline/run  +  /api/pipeline/status
+# ---------------------------------------------------------------------------
+
+_pipeline_jobs: dict = {}   # job_id -> job state dict
+
+_ML_ORCH = (Path(__file__).resolve().parent.parent
+            / "algorithms" / "machine_learning_algorithms" / "orchestrator.py")
+
+
+def _run_pipeline_thread(job_id: str, ticker: str) -> None:
+    """Background thread: invoke orchestrator.py and stream its output into the job dict."""
+    job = _pipeline_jobs[job_id]
+    env = os.environ.copy()
+    env["USE_TUNING"] = "0"
+
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(_ML_ORCH), ticker],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(Path(__file__).resolve().parent.parent),
+            env=env,
+        )
+        for raw in proc.stdout:
+            line = raw.rstrip()
+            if line.startswith("STEP:") and line.endswith(":start"):
+                job["current_step"] = line.split(":")[1]
+            elif line.startswith("STEP:") and line.endswith(":done"):
+                job["steps_done"].append(line.split(":")[1])
+            elif line.startswith("STATUS:"):
+                st = line[7:]
+                if st == "up_to_date":
+                    job["status"] = "up_to_date"
+                elif st == "done":
+                    job["status"] = "done"
+                elif st.startswith("error:"):
+                    job["status"] = "error"
+                    job["error_step"] = st[6:]
+            elif line.startswith("LOG:"):
+                job["log"].append(line[4:])
+            elif line:
+                job["log"].append(line)
+        proc.wait()
+
+        if job["status"] == "running":
+            job["status"] = "done" if proc.returncode == 0 else "error"
+    except Exception as exc:
+        job["status"] = "error"
+        job["log"].append(f"[orchestrator error] {exc}")
+
+    job["current_step"] = None
+    job["done_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+
+
+@app.route('/api/pipeline/run', methods=['POST'])
+def api_pipeline_run():
+    """
+    Launch the full ETL → ML pipeline for a ticker in the background.
+
+    POST /api/pipeline/run
+    Body: { "ticker": "NVDA" }
+    Response: { success, job_id, ticker }
+    """
+    body   = request.get_json(silent=True) or {}
+    ticker = str(body.get("ticker", "NVDA")).upper().strip()
+    if not ticker.isalpha() or len(ticker) > 10:
+        return jsonify({"success": False, "error": "invalid ticker symbol"}), 400
+
+    job_id = str(uuid.uuid4())
+    _pipeline_jobs[job_id] = {
+        "ticker":       ticker,
+        "status":       "running",
+        "current_step": "extract",
+        "steps_done":   [],
+        "log":          [],
+        "started_at":   datetime.datetime.utcnow().isoformat() + "Z",
+        "done_at":      None,
+    }
+    threading.Thread(
+        target=_run_pipeline_thread, args=(job_id, ticker), daemon=True
+    ).start()
+    return jsonify({"success": True, "job_id": job_id, "ticker": ticker})
+
+
+@app.route('/api/pipeline/status/<job_id>')
+def api_pipeline_status(job_id):
+    """
+    Poll the status of a pipeline job.
+
+    GET /api/pipeline/status/<job_id>
+    Response: { success, ticker, status, current_step, steps_done, log, started_at, done_at }
+      status: "running" | "done" | "up_to_date" | "error"
+    """
+    job = _pipeline_jobs.get(job_id)
+    if job is None:
+        return jsonify({"success": False, "error": "job not found"}), 404
+    return jsonify({"success": True, **job})
 
 
 if __name__ == '__main__':
