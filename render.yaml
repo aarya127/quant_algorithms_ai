@@ -1,0 +1,70 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Defines the Invest.ai web service and its persistent disk.
+#
+# Deploy steps:
+#   1. Push this repo to GitHub.
+#   2. In Render Dashboard → New → Blueprint → connect the repo.
+#      Render will read this file and create the service automatically.
+#   3. In the service's Environment tab, set all envVars marked sync: false
+#      (they are intentionally left out of this file to avoid committing secrets).
+#
+# Recommended plan: standard ($25/month, 1 CPU / 2 GB RAM)
+# FinBERT alone needs ~512 MB; standard gives comfortable headroom.
+#
+# Persistent disk (5 GB, $1.25/month):
+#   Mounted at /app/mnt — entrypoint.sh symlinks the three runtime dirs there.
+#   Survives redeploys and pod restarts. Model artefacts are seeded from the
+#   image on first deploy so predictions work immediately.
+#
+# Scheduled retraining:
+#   NOT a separate Render Cron Job — Render disks can only attach to one
+#   service, so the cron job can't share models with the web service.
+#   Instead, use the GitHub Actions workflow in .github/workflows/daily-retrain.yml,
+#   which calls POST /api/pipeline/run on the live service on a schedule.
+
+services:
+  - type: web
+    name: invest-ai-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon           # US West; change to frankfurt for EU
+    plan: standard           # 1 CPU / 2 GB RAM — required for FinBERT
+    healthCheckPath: /health
+
+    disk:
+      name: invest-ai-data
+      mountPath: /app/mnt
+      sizeGB: 5
+
+    envVars:
+      # ── App config (non-secret) ────────────────────────────────────────────
+      - key: PORT
+        value: "8080"
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: GUNICORN_WORKERS
+        value: "2"
+
+      # ── Secrets — set these in the Render dashboard, NOT here ────────────
+      # (sync: false means Render will prompt you to fill them in)
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: ALPHAVANTAGE_API_KEY
+        sync: false
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: TWITTER_API_KEY
+        sync: false
+      - key: TWITTER_API_SECRET
+        sync: false
+      - key: TWITTER_BEARER_TOKEN
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: CHART_IMG_KEY
+        sync: false
