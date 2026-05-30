@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── Python deps (layer-cached) ────────────────────────────────────────────────
 COPY requirements-pipeline.txt .
-RUN pip install --no-cache-dir -r requirements-pipeline.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements-pipeline.txt
 
 # ── Application code ──────────────────────────────────────────────────────────
 COPY . .
