@@ -88,6 +88,25 @@ def save_registry(all_holdout, ticker, registry_dir):
         tgt_dir = reg_root / target
         tgt_dir.mkdir(parents=True, exist_ok=True)
 
+        # promotion gate — only overwrite registry if new model is strictly better
+        existing_meta_path = tgt_dir / "metadata.json"
+        if existing_meta_path.exists():
+            try:
+                existing_meta = json.loads(existing_meta_path.read_text())
+                existing_val  = float(existing_meta.get("metric_value", -np.inf))
+                if best_val <= existing_val:
+                    print(f"  ↩ {target:20s}  [{best_name:10s}  {primary}={best_val:.4f}]"
+                          f"  ← skipped (current={existing_val:.4f})")
+                    active[target] = {
+                        "path":         str(tgt_dir),
+                        "model_type":   existing_meta.get("model_type", best_name),
+                        "metric_value": existing_val,
+                        "created_at":   existing_meta.get("created_at", created_at),
+                    }
+                    continue
+            except Exception:
+                pass  # unreadable metadata → proceed with save
+
         joblib.dump(best_res["model_obj"], tgt_dir / "model.pkl")
 
         if meta_block.get("scaler") is not None:
