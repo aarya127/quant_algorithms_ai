@@ -1803,6 +1803,69 @@ def trading_chart():
 
 
 # ---------------------------------------------------------------------------
+# MLflow experiment history — /api/mlflow/runs/<ticker>
+# ---------------------------------------------------------------------------
+
+_ML_RUNS_ROOT = Path(__file__).resolve().parent.parent / "mlruns"
+
+
+@app.route('/api/mlflow/runs/<ticker>')
+def api_mlflow_runs(ticker):
+    """
+    Return recent MLflow runs for a ticker experiment (reads local file store directly).
+    No MLflow UI server required.
+
+    GET /api/mlflow/runs/NVDA
+    Response: { success, ticker, runs: [...], ui_url }
+    """
+    ticker = ticker.upper().strip()
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
+        tracking_uri = f"file://{_ML_RUNS_ROOT}"
+        client = MlflowClient(tracking_uri=tracking_uri)
+
+        exp = client.get_experiment_by_name(ticker)
+        if exp is None:
+            return jsonify({
+                "success": True, "ticker": ticker, "runs": [],
+                "message": "No experiment found — run the pipeline first.",
+                "ui_url":  "http://localhost:5002",
+            })
+
+        runs = client.search_runs(
+            experiment_ids=[exp.experiment_id],
+            order_by=["start_time DESC"],
+            max_results=50,
+        )
+
+        run_list = []
+        for r in runs:
+            # Only surface user-defined tags (strip internal mlflow.* keys)
+            tags = {k: v for k, v in r.data.tags.items()
+                    if not k.startswith("mlflow.")}
+            run_list.append({
+                "run_id":     r.info.run_id,
+                "run_name":   r.info.run_name or "",
+                "status":     r.info.status,
+                "start_time": r.info.start_time,
+                "tags":       tags,
+                "params":     r.data.params,
+                "metrics":    {k: round(v, 4) for k, v in r.data.metrics.items()},
+            })
+
+        return jsonify({
+            "success": True,
+            "ticker":  ticker,
+            "runs":    run_list,
+            "ui_url":  "http://localhost:5002",
+        })
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
 # ML Pipeline orchestration — /api/pipeline/run  +  /api/pipeline/status
 # ---------------------------------------------------------------------------
 

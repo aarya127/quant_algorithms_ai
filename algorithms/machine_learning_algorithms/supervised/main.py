@@ -20,12 +20,14 @@ from plots import (
 )
 from ensemble import run_ensemble
 from registry import save_registry
+from mlflow_tracker import setup_experiment, log_run
 
 _REGISTRY_DIR = Path(__file__).parent / "model_registry"
 
 
 def main():
     print(f"\n=== supervised: {SYMBOL} ===")
+    setup_experiment(SYMBOL)
 
     df = (pd.read_csv(REGIMES_CSV, parse_dates=["Date"])
             .sort_values("Date").reset_index(drop=True))
@@ -70,6 +72,10 @@ def main():
             print(f"    → Holdout ({HOLDOUT_ROWS} rows):")
             h_res = run_holdout(df, cv_idx, holdout_idx, features, target, task)
             all_holdout[(target, version)] = h_res
+
+            # Log params, CV metrics, holdout metrics, and feature artifacts to MLflow
+            sel_features = h_res.get("_meta", {}).get("sel_features", features)
+            log_run(SYMBOL, target, version, task, fold_records, h_res, sel_features)
 
             for model, res in h_res.items():
                 if model.startswith("_"):

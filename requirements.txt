@@ -8,6 +8,7 @@ finnhub-python==2.4.19
 requests==2.31.0
 tweepy==4.16.0
 websockets==15.0.1
+mlflow>=2.0.0
 scipy>=1.11.0
 
 # C++ integration
