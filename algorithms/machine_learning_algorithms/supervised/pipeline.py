@@ -78,20 +78,16 @@ def run_folds(df, folds, features, target, task):
             for name, m in clf_model_set(n_cls, is_binary_imb, spw, is_multi).items():
                 try:
                     if USE_TUNING and name in param_dists:
-                        y_fit = y_tr_enc if name in ("xgb", "lgb") else y_tr.astype(int)
                         m, _ = tune_model(name, m, param_dists[name],
-                                          X_tr, y_fit, scoring, TUNE_ITER, TUNE_SPLITS)
+                                          X_tr, y_tr_enc, scoring, TUNE_ITER, TUNE_SPLITS)
                     elif name in ("xgb", "lgb"):
                         m.fit(X_tr, y_tr_enc, sample_weight=sw)
                     else:
-                        m.fit(X_tr, y_tr.astype(int))
-                    if name in ("xgb", "lgb"):
-                        yhat = le.inverse_transform(
-                            np.clip(m.predict(X_val).astype(int), 0, n_cls - 1))
-                        proba = m.predict_proba(X_val)
-                    else:
-                        yhat  = m.predict(X_val).astype(int)
-                        proba = m.predict_proba(X_val) if hasattr(m, "predict_proba") else None
+                        m.fit(X_tr, y_tr_enc)
+                    # all classifiers are trained on encoded labels → inverse-transform predictions
+                    yhat = le.inverse_transform(
+                        np.clip(m.predict(X_val).astype(int), 0, n_cls - 1))
+                    proba = m.predict_proba(X_val) if hasattr(m, "predict_proba") else None
                     fold_records.append({"fold": fi, "model": name,
                                          **clf_metrics(y_val_orig, yhat, proba, target)})
                 except Exception as e:
@@ -245,20 +241,16 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
         for name, m in clf_model_set(n_cls, is_binary_imb, spw, is_multi).items():
             try:
                 if USE_TUNING and name in param_dists:
-                    y_fit = y_cv_enc if name in ("xgb", "lgb") else y_cv_orig_fit
                     m, _ = tune_model(name, m, param_dists[name],
-                                      X_cv, y_fit, h_scoring, TUNE_ITER, TUNE_SPLITS)
+                                      X_cv, y_cv_enc, h_scoring, TUNE_ITER, TUNE_SPLITS)
                 elif name in ("xgb", "lgb"):
                     m.fit(X_cv, y_cv_enc, sample_weight=sw)
                 else:
-                    m.fit(X_cv, y_cv_orig_fit)
-                if name in ("xgb", "lgb"):
-                    yhat_enc = m.predict(X_h_ev).astype(int)
-                    yhat  = le.inverse_transform(np.clip(yhat_enc, 0, n_cls - 1)).astype(float)
-                    proba = m.predict_proba(X_h_ev)
-                else:
-                    yhat  = m.predict(X_h_ev).astype(float)
-                    proba = m.predict_proba(X_h_ev) if hasattr(m, "predict_proba") else None
+                    m.fit(X_cv, y_cv_enc)
+                # all classifiers trained on encoded labels → inverse-transform predictions
+                yhat_enc = m.predict(X_h_ev).astype(int)
+                yhat  = le.inverse_transform(np.clip(yhat_enc, 0, n_cls - 1)).astype(float)
+                proba = m.predict_proba(X_h_ev) if hasattr(m, "predict_proba") else None
                 results[name] = {
                     "metrics":       clf_metrics(y_h_ev.astype(int), yhat.astype(int), proba, target),
                     "y_true":        y_h_ev,
