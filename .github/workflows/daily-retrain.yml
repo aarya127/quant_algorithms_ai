@@ -1,0 +1,93 @@
+# Daily ML pipeline trigger
+#
+# Runs every weekday at 02:00 UTC, which is:
+#   9 PM ET (evening before US market open)
+#   10 PM CT / 11 PM PT
+#
+# What it does:
+#   1. POSTs to /api/pipeline/run on the live Render app
+#   2. Polls /api/pipeline/status every 90 seconds until done or failed
+#   3. Reports success/failure as a GitHub Actions run (green/red badge)
+#
+# Setup:
+#   In your GitHub repo → Settings → Secrets and variables → Actions, add:
+#     RENDER_APP_URL  →  https://your-app-name.onrender.com  (no trailing slash)
+#
+# The pipeline runs INSIDE the Render web service container (as a subprocess),
+# so it has access to the persistent disk where models and feature CSVs live.
+# This avoids the Render disk-sharing limitation between separate services.
+#
+# Manual trigger: Actions tab → "Daily ML Pipeline" → Run workflow → pick ticker.
+
+name: Daily ML Pipeline
+
+on:
+  schedule:
+    - cron: '0 2 * * 1-5'   # 02:00 UTC Monday–Friday
+  workflow_dispatch:          # allow manual trigger from the Actions tab
+    inputs:
+      ticker:
+        description: 'Ticker to retrain (e.g. NVDA)'
+        required: true
+        default: 'NVDA'
+
+jobs:
+  retrain:
+    name: Retrain ${{ github.event.inputs.ticker || 'NVDA' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180      # safety net — full retrain rarely exceeds 90 min
+
+    steps:
+      - name: Trigger pipeline on Render
+        id: trigger
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+          TICKER: ${{ github.event.inputs.ticker || 'NVDA' }}
+        run: |
+          echo "Triggering pipeline for $TICKER..."
+          RESPONSE=$(curl -sf \
+            -X POST "$RENDER_APP_URL/api/pipeline/run" \
+            -H "Content-Type: application/json" \
+            -d "{\"ticker\": \"$TICKER\"}")
+
+          echo "Response: $RESPONSE"
+          JOB_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "Started job: $JOB_ID"
+
+      - name: Poll until done
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+        run: |
+          JOB_ID="${{ steps.trigger.outputs.job_id }}"
+          MAX_POLLS=120      # 120 × 90 s = 3 hours
+          POLL=0
+
+          while [ $POLL -lt $MAX_POLLS ]; do
+            POLL=$((POLL + 1))
+            RESP=$(curl -sf "$RENDER_APP_URL/api/pipeline/status/$JOB_ID")
+            STATUS=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            STEP=$(echo "$RESP"   | python3 -c "import sys,json; print(json.load(sys.stdin).get('current_step','—'))")
+
+            echo "[$POLL/$MAX_POLLS] status=$STATUS  step=$STEP"
+
+            case "$STATUS" in
+              done)
+                echo "Pipeline completed successfully."
+                exit 0
+                ;;
+              up_to_date)
+                echo "Data already up to date — nothing to retrain."
+                exit 0
+                ;;
+              error)
+                echo "Pipeline failed."
+                exit 1
+                ;;
+            esac
+
+            sleep 90
+          done
+
+          echo "Timed out after 3 hours."
+          exit 1
