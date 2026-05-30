@@ -1,0 +1,95 @@
+# Daily ML pipeline retraining job.
+#
+# Runs every weekday at 02:00 UTC (before US market open).
+# Uses invest-ai-pipeline:latest — a lean training image (~900 MB) that contains
+# scikit-learn / XGBoost / LightGBM / MLflow but NOT Flask, PyTorch, or FinBERT.
+# Build it with:  docker build -f Dockerfile.pipeline -t invest-ai-pipeline:latest .
+#
+# The pipeline writes updated model artefacts to the shared PVC.
+# The backend pods read from the same PVC, so predictions automatically
+# use the latest models without a rolling restart.
+#
+# To trigger a manual run immediately:
+#   kubectl create job --from=cronjob/invest-ai-pipeline manual-run-$(date +%s) \
+#     --namespace invest-ai
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: invest-ai-pipeline
+  namespace: invest-ai
+  labels:
+    app.kubernetes.io/name: invest-ai
+    app.kubernetes.io/component: pipeline
+spec:
+  # 02:00 UTC, Monday–Friday
+  schedule: "0 2 * * 1-5"
+  timeZone: "UTC"
+
+  # Prevent overlap: if the previous run is still going, skip the new one
+  concurrencyPolicy: Forbid
+
+  # Keep logs from the last 3 runs (success + failure)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  # Don't start if missed by more than 2 hours (e.g. cluster was down)
+  startingDeadlineSeconds: 7200
+
+  jobTemplate:
+    spec:
+      # Retry up to 2 times on failure before marking the job as failed
+      backoffLimit: 2
+
+      # Kill the job if it runs longer than 3 hours (full retrain safety net)
+      activeDeadlineSeconds: 10800
+
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: invest-ai
+            app.kubernetes.io/component: pipeline
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+            - name: pipeline
+              image: invest-ai-pipeline:latest   # built from Dockerfile.pipeline
+              imagePullPolicy: IfNotPresent
+              # ENTRYPOINT is set in Dockerfile.pipeline — just supply the ticker arg.
+              # To retrain multiple tickers, duplicate this container block or use a
+              # Job with parallelism and an initContainer to fan out per-ticker jobs.
+              args: ["NVDA"]
+
+              envFrom:
+                - configMapRef:
+                    name: invest-ai-config
+                - secretRef:
+                    name: invest-ai-secrets
+
+              # Training is CPU + memory intensive; use more headroom than backend
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "1Gi"
+                limits:
+                  cpu: "2000m"
+                  memory: "3Gi"
+
+              # ── Volume mounts — same PVC subPaths as backend ─────────────────
+              volumeMounts:
+                - name: invest-ai-data
+                  mountPath: /app/algorithms/machine_learning_algorithms/data_pipelines
+                  subPath: data_pipelines
+
+                - name: invest-ai-data
+                  mountPath: /app/algorithms/machine_learning_algorithms/supervised/model_registry
+                  subPath: model_registry
+
+                - name: invest-ai-data
+                  mountPath: /app/mlruns
+                  subPath: mlruns
+
+          volumes:
+            - name: invest-ai-data
+              persistentVolumeClaim:
+                claimName: invest-ai-data

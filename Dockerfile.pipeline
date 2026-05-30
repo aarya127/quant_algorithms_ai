@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dockerfile.pipeline — ML training image
+#
+# Runs the 5-step retraining pipeline via orchestrator.py:
+#   ETL → clean → normalize → unsupervised → supervised (walk-forward CV)
+#
+# What's excluded vs the app Dockerfile:
+#   • Flask / gunicorn        (no web server needed)
+#   • PyTorch (~180 MB)       (no neural net inference at train time)
+#   • transformers/FinBERT    (no NLP at train time — saves ~620 MB total)
+#
+# Typical build time:  ~3 min    (vs ~15 min for the app image)
+# Typical image size:  ~900 MB   (vs ~3.5 GB for the app image)
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM python:3.11-slim
+
+LABEL org.opencontainers.image.title="Invest.ai ML Pipeline" \
+      org.opencontainers.image.description="Walk-forward model retraining pipeline" \
+      org.opencontainers.image.version="1.0.0"
+
+WORKDIR /app
+
+# ── System deps needed by LightGBM / matplotlib ───────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python deps (layer-cached) ────────────────────────────────────────────────
+COPY requirements-pipeline.txt .
+RUN pip install --no-cache-dir -r requirements-pipeline.txt
+
+# ── Application code ──────────────────────────────────────────────────────────
+COPY . .
+
+# Ensure runtime output directories exist (overridden by PVC mounts in K8s)
+RUN mkdir -p \
+    /app/algorithms/machine_learning_algorithms/data_pipelines \
+    /app/algorithms/machine_learning_algorithms/supervised/model_registry \
+    /app/algorithms/machine_learning_algorithms/supervised/output/monitoring \
+    /app/mlruns
+
+# ── Smoke-test ────────────────────────────────────────────────────────────────
+RUN python3 -c "\
+import sklearn, xgboost, lightgbm, mlflow, imblearn, matplotlib; \
+print('pipeline imports OK')"
+
+# ── Default entrypoint ────────────────────────────────────────────────────────
+# Pass the ticker as CMD arg, e.g.:
+#   docker run invest-ai-pipeline:latest NVDA
+# In Kubernetes the CronJob spec overrides args: ["NVDA"]
+ENTRYPOINT ["python", "/app/algorithms/machine_learning_algorithms/orchestrator.py"]
+CMD ["NVDA"]
