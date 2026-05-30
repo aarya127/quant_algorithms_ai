@@ -1657,6 +1657,113 @@ async function loadMLSignals() {
     }
 }
 
+// ─── ML Pipeline orchestration ───────────────────────────────────────────────
+
+const _ML_STEPS = ['extract', 'clean', 'normalize', 'unsupervised', 'supervised'];
+let   _pipelineJobId    = null;
+let   _pipelinePollTimer = null;
+
+async function runPipeline() {
+    const ticker = (document.getElementById('mlTicker')?.value || 'NVDA').trim().toUpperCase();
+    const btn    = document.getElementById('btnRunPipeline');
+    const statusDiv = document.getElementById('mlPipelineStatus');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting…';
+    }
+
+    // Reset status card
+    if (statusDiv) {
+        document.getElementById('pipelineTicker').textContent = ticker;
+        document.getElementById('pipelineStatusBadge').className = 'badge bg-warning text-dark';
+        document.getElementById('pipelineStatusBadge').textContent = 'Starting';
+        document.getElementById('pipelineStepBadges').innerHTML = '';
+        document.getElementById('pipelineLog').textContent = '';
+        statusDiv.style.display = '';
+    }
+
+    try {
+        const resp = await fetch('/api/pipeline/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticker })
+        });
+        const d = await resp.json();
+        if (!d.success) {
+            alert('Pipeline error: ' + (d.error || 'unknown'));
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Run Pipeline'; }
+            return;
+        }
+        _pipelineJobId = d.job_id;
+        _pollPipeline();
+    } catch (e) {
+        alert('Could not start pipeline: ' + e);
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Run Pipeline'; }
+    }
+}
+
+function _pollPipeline() {
+    if (!_pipelineJobId) return;
+    clearTimeout(_pipelinePollTimer);
+
+    fetch('/api/pipeline/status/' + _pipelineJobId)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) return;
+            _renderPipelineStatus(d);
+
+            if (d.status === 'running') {
+                _pipelinePollTimer = setTimeout(_pollPipeline, 1500);
+            } else {
+                const btn = document.getElementById('btnRunPipeline');
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Run Pipeline'; }
+                // After a successful full run, auto-refresh the prediction/drift/registry panels
+                if (d.status === 'done') {
+                    setTimeout(loadMLSignals, 800);
+                }
+            }
+        })
+        .catch(() => {
+            _pipelinePollTimer = setTimeout(_pollPipeline, 3000);
+        });
+}
+
+function _renderPipelineStatus(job) {
+    const badgeEl = document.getElementById('pipelineStatusBadge');
+    const stepsEl = document.getElementById('pipelineStepBadges');
+    const logEl   = document.getElementById('pipelineLog');
+
+    if (badgeEl) {
+        const map = {
+            running:    ['bg-warning text-dark', 'Running'],
+            done:       ['bg-success',           'Done ✓'],
+            up_to_date: ['bg-info text-white',   'Up to date'],
+            error:      ['bg-danger',             'Error'],
+        };
+        const [cls, label] = map[job.status] || ['bg-secondary', job.status];
+        badgeEl.className = 'badge ' + cls;
+        badgeEl.textContent = label;
+    }
+
+    if (stepsEl) {
+        stepsEl.innerHTML = _ML_STEPS.map(step => {
+            const done   = (job.steps_done || []).includes(step);
+            const active = job.current_step === step && job.status === 'running';
+            const cls    = done   ? 'bg-success'
+                         : active ? 'bg-warning text-dark'
+                         :          'bg-secondary opacity-50';
+            const icon   = done ? '✓' : active ? '…' : '○';
+            return `<span class="badge ${cls} rounded-pill px-2">${icon} ${step}</span>`;
+        }).join(' ');
+    }
+
+    if (logEl) {
+        logEl.textContent = (job.log || []).slice(-120).join('\n');
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+}
+
 // View Research Paper
 function viewResearch(type) {
     // Show loading indicator
