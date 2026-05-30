@@ -1,0 +1,28 @@
+# ML pipeline dependencies — used by Dockerfile.pipeline
+# Covers all 5 orchestration steps:
+#   run_pipeline.py (ETL)  →  clean.py  →  normalize.py
+#   →  unsupervised.py  →  supervised/main.py
+#
+# Intentionally excludes Flask, gunicorn, transformers, and torch
+# (not needed at training time, saves ~620 MB from the image).
+
+# ── Data layer ────────────────────────────────────────────────────────────────
+numpy>=1.26.0
+pandas==2.1.4
+scipy>=1.11.0
+yfinance>=0.2.36
+requests==2.31.0
+
+# ── Machine learning ──────────────────────────────────────────────────────────
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+lightgbm>=4.0.0
+imbalanced-learn>=0.12.0   # SMOTE in pipeline.py
+joblib>=1.3.0
+
+# ── Experiment tracking ───────────────────────────────────────────────────────
+mlflow>=2.0.0
+
+# ── Visualisation (plots saved as artefacts) ──────────────────────────────────
+matplotlib>=3.8.0
+seaborn>=0.13.0

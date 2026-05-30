@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invest-ai-backend
+  namespace: invest-ai
+  labels:
+    app.kubernetes.io/name: invest-ai
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1   # increase to 2+ with a ReadWriteMany PVC (see pvc.yaml)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: invest-ai
+      app.kubernetes.io/component: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: invest-ai
+        app.kubernetes.io/component: backend
+    spec:
+      # ── Init container ───────────────────────────────────────────────────────
+      # On first deploy the PVC is empty. This container copies the model
+      # artefacts that were baked into the image into the shared PVC so the
+      # backend can serve predictions immediately without waiting for a pipeline
+      # run. On subsequent deploys the .seeded sentinel file prevents re-copying.
+      initContainers:
+        - name: seed-model-registry
+          image: invest-ai:latest   # replace with your registry/image:tag
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              # Create all runtime directories on the PVC
+              mkdir -p /data/data_pipelines /data/model_registry /data/mlruns
+
+              # Seed model artefacts from the image on first deploy only
+              if [ ! -f /data/model_registry/.seeded ]; then
+                echo "First deploy — seeding model_registry from image..."
+                SRC=/app/algorithms/machine_learning_algorithms/supervised/model_registry
+                if [ -d "$SRC" ] && [ "$(ls -A $SRC)" ]; then
+                  cp -r "$SRC/." /data/model_registry/
+                fi
+                touch /data/model_registry/.seeded
+                echo "Done."
+              else
+                echo "PVC already seeded — skipping."
+              fi
+          volumeMounts:
+            - name: invest-ai-data
+              mountPath: /data
+
+      # ── Main container ───────────────────────────────────────────────────────
+      containers:
+        - name: backend
+          image: invest-ai:latest   # replace with your registry/image:tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # Inject config + secrets as environment variables
+          envFrom:
+            - configMapRef:
+                name: invest-ai-config
+            - secretRef:
+                name: invest-ai-secrets
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "768Mi"     # FinBERT + Flask overhead
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+
+          # Wait for gunicorn + FinBERT to be ready (~15-20 s cold start)
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            failureThreshold: 3
+
+          # ── Volume mounts (PVC subPaths) ─────────────────────────────────────
+          # Each subPath is an isolated directory on the PVC, so mounting
+          # multiple subPaths from the same claim is safe.
+          volumeMounts:
+            # Feature CSVs written by the ETL pipeline
+            - name: invest-ai-data
+              mountPath: /app/algorithms/machine_learning_algorithms/data_pipelines
+              subPath: data_pipelines
+
+            # Trained model artefacts (read by predictor.py)
+            - name: invest-ai-data
+              mountPath: /app/algorithms/machine_learning_algorithms/supervised/model_registry
+              subPath: model_registry
+
+            # MLflow local tracking store (read by /api/mlflow/runs)
+            - name: invest-ai-data
+              mountPath: /app/mlruns
+              subPath: mlruns
+
+      volumes:
+        - name: invest-ai-data
+          persistentVolumeClaim:
+            claimName: invest-ai-data

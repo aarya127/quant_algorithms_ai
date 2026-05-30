@@ -1,0 +1,41 @@
+# Requires the nginx ingress controller to be installed.
+# Install: https://kubernetes.github.io/ingress-nginx/deploy/
+#
+# To use TLS, create a TLS secret and uncomment the tls section below:
+#   kubectl create secret tls invest-ai-tls \
+#     --cert=path/to/tls.crt --key=path/to/tls.key \
+#     --namespace invest-ai
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: invest-ai-ingress
+  namespace: invest-ai
+  labels:
+    app.kubernetes.io/name: invest-ai
+    app.kubernetes.io/component: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Increase proxy timeouts for long ML inference + pipeline requests
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    # Enable gzip compression for API responses
+    nginx.ingress.kubernetes.io/enable-compression: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: invest-ai.example.com   # replace with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: invest-ai-backend
+                port:
+                  name: http
+  # Uncomment to enable TLS:
+  # tls:
+  #   - hosts:
+  #       - invest-ai.example.com
+  #     secretName: invest-ai-tls

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: invest-ai-config
+  namespace: invest-ai
+  labels:
+    app.kubernetes.io/name: invest-ai
+    app.kubernetes.io/component: config
+data:
+  # Flask
+  FLASK_ENV: "production"
+  FLASK_DEBUG: "false"
+  PORT: "8080"
+  PYTHONUNBUFFERED: "1"
+  # Gunicorn: 2 workers per pod; HPA scales pods, not workers
+  GUNICORN_WORKERS: "2"

@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Persistent storage shared between the backend pods and the pipeline CronJob.
+#
+# Three subPaths are used:
+#   data_pipelines/   — feature CSVs written by the ETL/pipeline steps
+#   model_registry/   — serialised model artefacts (joblib .pkl + metadata)
+#   mlruns/           — MLflow experiment tracking data
+#
+# Storage class notes:
+#   • accessModes: ReadWriteOnce  → suitable for single-node clusters or if all
+#     backend replicas are scheduled on the same node (default for minikube / k3s).
+#   • For multi-node production clusters change accessModes to ReadWriteMany
+#     and set storageClassName to an RWX-capable class, e.g.:
+#       AWS EKS  → efs-sc   (EFS CSI driver)
+#       GKE      → standard-rwx
+#       Azure    → azurefile
+#       On-prem  → nfs-client (nfs-subdir-external-provisioner)
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: invest-ai-data
+  namespace: invest-ai
+  labels:
+    app.kubernetes.io/name: invest-ai
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce   # change to ReadWriteMany for multi-node / multi-replica
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: standard   # uncomment and set to your cluster's storage class
