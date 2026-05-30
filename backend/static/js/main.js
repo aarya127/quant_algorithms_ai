@@ -1501,12 +1501,13 @@ async function loadMLSignals() {
     const ticker = (document.getElementById('mlTicker')?.value || 'NVDA')
                    .trim().toUpperCase();
 
-    // Kick off all three fetches in parallel
+    // Kick off all four fetches in parallel (prediction, drift, registry, MLflow)
     const [predResp, driftResp, statusResp] = await Promise.allSettled([
         fetch(`/api/predict/${ticker}`),
         fetch(`/api/drift/${ticker}`),
         fetch('/api/model/status')
     ]);
+    loadMLflowRuns();  // fires independently (has its own loading state)
 
     // --- Prediction panel ---
     const predBody = document.getElementById('mlPredBody');
@@ -1654,6 +1655,84 @@ async function loadMLSignals() {
     } else {
         if (regBody) regBody.innerHTML =
             '<div class="p-3 text-muted small">Registry endpoint unavailable.</div>';
+    }
+}
+
+// ─── MLflow experiment history ────────────────────────────────────────────────
+
+async function loadMLflowRuns() {
+    const ticker  = (document.getElementById('mlTicker')?.value || 'NVDA').trim().toUpperCase();
+    const body    = document.getElementById('mlflowRunsBody');
+    const counter = document.getElementById('mlflowRunCount');
+
+    if (body) body.innerHTML = `
+        <div class="text-center text-muted py-3">
+            <div class="spinner-border spinner-border-sm me-1"></div> Loading…
+        </div>`;
+
+    try {
+        const resp = await fetch(`/api/mlflow/runs/${ticker}`);
+        const d    = await resp.json();
+
+        if (!d.success) {
+            if (body) body.innerHTML =
+                `<div class="p-3 alert alert-danger mb-0 small">${d.error}</div>`;
+            return;
+        }
+
+        const runs = d.runs || [];
+        if (counter) counter.textContent = runs.length ? `(${runs.length} runs)` : '';
+
+        if (runs.length === 0) {
+            if (body) body.innerHTML =
+                `<div class="p-3 text-muted small">${d.message || 'No runs yet. Run the pipeline first.'}</div>`;
+            return;
+        }
+
+        // Group runs by target → show best primary metric per target across all runs
+        const rows = runs.map(r => {
+            const target  = r.tags.target  || r.run_name.split('_v')[0] || '—';
+            const version = r.tags.version || '—';
+            const task    = r.tags.task    || '—';
+            const primary = task === 'regression' ? 'best_ic' : 'best_f1_w';
+            const score   = r.metrics[primary];
+            const model   = r.params.best_model || '—';
+            const nFeat   = r.params.n_features || '—';
+            const date    = r.run_name ? r.run_name.split('_').pop() : '—';
+            const scoreStr = score !== undefined ? (+score).toFixed(4) : '—';
+            const scoreCls = score !== undefined
+                ? (+score >= 0.3 ? 'text-success fw-semibold' : +score >= 0 ? '' : 'text-danger')
+                : '';
+            return `<tr>
+                <td class="small">${date}</td>
+                <td class="small fw-semibold">${target.replace('target_','')}</td>
+                <td class="small text-center"><span class="badge bg-secondary">${version}</span></td>
+                <td class="small">${model}</td>
+                <td class="small text-center">${nFeat}</td>
+                <td class="small text-end ${scoreCls}">${scoreStr}</td>
+            </tr>`;
+        }).join('');
+
+        const primaryLabel = 'Best metric (IC / F1_w)';
+        if (body) body.innerHTML = `
+            <div class="table-responsive" style="max-height:280px;overflow-y:auto;">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="sticky-top" style="background:#fff;">
+                        <tr>
+                            <th class="small">Date</th>
+                            <th class="small">Target</th>
+                            <th class="small text-center">Ver</th>
+                            <th class="small">Best model</th>
+                            <th class="small text-center">Features</th>
+                            <th class="small text-end">${primaryLabel}</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    } catch (e) {
+        if (body) body.innerHTML =
+            `<div class="p-3 text-muted small">MLflow data unavailable: ${e}</div>`;
     }
 }
 
