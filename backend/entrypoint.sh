@@ -16,13 +16,18 @@ if [ -d /app/mnt ]; then
     # Create subdirs on disk if they don't exist yet
     mkdir -p /app/mnt/data_pipelines /app/mnt/model_registry /app/mnt/mlruns
 
-    # On first deploy, seed the model_registry from the image so predictions
-    # work immediately without needing a pipeline run first.
+    # On first deploy, seed the model_registry AND data_pipelines from the image
+    # so predictions work immediately without needing a pipeline run first.
     if [ ! -f /app/mnt/.seeded ]; then
         SRC=/app/algorithms/machine_learning_algorithms/supervised/model_registry
         if [ -d "$SRC" ] && [ "$(ls -A $SRC 2>/dev/null)" ]; then
             echo "[entrypoint] Seeding model_registry from image (first deploy)..."
             cp -r "$SRC/." /app/mnt/model_registry/
+        fi
+        DSRC=/app/algorithms/machine_learning_algorithms/data_pipelines
+        if [ -d "$DSRC" ] && [ "$(ls -A $DSRC 2>/dev/null)" ]; then
+            echo "[entrypoint] Seeding data_pipelines from image (first deploy)..."
+            cp -r "$DSRC/." /app/mnt/data_pipelines/
         fi
         touch /app/mnt/.seeded
     fi
