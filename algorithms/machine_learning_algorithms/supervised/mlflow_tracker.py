@@ -39,9 +39,9 @@ except ImportError:
 
 from config import INIT_TRAIN, STEP, HOLDOUT_ROWS, LASSO_ALPHA, USE_TUNING
 
-# Local file-based tracking store — no separate MLflow server needed.
+# SQLite tracking store — required for MLflow 3.x traces/datasets/scorers features.
 _REPO_ROOT   = Path(__file__).resolve().parents[3]   # quant_algorithms_ai/
-TRACKING_URI = f"file://{_REPO_ROOT / 'mlruns'}"
+TRACKING_URI = f"sqlite:///{_REPO_ROOT / 'mlflow.db'}"
 
 
 def setup_experiment(ticker: str) -> bool:
@@ -106,6 +106,22 @@ def log_run(
             "n_features":   len(sel_features),
         })
 
+        # Dataset tracking — log the feature matrix so every run records what data trained it.
+        # Visible in MLflow UI under Evaluation > Datasets.
+        _features_csv = Path(__file__).resolve().parents[1] / "data_pipelines" / f"{ticker}_features_with_regimes.csv"
+        if _features_csv.exists():
+            try:
+                _df_feat = pd.read_csv(_features_csv, index_col=0)
+                _ds = mlflow.data.from_pandas(
+                    _df_feat,
+                    source=str(_features_csv),
+                    name=f"{ticker}_features_with_regimes",
+                    targets=target,
+                )
+                mlflow.log_input(_ds, context="training")
+            except Exception:
+                pass  # dataset logging is optional; never block a training run
+
         # ── CV metrics: mean & std of primary metric per model ────────────────
         fd = pd.DataFrame(fold_records)
         if not fd.empty and primary in fd.columns:
@@ -139,6 +155,28 @@ def log_run(
         if best_model_name is not None:
             mlflow.log_param("best_model", best_model_name)
             mlflow.log_metric(f"best_{primary}", round(float(best_val), 6))
+
+            # Evaluation run — fills MLflow UI Evaluation > Evaluation runs.
+            # Runs the default tabular evaluator on the best model's holdout predictions.
+            _best_res = holdout_res.get(best_model_name, {})
+            _y_true = _best_res.get("y_true")
+            _y_pred = _best_res.get("y_pred")
+            if _y_true is not None and _y_pred is not None and len(_y_true) > 0:
+                try:
+                    _eval_df = pd.DataFrame({
+                        "prediction": _y_pred.astype(float),
+                        "target":     _y_true.astype(float),
+                    })
+                    _mtype = "regressor" if task == "regression" else "classifier"
+                    mlflow.evaluate(
+                        data=_eval_df,
+                        targets="target",
+                        predictions="prediction",
+                        model_type=_mtype,
+                        evaluator_config={"log_model_explainability": False},
+                    )
+                except Exception:
+                    pass  # evaluation logging is optional; never block a training run
 
         # ── Artifact: selected feature list ───────────────────────────────────
         prefix = f"{target}_v{version}"

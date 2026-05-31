@@ -24,6 +24,8 @@ Exit codes:
 import os
 import sys
 import subprocess
+import datetime
+from contextlib import nullcontext
 from pathlib import Path
 
 TICKER = sys.argv[1].upper() if len(sys.argv) > 1 else "NVDA"
@@ -45,6 +47,17 @@ env = os.environ.copy()
 # Override by setting USE_TUNING=1 in the environment before calling.
 env.setdefault("USE_TUNING", "0")
 
+# MLflow tracing — best-effort; pipeline continues even if mlflow is absent or broken.
+# Each orchestrator run creates one root trace (visible in Observability > Traces)
+# with one child span per step so you can see where time is spent.
+try:
+    import mlflow as _mlflow
+    _mlflow.set_tracking_uri(f"sqlite:///{ROOT / 'mlflow.db'}")
+    _mlflow.set_experiment(TICKER)
+    _MLFLOW = _mlflow
+except Exception:
+    _MLFLOW = None
+
 
 def _run_step(name, cmd):
     """
@@ -52,39 +65,72 @@ def _run_step(name, cmd):
 
     Returns (returncode, up_to_date).
     Streams LOG: lines for each output line.
+    Each step is wrapped in an MLflow child span when tracing is available.
     """
     print(f"STEP:{name}:start", flush=True)
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        cwd=str(ROOT),
-        env=env,
-    )
-    up_to_date = False
-    for raw in proc.stdout:
-        line = raw.rstrip()
-        print(f"LOG:{line}", flush=True)
-        if name == "extract" and "already up to date" in line.lower():
-            up_to_date = True
-    proc.wait()
+    span_cm = _MLFLOW.start_span(name=name, span_type="TASK") if _MLFLOW else nullcontext()
+    with span_cm as span:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(ROOT),
+            env=env,
+        )
+        up_to_date = False
+        for raw in proc.stdout:
+            line = raw.rstrip()
+            print(f"LOG:{line}", flush=True)
+            if name == "extract" and "already up to date" in line.lower():
+                up_to_date = True
+        proc.wait()
+        if span is not None:
+            try:
+                span.set_inputs({"ticker": TICKER, "step": name})
+                span.set_outputs({"returncode": proc.returncode, "up_to_date": up_to_date})
+            except Exception:
+                pass
     return proc.returncode, up_to_date
 
 
-for step_name, step_cmd in STEPS:
-    rc, up_to_date = _run_step(step_name, step_cmd)
+def _run_pipeline():
+    """Execute all steps in order; return (status_str, exit_code)."""
+    for step_name, step_cmd in STEPS:
+        rc, up_to_date = _run_step(step_name, step_cmd)
 
-    if rc != 0:
-        print(f"STATUS:error:{step_name}", flush=True)
-        sys.exit(1)
+        if rc != 0:
+            print(f"STATUS:error:{step_name}", flush=True)
+            return "error", 1
 
-    print(f"STEP:{step_name}:done", flush=True)
+        print(f"STEP:{step_name}:done", flush=True)
 
-    if up_to_date:
-        # Feature data is already current for today.
-        # Skip retraining — the existing registry is still valid.
-        print("STATUS:up_to_date", flush=True)
-        sys.exit(0)
+        if up_to_date:
+            # Feature data is already current for today.
+            # Skip retraining — the existing registry is still valid.
+            print("STATUS:up_to_date", flush=True)
+            return "up_to_date", 0
 
-print("STATUS:done", flush=True)
+    print("STATUS:done", flush=True)
+    return "done", 0
+
+
+_today = datetime.date.today().isoformat()
+_root_cm = (
+    _MLFLOW.start_span(name=f"pipeline_{TICKER}_{_today}", span_type="CHAIN")
+    if _MLFLOW else nullcontext()
+)
+with _root_cm as _root_span:
+    if _root_span is not None:
+        try:
+            _root_span.set_inputs({"ticker": TICKER, "use_tuning": env["USE_TUNING"]})
+        except Exception:
+            pass
+    _status, _code = _run_pipeline()
+    if _root_span is not None:
+        try:
+            _root_span.set_outputs({"status": _status})
+        except Exception:
+            pass
+
+sys.exit(_code)

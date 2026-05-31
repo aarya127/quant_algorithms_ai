@@ -197,3 +197,11 @@ go.sum
 # Data files
 *.csv
 
+# MLflow — SQLite tracking DB and file-store artefacts are runtime data, not source
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
+mlruns/
+!mlruns/artifacts/
+!mlruns/artifacts/.gitkeep
+
