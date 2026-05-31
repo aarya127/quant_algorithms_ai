@@ -33,6 +33,65 @@ _SAVE_TARGETS = {
 _REG_PRIMARY = "ic"
 _CLF_PRIMARY = "f1_w"
 
+# ── Evaluation gate thresholds ────────────────────────────────────────────────
+# A new model must:
+#   1. Clear an absolute floor (prevents deploying near-random models)
+#   2. Beat the naive baseline by at least BASELINE_BEAT_RATIO
+#   3. Improve over the current production model by at least MIN_DELTA
+# Pass force=True to save_registry() to bypass checks (e.g. initial seed run).
+_MIN_ABSOLUTE = {
+    "regression":     0.02,   # IC > 0.02 (barely predictive, but not random)
+    "classification": 0.30,   # F1_w > 0.30 (well above majority-class baseline)
+}
+_MIN_DELTA = {
+    "regression":     0.005,  # IC must improve by ≥0.005 over production
+    "classification": 0.005,  # F1_w must improve by ≥0.005 over production
+}
+_BASELINE_BEAT_RATIO = 1.05   # must be ≥5% better than naive baseline
+
+
+def _promotion_gate(
+    new_val: float,
+    existing_val,           # float | None
+    baseline_val,           # float | None
+    task: str,
+    target: str,
+    primary: str,
+) -> tuple[bool, str]:
+    """
+    Multi-stage promotion gate.
+    Returns (passes: bool, log_line: str).
+    """
+    floor = _MIN_ABSOLUTE[task]
+    delta = _MIN_DELTA[task]
+
+    # Gate 1 — absolute floor
+    if new_val < floor:
+        return False, (
+            f"  ✗ GATE[floor]  {target:20s}  "
+            f"{primary}={new_val:.4f} < floor={floor:.3f}"
+        )
+
+    # Gate 2 — must beat naive baseline by ≥5%
+    if baseline_val is not None and baseline_val > 0:
+        required = baseline_val * _BASELINE_BEAT_RATIO
+        if new_val < required:
+            return False, (
+                f"  ✗ GATE[baseline]  {target:20s}  "
+                f"{primary}={new_val:.4f} baseline={baseline_val:.4f} need≥{required:.4f}"
+            )
+
+    # Gate 3 — must beat existing production model by MIN_DELTA
+    if existing_val is not None:
+        required = existing_val + delta
+        if new_val < required:
+            return False, (
+                f"  ↩ GATE[improvement]  {target:20s}  "
+                f"{primary}={new_val:.4f} existing={existing_val:.4f} need≥{required:.4f}"
+            )
+
+    return True, ""
+
 
 def _best_model(model_res, primary_metric):
     """Return (model_name, metric_value) for the best non-baseline model."""
@@ -48,7 +107,7 @@ def _best_model(model_res, primary_metric):
 
 # save
 
-def save_registry(all_holdout, ticker, registry_dir):
+def save_registry(all_holdout, ticker, registry_dir, force: bool = False):
     """
     Save best model per target to a local folder registry.
 
@@ -57,6 +116,7 @@ def save_registry(all_holdout, ticker, registry_dir):
     all_holdout  : dict  {(target, version): {model_name: result_dict}}
     ticker       : str
     registry_dir : Path-like  (e.g. supervised/model_registry)
+    force        : bool  — skip evaluation gates (use for initial seeding only)
     """
     reg_root   = Path(registry_dir) / ticker
     version    = "B"                                  # prefer version B
@@ -88,24 +148,41 @@ def save_registry(all_holdout, ticker, registry_dir):
         tgt_dir = reg_root / target
         tgt_dir.mkdir(parents=True, exist_ok=True)
 
-        # promotion gate — only overwrite registry if new model is strictly better
+        # ── Evaluation gate ──────────────────────────────────────────────────
         existing_meta_path = tgt_dir / "metadata.json"
+        existing_val   = None
+        existing_meta  = {}
         if existing_meta_path.exists():
             try:
                 existing_meta = json.loads(existing_meta_path.read_text())
                 existing_val  = float(existing_meta.get("metric_value", -np.inf))
-                if best_val <= existing_val:
-                    print(f"  ↩ {target:20s}  [{best_name:10s}  {primary}={best_val:.4f}]"
-                          f"  ← skipped (current={existing_val:.4f})")
+            except Exception:
+                pass  # unreadable metadata → treat as first registration
+
+        # Baseline score from model_res (the naive predictor trained alongside)
+        baseline_res = model_res.get("baseline", {})
+        baseline_val = baseline_res.get("metrics", {}).get(primary) if baseline_res else None
+
+        if not force:
+            passes, gate_msg = _promotion_gate(
+                new_val=best_val,
+                existing_val=existing_val,
+                baseline_val=baseline_val,
+                task=task,
+                target=target,
+                primary=primary,
+            )
+            if not passes:
+                print(gate_msg)
+                if existing_val is not None:
+                    # Keep the existing (better) model in active.json
                     active[target] = {
                         "path":         str(tgt_dir),
-                        "model_type":   existing_meta.get("model_type", best_name),
+                        "model_type":   existing_meta.get("model_type", "unknown"),
                         "metric_value": existing_val,
                         "created_at":   existing_meta.get("created_at", created_at),
                     }
-                    continue
-            except Exception:
-                pass  # unreadable metadata → proceed with save
+                continue
 
         joblib.dump(best_res["model_obj"], tgt_dir / "model.pkl")
 

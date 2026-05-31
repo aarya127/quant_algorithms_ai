@@ -1,0 +1,72 @@
+# CI — runs on every push and pull request
+#
+# Steps:
+#   1. Unit tests  — feature transforms, target construction, evaluation gate
+#   2. Integration — full clean→normalize pipeline on synthetic data + sklearn fit
+#
+# Heavy deps (torch, transformers, FinBERT) are intentionally excluded from CI.
+# The predictor smoke-test against a live server is reserved for the scheduled
+# daily-retrain workflow where a running Render instance is available.
+
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev", "**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies
+        run: |
+          pip install --upgrade pip
+          pip install --prefer-binary \
+            numpy pandas scipy \
+            scikit-learn xgboost lightgbm joblib \
+            pytest pytest-cov
+
+      - name: Run unit tests — transforms
+        run: |
+          pytest tests/test_transforms.py \
+            -v --tb=short \
+            --cov=tests --cov-report=term-missing
+
+      - name: Run unit tests — target construction
+        run: |
+          pytest tests/test_targets.py \
+            -v --tb=short
+
+      - name: Run unit tests — evaluation gate
+        run: |
+          pytest tests/test_evaluation_gate.py \
+            -v --tb=short
+
+      - name: Run integration tests — clean → normalize → sklearn fit
+        run: |
+          pytest tests/test_pipeline_integration.py \
+            -v --tb=short
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== Test Summary ==="
+          pytest tests/test_transforms.py \
+                 tests/test_targets.py \
+                 tests/test_evaluation_gate.py \
+                 tests/test_pipeline_integration.py \
+            --tb=no -q 2>&1 | tail -5
