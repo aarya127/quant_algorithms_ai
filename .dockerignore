@@ -15,8 +15,7 @@ build/
 # MLflow experiment data (runtime, not baked into image)
 mlruns/
 
-# Large runtime-generated data (written to PVC in Kubernetes)
-algorithms/machine_learning_algorithms/data_pipelines/
+# Pipeline output (large intermediate files not needed by the app)
 algorithms/machine_learning_algorithms/supervised/output/
 
 # Dev/test artifacts
