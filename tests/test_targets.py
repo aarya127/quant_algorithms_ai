@@ -11,7 +11,7 @@ import pytest
 FLAT_THRESHOLD = 0.005  # mirrors normalize.py
 
 
-# ─── Helper: replicate normalize.py target construction ──────────────────────
+# Helper: replicate normalize.py target construction
 
 def build_targets(log_ret: pd.Series) -> pd.DataFrame:
     df = pd.DataFrame({"log_return": log_ret})
@@ -29,7 +29,7 @@ def build_targets(log_ret: pd.Series) -> pd.DataFrame:
     return df
 
 
-# ─── Regression targets ───────────────────────────────────────────────────────
+# Regression targets
 
 class TestRegressionTargets:
     def test_target_1d_is_next_day_return(self):
@@ -64,7 +64,7 @@ class TestRegressionTargets:
         assert (vol.abs() < 1e-10).all()
 
 
-# ─── Direction target (3-class) ───────────────────────────────────────────────
+# Direction target (3-class)
 
 class TestDirectionTarget:
     def test_strong_up_labelled_1(self):
@@ -104,7 +104,7 @@ class TestDirectionTarget:
         assert len(counts) == 3, "Expected labels -1, 0, and 1 all to appear"
 
 
-# ─── No-lookahead integrity ───────────────────────────────────────────────────
+# No-lookahead integrity
 
 class TestNoLookahead:
     def test_target_1d_uses_future_return(self):

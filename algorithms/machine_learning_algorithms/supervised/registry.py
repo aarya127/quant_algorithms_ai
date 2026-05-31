@@ -33,7 +33,7 @@ _SAVE_TARGETS = {
 _REG_PRIMARY = "ic"
 _CLF_PRIMARY = "f1_w"
 
-# ── Evaluation gate thresholds ────────────────────────────────────────────────
+# Evaluation gate thresholds
 # A new model must:
 #   1. Clear an absolute floor (prevents deploying near-random models)
 #   2. Beat the naive baseline by at least BASELINE_BEAT_RATIO
@@ -148,7 +148,7 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False):
         tgt_dir = reg_root / target
         tgt_dir.mkdir(parents=True, exist_ok=True)
 
-        # ── Evaluation gate ──────────────────────────────────────────────────
+        # Evaluation gate
         existing_meta_path = tgt_dir / "metadata.json"
         existing_val   = None
         existing_meta  = {}

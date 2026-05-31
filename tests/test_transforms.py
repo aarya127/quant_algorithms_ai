@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 
-# ─── Helpers: replicate clean.py logic as pure functions ─────────────────────
+# Helpers: replicate clean.py logic as pure functions
 
 def apply_null_drop(df: pd.DataFrame, threshold: float = 0.50) -> pd.DataFrame:
     df = df.copy()
@@ -43,7 +43,7 @@ def full_clean(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ─── Null-drop ────────────────────────────────────────────────────────────────
+# Null-drop
 
 class TestNullDrop:
     def test_drops_column_above_threshold(self):
@@ -78,7 +78,7 @@ class TestNullDrop:
         assert "col" in apply_null_drop(df, threshold=0.50).columns
 
 
-# ─── Forward / back fill ─────────────────────────────────────────────────────
+# Forward / back fill
 
 class TestFfillBfill:
     def test_ffill_within_limit(self):
@@ -109,7 +109,7 @@ class TestFfillBfill:
         assert filled.iloc[2] == 7.0   # within limit
 
 
-# ─── Median fill ──────────────────────────────────────────────────────────────
+# Median fill
 
 class TestMedianFill:
     def test_fills_null_with_median(self):
@@ -133,7 +133,7 @@ class TestMedianFill:
         pd.testing.assert_series_equal(result["col"], df["col"])
 
 
-# ─── Zero-variance drop ───────────────────────────────────────────────────────
+# Zero-variance drop
 
 class TestZeroVarianceDrop:
     def test_drops_constant_column(self):
@@ -159,7 +159,7 @@ class TestZeroVarianceDrop:
         assert "col" in result.columns
 
 
-# ─── Full pipeline end-to-end ─────────────────────────────────────────────────
+# Full pipeline end-to-end
 
 class TestFullCleanPipeline:
     def test_no_nulls_in_final_output(self):

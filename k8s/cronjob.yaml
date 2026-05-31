@@ -75,7 +75,7 @@ spec:
                   cpu: "2000m"
                   memory: "3Gi"
 
-              # ── Volume mounts — same PVC subPaths as backend ─────────────────
+              # Volume mounts — same PVC subPaths as backend
               volumeMounts:
                 - name: invest-ai-data
                   mountPath: /app/algorithms/machine_learning_algorithms/data_pipelines

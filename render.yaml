@@ -38,7 +38,7 @@ services:
       sizeGB: 5
 
     envVars:
-      # ── App config (non-secret) ────────────────────────────────────────────
+      # App config (non-secret)
       - key: PORT
         value: "8080"
       - key: FLASK_ENV
@@ -48,7 +48,7 @@ services:
       - key: GUNICORN_WORKERS
         value: "2"
 
-      # ── Secrets — set these in the Render dashboard, NOT here ────────────
+      # Secrets — set these in the Render dashboard, NOT here
       # (sync: false means Render will prompt you to fill them in)
       - key: FINNHUB_API_KEY
         sync: false
