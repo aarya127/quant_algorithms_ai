@@ -1,4 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────────────
 # Dockerfile.pipeline — ML training image
 #
 # Runs the 5-step retraining pipeline via orchestrator.py:
@@ -11,7 +10,6 @@
 #
 # Typical build time:  ~3 min    (vs ~15 min for the app image)
 # Typical image size:  ~900 MB   (vs ~3.5 GB for the app image)
-# ─────────────────────────────────────────────────────────────────────────────
 
 FROM python:3.11-slim
 
@@ -21,17 +19,17 @@ LABEL org.opencontainers.image.title="Invest.ai ML Pipeline" \
 
 WORKDIR /app
 
-# ── System deps needed by LightGBM / matplotlib ───────────────────────────────
+# System deps needed by LightGBM / matplotlib
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python deps (layer-cached) ────────────────────────────────────────────────
+# Python deps (layer-cached)
 COPY requirements-pipeline.txt .
 RUN pip install --no-cache-dir --prefer-binary -r requirements-pipeline.txt
 
-# ── Application code ──────────────────────────────────────────────────────────
+# Application code
 COPY . .
 
 # Ensure runtime output directories exist (overridden by PVC mounts in K8s)
@@ -41,12 +39,12 @@ RUN mkdir -p \
     /app/algorithms/machine_learning_algorithms/supervised/output/monitoring \
     /app/mlruns
 
-# ── Smoke-test ────────────────────────────────────────────────────────────────
+# Smoke-test
 RUN python3 -c "\
 import sklearn, xgboost, lightgbm, mlflow, imblearn, matplotlib; \
 print('pipeline imports OK')"
 
-# ── Default entrypoint ────────────────────────────────────────────────────────
+# Default entrypoint
 # Pass the ticker as CMD arg, e.g.:
 #   docker run invest-ai-pipeline:latest NVDA
 # In Kubernetes the CronJob spec overrides args: ["NVDA"]
