@@ -6,7 +6,7 @@ Isolates the gate as a pure function — no disk, no models needed.
 """
 import pytest
 
-# ─── Gate constants (must match registry.py) ─────────────────────────────────
+# Gate constants (must match registry.py)
 
 _MIN_ABSOLUTE = {
     "regression":     0.02,   # IC must be > 0.02 to be worth deploying
@@ -55,7 +55,7 @@ def evaluate_gate(
     return True, "passed"
 
 
-# ─── Absolute floor ───────────────────────────────────────────────────────────
+# Absolute floor
 
 class TestAbsoluteFloor:
     def test_regression_below_floor_blocked(self):
@@ -88,7 +88,7 @@ class TestAbsoluteFloor:
         assert "below_floor" in reason  # floor check takes priority
 
 
-# ─── Baseline beat ────────────────────────────────────────────────────────────
+# Baseline beat
 
 class TestBaselineBeat:
     def test_barely_beats_baseline_blocked(self):
@@ -116,7 +116,7 @@ class TestBaselineBeat:
         assert passes
 
 
-# ─── Improvement over existing ────────────────────────────────────────────────
+# Improvement over existing
 
 class TestImprovementGate:
     def test_same_score_as_existing_blocked(self):
@@ -152,7 +152,7 @@ class TestImprovementGate:
         assert not passes
 
 
-# ─── Combined / realistic scenarios ──────────────────────────────────────────
+# Combined / realistic scenarios
 
 class TestRealisticScenarios:
     def test_strong_new_regime_model_passes(self):

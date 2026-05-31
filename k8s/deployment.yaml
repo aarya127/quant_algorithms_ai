@@ -23,7 +23,7 @@ spec:
         app.kubernetes.io/name: invest-ai
         app.kubernetes.io/component: backend
     spec:
-      # ── Init container ───────────────────────────────────────────────────────
+      # Init container
       # On first deploy the PVC is empty. This container copies the model
       # artefacts that were baked into the image into the shared PVC so the
       # backend can serve predictions immediately without waiting for a pipeline
@@ -55,7 +55,7 @@ spec:
             - name: invest-ai-data
               mountPath: /data
 
-      # ── Main container ───────────────────────────────────────────────────────
+      # Main container
       containers:
         - name: backend
           image: invest-ai:latest   # replace with your registry/image:tag
@@ -98,7 +98,7 @@ spec:
             periodSeconds: 20
             failureThreshold: 3
 
-          # ── Volume mounts (PVC subPaths) ─────────────────────────────────────
+          # Volume mounts (PVC subPaths)
           # Each subPath is an isolated directory on the PVC, so mounting
           # multiple subPaths from the same claim is safe.
           volumeMounts:

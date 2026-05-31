@@ -10,7 +10,7 @@ import pytest
 from pathlib import Path
 
 
-# ─── Synthetic data fixture ───────────────────────────────────────────────────
+# Synthetic data fixture
 
 N = 80   # enough rows for rolling-20 windows and 5-day forward targets
 
@@ -59,7 +59,7 @@ def make_synthetic_features(n: int = N, seed: int = 42) -> pd.DataFrame:
     return df
 
 
-# ─── Pipeline helpers (mirror clean.py / normalize.py) ───────────────────────
+# Pipeline helpers (mirror clean.py / normalize.py)
 
 def run_clean(df: pd.DataFrame, null_threshold: float = 0.50) -> pd.DataFrame:
     df = df.copy()
@@ -98,7 +98,7 @@ def run_normalize(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ─── Clean step tests ─────────────────────────────────────────────────────────
+# Clean step tests
 
 class TestCleanStep:
     def test_dead_feed_removed(self):
@@ -137,7 +137,7 @@ class TestCleanStep:
         assert np.isfinite(numeric.values).all(), "Non-finite values after clean"
 
 
-# ─── Normalize step tests ─────────────────────────────────────────────────────
+# Normalize step tests
 
 class TestNormalizeStep:
     def test_all_targets_created(self):
@@ -180,7 +180,7 @@ class TestNormalizeStep:
         assert vals.issubset({0.0, 1.0}), f"large_move not binary: {vals}"
 
 
-# ─── End-to-end pipeline correctness ─────────────────────────────────────────
+# End-to-end pipeline correctness
 
 class TestEndToEnd:
     def test_pipeline_produces_usable_ml_dataset(self):

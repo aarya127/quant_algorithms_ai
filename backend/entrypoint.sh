@@ -1,5 +1,4 @@
 #!/bin/sh
-# ─────────────────────────────────────────────────────────────────────────────
 # Render Disk support
 #
 # On Render, a persistent disk is mounted at /app/mnt (configured in render.yaml).
@@ -9,7 +8,6 @@
 #
 # On every other environment (local Docker, Kubernetes) /app/mnt won't exist
 # and the block below is a no-op — paths fall back to the image directories.
-# ─────────────────────────────────────────────────────────────────────────────
 if [ -d /app/mnt ]; then
     echo "[entrypoint] Render disk detected at /app/mnt — setting up persistent paths..."
 

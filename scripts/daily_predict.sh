@@ -24,13 +24,13 @@ echo " Daily retrain — $(date '+%Y-%m-%d %H:%M:%S')"
 echo " Ticker : $TICKER"
 echo "========================================"
 
-# ── Step 1: full pipeline retrain ────────────────────────────────────────────
+# Step 1: full pipeline retrain
 echo "[1/2] Running supervised pipeline (USE_TUNING=1)..."
 cd "$SUPERVISED"
 USE_TUNING=1 "$PYTHON" supervised.py "$TICKER"
 echo "      Pipeline complete."
 
-# ── Step 2: log latest prediction ────────────────────────────────────────────
+# Step 2: log latest prediction
 echo "[2/2] Logging latest prediction..."
 cd "$PROJECT_DIR"
 "$PYTHON" - <<PYEOF

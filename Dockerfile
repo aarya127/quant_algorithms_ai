@@ -6,12 +6,12 @@ LABEL org.opencontainers.image.title="Invest.ai Backend" \
 
 WORKDIR /app
 
-# ── System deps needed by LightGBM (OpenMP) ──────────────────────────────────
+# System deps needed by LightGBM (OpenMP)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python deps (layer-cached) ────────────────────────────────────────────────
+# Python deps (layer-cached)
 COPY backend/requirements.txt .
 
 # CPU-only PyTorch (~180 MB vs the default 2.5 GB CUDA wheel)
@@ -20,14 +20,14 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # All remaining backend + ML inference dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ── FinBERT weights (bake in so first request doesn't block on 440 MB download)
+# FinBERT weights (bake in so first request doesn't block on 440 MB download)
 RUN python3 -c "\
 from transformers import AutoTokenizer, AutoModelForSequenceClassification; \
 AutoTokenizer.from_pretrained('ProsusAI/finbert'); \
 AutoModelForSequenceClassification.from_pretrained('ProsusAI/finbert'); \
 print('FinBERT pre-downloaded')"
 
-# ── Application code ──────────────────────────────────────────────────────────
+# Application code
 COPY . .
 
 WORKDIR /app/backend
