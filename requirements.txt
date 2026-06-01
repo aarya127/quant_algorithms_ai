@@ -11,6 +11,10 @@ websockets==15.0.1
 mlflow>=2.0.0
 scipy>=1.11.0
 
+# AI Platform — LLM providers (install whichever you use)
+openai>=1.30.0          # OpenAI GPT-4o  (also used for NVIDIA NIM endpoint)
+anthropic>=0.25.0       # Anthropic Claude (optional; install if ANTHROPIC_API_KEY is set)
+
 # C++ integration
 pybind11>=2.11.0
 

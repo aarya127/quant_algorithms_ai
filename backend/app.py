@@ -102,7 +102,9 @@ try:
         get_stock_quote
     )
     from data.alphavantage import AlphaVantage
-    from data.nvidia_llm import get_company_overview_llm
+    from ai.nvidia_llm import get_company_overview_llm
+    from ai.llm_router import chat_completion, stream_completion, active_provider
+    from ai.signal_narrator import narrate_predictions
     from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data, get_technical_indicators
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
     from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
@@ -555,32 +557,21 @@ def stock_details(symbol):
 
 @app.route('/api/ai-overview/<symbol>')
 def get_ai_overview(symbol):
-    """Get AI-generated company overview (loads separately for speed)"""
+    """Get AI-generated company overview (streams separately for speed)"""
     try:
-        # TEMPORARILY DISABLED: NVIDIA API is too slow/unreliable
-        # Uncomment below to re-enable AI overviews
-        
-        # Get company profile to get the full name
         company = get_company_profile(symbol.upper())
         company_name = company.get('name', symbol.upper()) if company else symbol.upper()
-        
-        # Generate AI overview (DISABLED - uncomment to enable)
-        # ai_overview = get_company_overview_llm(company_name, symbol.upper())
-        
-        # Return basic company description instead of AI overview
+        ai_overview = get_company_overview_llm(company_name, symbol.upper())
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
-            'ai_overview': None,  # Disabled for speed
-            'message': 'AI overview feature temporarily disabled for faster loading. Enable in app.py if needed.'
+            'company_name': company_name,
+            'ai_overview': ai_overview,
+            'provider': active_provider() if _DATA_MODULES_LOADED else None,
         })
-        
     except Exception as e:
         print(f"❌ Error generating AI overview for {symbol}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/backtest', methods=['POST'])
 def run_backtest_api():
@@ -1964,6 +1955,162 @@ def api_pipeline_status(job_id):
     if job is None:
         return jsonify({"success": False, "error": "job not found"}), 404
     return jsonify({"success": True, **job})
+
+
+# ---------------------------------------------------------------------------
+# AI Platform endpoints
+# ---------------------------------------------------------------------------
+
+@app.route('/api/narrate/<symbol>')
+def api_narrate(symbol):
+    """
+    GET /api/narrate/<symbol>
+    Returns an LLM-generated prose brief of the latest ML signals for symbol.
+    Optionally accepts ?price=<float> query param for the current price.
+    """
+    if not _DATA_MODULES_LOADED:
+        return jsonify({'success': False, 'error': 'data modules not loaded'}), 503
+    try:
+        from backend.predictor import predict_latest  # noqa: F401
+    except ImportError:
+        pass
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+        from backend.predictor import predict_latest as _predict
+    except ImportError:
+        try:
+            from predictor import predict_latest as _predict
+        except ImportError:
+            return jsonify({'success': False, 'error': 'predictor not available'}), 500
+
+    try:
+        sym   = symbol.upper()
+        preds = _predict(sym)
+        price = request.args.get('price', type=float)
+
+        # Pull sentiment score from cache-friendly path
+        sent_score = None
+        try:
+            analyzer   = StockAnalyzer(sym)
+            sent_data  = analyzer.get_comprehensive_sentiment()
+            sent_score = sent_data.get('consensus', {}).get('score')
+        except Exception:
+            pass
+
+        text = narrate_predictions(sym, preds, sentiment_score=sent_score, current_price=price)
+        return jsonify({
+            'success':   True,
+            'symbol':    sym,
+            'narrative': text,
+            'signal':    preds.get('signal'),
+            'confidence': preds.get('confidence'),
+            'provider':  active_provider(),
+        })
+    except FileNotFoundError:
+        return jsonify({'success': False, 'error': 'No model registry found — run the pipeline first'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/chat', methods=['POST'])
+def api_chat():
+    """
+    POST /api/chat
+    Body: { "symbol": "NVDA", "message": "Why is NVDA bullish?", "history": [...] }
+
+    Injects live market context (quote, predictions, sentiment) as a system
+    prompt, then streams the LLM response via Server-Sent Events so the UI
+    can display tokens as they arrive.
+
+    history format: [{"role": "user"|"assistant", "content": "..."}]
+    """
+    if not _DATA_MODULES_LOADED:
+        return jsonify({'success': False, 'error': 'data modules not loaded'}), 503
+
+    body    = request.get_json(force=True, silent=True) or {}
+    symbol  = body.get('symbol', '').upper().strip()
+    message = body.get('message', '').strip()
+    history = body.get('history', [])
+
+    if not message:
+        return jsonify({'success': False, 'error': 'message is required'}), 400
+
+    # Validate inputs
+    if len(message) > 2000:
+        return jsonify({'success': False, 'error': 'message too long (max 2000 chars)'}), 400
+    if len(history) > 20:
+        history = history[-20:]  # cap context window
+
+    # Build system context from live data
+    context_lines = ["You are an AI financial analyst for Invest.ai, an institutional trading terminal."]
+    if symbol:
+        context_lines.append(f"The user is currently analysing: {symbol}")
+        try:
+            quote = _cached_get_stock_quote(symbol)
+            if quote:
+                price = quote.get('c') or quote.get('current_price')
+                if price:
+                    context_lines.append(f"Current price: ${price:.2f}")
+        except Exception:
+            pass
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+            try:
+                from backend.predictor import predict_latest as _predict_ctx
+            except ImportError:
+                from predictor import predict_latest as _predict_ctx
+            preds = _predict_ctx(symbol)
+            p = preds.get('predictions', {})
+            if p.get('predicted_5d_return') is not None:
+                context_lines.append(
+                    f"ML signals — 5d return forecast: {p['predicted_5d_return']*100:+.2f}%, "
+                    f"signal: {preds.get('signal', 'n/a')}, confidence: {preds.get('confidence', 'n/a')}"
+                )
+            if p.get('predicted_regime') is not None:
+                labels = {0: 'bear', 1: 'neutral', 2: 'bull'}
+                context_lines.append(f"Regime: {labels.get(p['predicted_regime'], 'unknown')}")
+        except Exception:
+            pass
+
+    context_lines += [
+        "Answer in a clear, professional tone. Cite figures when available.",
+        "Do not fabricate data. If you lack information, say so.",
+    ]
+    system_prompt = "\n".join(context_lines)
+
+    # Assemble message list: history + new user message
+    messages = [{"role": r["role"], "content": r["content"]}
+                for r in history
+                if r.get("role") in ("user", "assistant") and r.get("content")]
+    messages.append({"role": "user", "content": message})
+
+    def generate():
+        try:
+            for chunk in stream_completion(
+                messages,
+                system=system_prompt,
+                max_tokens=800,
+                temperature=0.3,
+            ):
+                # SSE format
+                yield f"data: {json.dumps({'delta': chunk})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+@app.route('/api/llm/status')
+def api_llm_status():
+    """Quick health check — which LLM provider is configured."""
+    prov = active_provider() if _DATA_MODULES_LOADED else None
+    return jsonify({
+        'success':  True,
+        'provider': prov,
+        'ready':    prov is not None,
+    })
 
 
 if __name__ == '__main__':
