@@ -94,6 +94,17 @@ def _run_step(name, cmd):
     return proc.returncode, up_to_date
 
 
+def _run_judge(ticker: str) -> None:
+    """Best-effort LLM-as-judge evaluation; never blocks the pipeline."""
+    try:
+        import importlib, sys as _sys
+        _sys.path.insert(0, str(ROOT))
+        judge_mod = importlib.import_module("ai.llm_judge")
+        judge_mod.run_judge(ticker)
+    except Exception as exc:
+        print(f"LOG:LLM judge skipped ({exc})", flush=True)
+
+
 def _run_pipeline():
     """Execute all steps in order; return (status_str, exit_code)."""
     for step_name, step_cmd in STEPS:
@@ -110,6 +121,9 @@ def _run_pipeline():
             # Skip retraining — the existing registry is still valid.
             print("STATUS:up_to_date", flush=True)
             return "up_to_date", 0
+
+    # Run LLM-as-judge after a successful supervised retrain
+    _run_judge(TICKER)
 
     print("STATUS:done", flush=True)
     return "done", 0

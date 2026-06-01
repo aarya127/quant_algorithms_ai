@@ -398,6 +398,11 @@ function createNewsCard(news, index) {
 async function loadStockDetails(symbol) {
     currentStock = symbol;
     
+    // Expose symbol globally so the AI chat widget can reference it
+    window.currentSymbol = symbol;
+    // Fire event for AI narration / overview panels
+    document.dispatchEvent(new CustomEvent('symbolChanged', { detail: { symbol } }));
+    
     console.log(`\n========================================`);
     console.log(`LOADING DATA FOR: ${symbol}`);
     console.log(`========================================\n`);
