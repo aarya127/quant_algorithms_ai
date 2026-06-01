@@ -102,9 +102,9 @@ try:
         get_stock_quote
     )
     from data.alphavantage import AlphaVantage
-    from ai.nvidia_llm import get_company_overview_llm
-    from ai.llm_router import chat_completion, stream_completion, active_provider
-    from ai.signal_narrator import narrate_predictions
+    from ai_platform.nvidia_llm import get_company_overview_llm
+    from ai_platform.llm_router import chat_completion, stream_completion, active_provider
+    from ai_platform.signal_narrator import narrate_predictions
     from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data, get_technical_indicators
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
     from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
@@ -303,7 +303,8 @@ def indices_history():
 # ---------------------------------------------------------------------------
 
 try:
-    from predictor import predict_latest, check_drift, model_status as _model_status
+    from predictor import (predict_latest, check_drift, model_status as _model_status,
+                            compute_model_drift, backfill_actuals)
     _PREDICTOR_LOADED = True
 except Exception as _pred_err:
     _PREDICTOR_LOADED = False
@@ -350,6 +351,28 @@ def api_drift(ticker):
     ticker = ticker.upper().strip()
     try:
         report = check_drift(ticker)
+        return jsonify({'success': True, **report})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/model/drift/<ticker>')
+def api_model_drift(ticker):
+    """
+    Return a model drift report: rolling IC on realized prediction-actual pairs.
+
+    GET /api/model/drift/NVDA
+    Response:
+      { ticker, n_observations, n_with_actuals, rolling_window,
+        rolling_ic_1d, rolling_ic_5d, registered_ic_1d, registered_ic_5d,
+        drift_status, message }
+      drift_status: "ok" | "warning" | "degraded" | "insufficient_data"
+    """
+    if not _PREDICTOR_LOADED:
+        return jsonify({'success': False, 'error': 'predictor not available'}), 503
+    ticker = ticker.upper().strip()
+    try:
+        report = compute_model_drift(ticker)
         return jsonify({'success': True, **report})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1911,6 +1934,15 @@ def _run_pipeline_thread(job_id: str, ticker: str) -> None:
     job["current_step"] = None
     job["done_at"] = datetime.datetime.utcnow().isoformat() + "Z"
 
+    # Backfill realized returns so model drift is fresh after every retrain
+    if _PREDICTOR_LOADED and job.get("status") in ("done", "up_to_date"):
+        try:
+            n = backfill_actuals(ticker)
+            if n > 0:
+                job["log"].append(f"[backfill] filled {n} prediction-actual pair(s)")
+        except Exception:
+            pass
+
 
 @app.route('/api/pipeline/run', methods=['POST'])
 def api_pipeline_run():
@@ -1955,6 +1987,36 @@ def api_pipeline_status(job_id):
     if job is None:
         return jsonify({"success": False, "error": "job not found"}), 404
     return jsonify({"success": True, **job})
+
+
+@app.route('/api/pipeline/rollback', methods=['POST'])
+def api_pipeline_rollback():
+    """
+    Roll back all models for a ticker to the previous snapshot.
+
+    POST /api/pipeline/rollback
+    Body: { "ticker": "NVDA" }
+    Response:
+      { success, ticker, rolled_back: [...], results: {target: message} }
+
+    Each save_registry() call backs up the current model to {target}/prev/
+    before overwriting.  This endpoint restores from that snapshot so
+    predictor.py immediately uses the previous models without retraining.
+    """
+    body   = request.get_json(silent=True) or {}
+    ticker = str(body.get("ticker", "NVDA")).upper().strip()
+    if not ticker.isalpha() or len(ticker) > 10:
+        return jsonify({"success": False, "error": "invalid ticker symbol"}), 400
+
+    try:
+        sys.path.insert(0, str(_ML_ORCH.parent / "supervised"))
+        from registry import rollback_registry
+        result = rollback_registry(ticker, _ML_ORCH.parent / "supervised" / "model_registry")
+        if "error" in result:
+            return jsonify({"success": False, **result}), 404
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ---------------------------------------------------------------------------

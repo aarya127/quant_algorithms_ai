@@ -7,12 +7,14 @@ Used by backend/app.py to power:
   GET /api/model/status
 """
 
+import os
 import sys
 import json
 import datetime
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from scipy.stats import spearmanr
 
 _HERE        = Path(__file__).parent                          # backend/
 _PROJECT     = _HERE.parent                                   # project root
@@ -26,6 +28,26 @@ sys.path.insert(0, str(_SUPERVISED))
 from registry import load_registry   # noqa: E402
 
 _DRIFT_Z_THRESH = 3.0
+_MODEL_DRIFT_IC_DROP = 0.10   # flag when rolling IC falls this far below registered IC
+_MODEL_DRIFT_MIN_OBS = 10     # minimum realized pairs needed before computing rolling IC
+
+
+# Alerting
+
+def _notify(subject: str, body: dict) -> None:
+    """
+    POST an alert to ALERT_WEBHOOK_URL (Slack incoming webhook, Make.com, etc.).
+    Fires on data drift, model drift, or pipeline failures.
+    Silently no-ops when the env var is unset or the HTTP call fails.
+    """
+    url = os.environ.get("ALERT_WEBHOOK_URL", "").strip()
+    if not url:
+        return
+    try:
+        import requests as _req
+        _req.post(url, json={"text": subject, **body}, timeout=5)
+    except Exception:
+        pass
 
 
 # internal helpers
@@ -223,6 +245,12 @@ def check_drift(ticker: str) -> dict:
     (_MONITORING / f"drift_report_{ticker}_latest.json").write_text(
         json.dumps(report, indent=2))
 
+    if drift_flags:
+        _notify(
+            f"[{ticker}] Data drift detected: {len(drift_flags)} feature(s) out of range",
+            report,
+        )
+
     return report
 
 
@@ -295,3 +323,171 @@ def _log_prediction(pred: dict) -> None:
     else:
         combined = row_df
     combined.to_csv(_PRED_LOG, index=False)
+
+
+# Model drift — backfill actuals + rolling IC
+
+def backfill_actuals(ticker: str) -> int:
+    """
+    Fill in actual_1d_return / actual_5d_return in prediction_log.csv using
+    realized log returns from the features CSV.
+
+    Called automatically by compute_model_drift() and check_drift().
+    Returns the number of rows updated.
+    """
+    if not _PRED_LOG.exists():
+        return 0
+
+    log = pd.read_csv(_PRED_LOG, dtype=str)
+    if log.empty or "ticker" not in log.columns:
+        return 0
+
+    try:
+        feat = _features_df(ticker)
+    except FileNotFoundError:
+        return 0
+
+    if "log_return" not in feat.columns:
+        return 0
+
+    feat = feat[["Date", "log_return"]].copy()
+    feat["Date"] = pd.to_datetime(feat["Date"])
+    feat = feat.sort_values("Date").reset_index(drop=True)
+
+    n_updated = 0
+    for idx, row in log.iterrows():
+        if row.get("ticker") != ticker:
+            continue
+        # skip rows already filled
+        a1 = str(row.get("actual_1d_return", "")).strip()
+        if a1 not in ("", "None", "nan"):
+            continue
+
+        try:
+            pred_date = pd.Timestamp(row["date"])
+        except Exception:
+            continue
+
+        future = feat[feat["Date"] > pred_date].reset_index(drop=True)
+        if future.empty:
+            continue   # actual not yet available
+
+        actual_1d = float(future.iloc[0]["log_return"])
+        log.at[idx, "actual_1d_return"] = round(actual_1d, 6)
+
+        if len(future) >= 5:
+            actual_5d = float(future.iloc[:5]["log_return"].sum())
+            log.at[idx, "actual_5d_return"] = round(actual_5d, 6)
+
+        n_updated += 1
+
+    if n_updated > 0:
+        log.to_csv(_PRED_LOG, index=False)
+
+    return n_updated
+
+
+def compute_model_drift(ticker: str, window: int = 20) -> dict:
+    """
+    Compute rolling Spearman IC on realized prediction-actual pairs.
+
+    Returns:
+    {
+      ticker, n_observations, n_with_actuals, rolling_window,
+      rolling_ic_1d, rolling_ic_5d,
+      registered_ic_1d, registered_ic_5d,   # IC stored in model registry
+      drift_status,   # "ok" | "warning" | "degraded" | "insufficient_data"
+      message
+    }
+    """
+    backfill_actuals(ticker)   # always refresh before computing
+
+    if not _PRED_LOG.exists():
+        return {"ticker": ticker, "drift_status": "insufficient_data",
+                "message": "No prediction log found"}
+
+    log = pd.read_csv(_PRED_LOG, dtype=str)
+    tlog = log[log["ticker"] == ticker].copy()
+
+    for col in ["actual_1d_return", "actual_5d_return",
+                "pred_1d_return", "pred_5d_return"]:
+        tlog[col] = pd.to_numeric(tlog[col], errors="coerce")
+
+    filled_1d = tlog.dropna(subset=["pred_1d_return", "actual_1d_return"])
+    filled_5d = tlog.dropna(subset=["pred_5d_return", "actual_5d_return"])
+    n_with_actuals = len(filled_1d)
+
+    rolling_ic_1d = rolling_ic_5d = None
+
+    if len(filled_1d) >= _MODEL_DRIFT_MIN_OBS:
+        r1d = filled_1d.tail(window)
+        ic, _ = spearmanr(r1d["pred_1d_return"], r1d["actual_1d_return"])
+        rolling_ic_1d = round(float(ic), 4)
+
+    if len(filled_5d) >= _MODEL_DRIFT_MIN_OBS:
+        r5d = filled_5d.tail(window)
+        ic, _ = spearmanr(r5d["pred_5d_return"], r5d["actual_5d_return"])
+        rolling_ic_5d = round(float(ic), 4)
+
+    # pull registered ICs from model registry
+    registered_ic_1d = registered_ic_5d = None
+    for tgt, attr in [("target_1d", "registered_ic_1d"),
+                      ("target_5d", "registered_ic_5d")]:
+        try:
+            reg = load_registry(ticker, _REGISTRY, target=tgt)
+            if attr == "registered_ic_1d":
+                registered_ic_1d = reg["metadata"].get("metric_value")
+            else:
+                registered_ic_5d = reg["metadata"].get("metric_value")
+        except FileNotFoundError:
+            pass
+
+    # classify drift status
+    if n_with_actuals < _MODEL_DRIFT_MIN_OBS:
+        drift_status = "insufficient_data"
+        message = f"Only {n_with_actuals} realized pairs (need ≥{_MODEL_DRIFT_MIN_OBS})"
+    else:
+        drop_flags = []
+        if rolling_ic_1d is not None and registered_ic_1d is not None:
+            if rolling_ic_1d < registered_ic_1d - _MODEL_DRIFT_IC_DROP:
+                drop_flags.append(
+                    f"1d IC {rolling_ic_1d:.3f} vs registered {registered_ic_1d:.3f}")
+        if rolling_ic_5d is not None and registered_ic_5d is not None:
+            if rolling_ic_5d < registered_ic_5d - _MODEL_DRIFT_IC_DROP:
+                drop_flags.append(
+                    f"5d IC {rolling_ic_5d:.3f} vs registered {registered_ic_5d:.3f}")
+
+        if drop_flags:
+            drift_status = "degraded"
+            message = "Performance degraded: " + "; ".join(drop_flags)
+        elif rolling_ic_1d is not None and rolling_ic_1d < 0:
+            drift_status = "warning"
+            message = f"Negative rolling 1d IC ({rolling_ic_1d:.3f})"
+        else:
+            drift_status = "ok"
+            message = "Model performance within expected range"
+
+    report = {
+        "ticker":           ticker,
+        "n_observations":   len(tlog),
+        "n_with_actuals":   n_with_actuals,
+        "rolling_window":   window,
+        "rolling_ic_1d":    rolling_ic_1d,
+        "rolling_ic_5d":    rolling_ic_5d,
+        "registered_ic_1d": registered_ic_1d,
+        "registered_ic_5d": registered_ic_5d,
+        "drift_status":     drift_status,
+        "message":          message,
+    }
+
+    _MONITORING.mkdir(parents=True, exist_ok=True)
+    (_MONITORING / f"model_drift_{ticker}_latest.json").write_text(
+        json.dumps(report, indent=2))
+
+    if drift_status in ("degraded", "warning"):
+        _notify(
+            f"[{ticker}] Model drift detected: {drift_status.upper()} — {message}",
+            report,
+        )
+
+    return report

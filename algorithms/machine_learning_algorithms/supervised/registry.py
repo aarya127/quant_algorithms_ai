@@ -16,6 +16,7 @@ Directory layout:
 """
 
 import json
+import shutil
 import datetime
 import numpy as np
 import joblib
@@ -184,6 +185,16 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False):
                     }
                 continue
 
+        # Snapshot current production model to prev/ before overwriting (enables rollback)
+        _prev = tgt_dir / "prev"
+        _prev.mkdir(exist_ok=True)
+        for _fn in ["model.pkl", "scaler.pkl", "serving_scaler.pkl",
+                    "label_encoder.pkl", "features.json", "col_med.json",
+                    "col_med_sel.json", "train_stats.json", "metadata.json"]:
+            _src = tgt_dir / _fn
+            if _src.exists():
+                shutil.copy2(_src, _prev / _fn)
+
         joblib.dump(best_res["model_obj"], tgt_dir / "model.pkl")
 
         if meta_block.get("scaler") is not None:
@@ -287,3 +298,71 @@ def load_registry(ticker, registry_dir, target="target_5d"):
     if le_path.exists():
         result["label_encoder"] = joblib.load(le_path)
     return result
+
+
+# rollback
+
+def rollback_registry(ticker: str, registry_dir) -> dict:
+    """
+    Roll back all targets to their previous model snapshot (saved in prev/).
+
+    Each call to save_registry() backs up the current model files to
+    {target}/prev/ before overwriting.  This function restores from there
+    and rewrites active.json so predictor.py immediately uses the old models.
+
+    Returns:
+    {
+      ticker, rolled_back: [target, ...],
+      results: {target: "rolled_back to xgb (ic=0.348)" | "no_previous_version"}
+    }
+    """
+    reg_root    = Path(registry_dir) / ticker
+    active_path = reg_root / "active.json"
+
+    if not reg_root.exists():
+        return {"error": f"No registry found for {ticker}"}
+    if not active_path.exists():
+        return {"error": "active.json not found — run the supervised pipeline first"}
+
+    active      = json.loads(active_path.read_text())
+    results     = {}
+    rolled_back = []
+
+    for target in _SAVE_TARGETS:
+        tgt_dir  = reg_root / target
+        prev_dir = tgt_dir / "prev"
+
+        if not prev_dir.exists() or not (prev_dir / "metadata.json").exists():
+            results[target] = "no_previous_version"
+            continue
+
+        # Restore all files from prev/ to the target directory
+        for f in prev_dir.iterdir():
+            if f.is_file():
+                shutil.copy2(f, tgt_dir / f.name)
+
+        try:
+            prev_meta = json.loads((tgt_dir / "metadata.json").read_text())
+            primary   = prev_meta.get("primary_metric", "?")
+            val       = prev_meta.get("metric_value", "?")
+            active.setdefault("targets", {})[target] = {
+                "path":         str(tgt_dir),
+                "model_type":   prev_meta.get("model_type", "unknown"),
+                "metric_value": prev_meta.get("metric_value", 0.0),
+                "created_at":   prev_meta.get("created_at", ""),
+            }
+            results[target] = f"rolled_back to {prev_meta.get('model_type')} ({primary}={val})"
+            rolled_back.append(target)
+        except Exception as exc:
+            results[target] = f"error: {exc}"
+
+    if rolled_back:
+        active["rolled_back_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+        active_path.write_text(json.dumps(active, indent=2))
+        print(f"  ↩ rollback  ({ticker})  {len(rolled_back)} target(s) restored")
+
+    return {
+        "ticker":      ticker,
+        "rolled_back": rolled_back,
+        "results":     results,
+    }
