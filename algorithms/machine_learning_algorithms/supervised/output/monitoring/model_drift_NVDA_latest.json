@@ -1,0 +1,12 @@
+{
+  "ticker": "NVDA",
+  "n_observations": 1,
+  "n_with_actuals": 0,
+  "rolling_window": 20,
+  "rolling_ic_1d": null,
+  "rolling_ic_5d": null,
+  "registered_ic_1d": 0.348033,
+  "registered_ic_5d": 0.400308,
+  "drift_status": "insufficient_data",
+  "message": "Only 0 realized pairs (need \u226510)"
+}
