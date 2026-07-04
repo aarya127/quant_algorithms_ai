@@ -9,8 +9,6 @@ import datetime
 import json
 import subprocess
 import tempfile
-import threading
-import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, jsonify, request, send_file, Response
@@ -102,9 +100,7 @@ try:
         get_stock_quote
     )
     from data.alphavantage import AlphaVantage
-    from ai_platform.nvidia_llm import get_company_overview_llm
-    from ai_platform.llm_router import chat_completion, stream_completion, active_provider
-    from ai_platform.signal_narrator import narrate_predictions
+    from data.nvidia_llm import get_company_overview_llm
     from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data, get_technical_indicators
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
     from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
@@ -298,104 +294,6 @@ def indices_history():
             pass
     return jsonify({'success': True, 'history': result})
 
-# ---------------------------------------------------------------------------
-# Stage 14A — ML prediction endpoints
-# ---------------------------------------------------------------------------
-
-try:
-    from predictor import (predict_latest, check_drift, model_status as _model_status,
-                            compute_model_drift, backfill_actuals)
-    _PREDICTOR_LOADED = True
-except Exception as _pred_err:
-    _PREDICTOR_LOADED = False
-    print(f"[STARTUP] predictor.py not loaded: {_pred_err}", flush=True)
-
-
-@app.route('/api/predict/<ticker>')
-def api_predict(ticker):
-    """
-    Return the latest ML prediction for a ticker.
-
-    GET /api/predict/NVDA
-    Response:
-      { ticker, date, model_version, predictions: {...},
-        signal, confidence, anomaly_flag }
-    """
-    if not _PREDICTOR_LOADED:
-        return jsonify({'success': False,
-                        'error': 'predictor not available — run the supervised pipeline first'}), 503
-    ticker = ticker.upper().strip()
-    try:
-        result = predict_latest(ticker)
-        return jsonify({'success': True, **result})
-    except FileNotFoundError as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/drift/<ticker>')
-def api_drift(ticker):
-    """
-    Return a drift report comparing the latest feature values against the
-    training distribution stored in the model registry.
-
-    GET /api/drift/NVDA
-    Response:
-      { date, ticker, n_features_checked, n_drift_flags,
-        overall_status, drift_flags: [...] }
-    """
-    if not _PREDICTOR_LOADED:
-        return jsonify({'success': False,
-                        'error': 'predictor not available'}), 503
-    ticker = ticker.upper().strip()
-    try:
-        report = check_drift(ticker)
-        return jsonify({'success': True, **report})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/model/drift/<ticker>')
-def api_model_drift(ticker):
-    """
-    Return a model drift report: rolling IC on realized prediction-actual pairs.
-
-    GET /api/model/drift/NVDA
-    Response:
-      { ticker, n_observations, n_with_actuals, rolling_window,
-        rolling_ic_1d, rolling_ic_5d, registered_ic_1d, registered_ic_5d,
-        drift_status, message }
-      drift_status: "ok" | "warning" | "degraded" | "insufficient_data"
-    """
-    if not _PREDICTOR_LOADED:
-        return jsonify({'success': False, 'error': 'predictor not available'}), 503
-    ticker = ticker.upper().strip()
-    try:
-        report = compute_model_drift(ticker)
-        return jsonify({'success': True, **report})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/model/status')
-def api_model_status():
-    """
-    Return a summary of all models registered in the local registry.
-
-    GET /api/model/status
-    Response:
-      { NVDA: { created_at, targets: { target_5d: { model_type, metric, ... } } } }
-    """
-    if not _PREDICTOR_LOADED:
-        return jsonify({'success': False,
-                        'error': 'predictor not available'}), 503
-    try:
-        return jsonify({'success': True, 'registry': _model_status()})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/api/dashboard')
 def dashboard_data():
     """Get dashboard overview data"""
@@ -580,21 +478,32 @@ def stock_details(symbol):
 
 @app.route('/api/ai-overview/<symbol>')
 def get_ai_overview(symbol):
-    """Get AI-generated company overview (streams separately for speed)"""
+    """Get AI-generated company overview (loads separately for speed)"""
     try:
+        # TEMPORARILY DISABLED: NVIDIA API is too slow/unreliable
+        # Uncomment below to re-enable AI overviews
+        
+        # Get company profile to get the full name
         company = get_company_profile(symbol.upper())
         company_name = company.get('name', symbol.upper()) if company else symbol.upper()
-        ai_overview = get_company_overview_llm(company_name, symbol.upper())
+        
+        # Generate AI overview (DISABLED - uncomment to enable)
+        # ai_overview = get_company_overview_llm(company_name, symbol.upper())
+        
+        # Return basic company description instead of AI overview
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
-            'company_name': company_name,
-            'ai_overview': ai_overview,
-            'provider': active_provider() if _DATA_MODULES_LOADED else None,
+            'ai_overview': None,  # Disabled for speed
+            'message': 'AI overview feature temporarily disabled for faster loading. Enable in app.py if needed.'
         })
+        
     except Exception as e:
         print(f"❌ Error generating AI overview for {symbol}: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/backtest', methods=['POST'])
 def run_backtest_api():
@@ -1615,147 +1524,6 @@ def get_research_markdown(paper_name):
             'error': str(e)
         }), 500
 
-@app.route('/api/trading/ohlcv', methods=['POST'])
-def trading_ohlcv():
-    """Fetch OHLCV bars from yfinance for the interactive trading chart.
-
-    POST body: { "ticker": "AAPL", "interval": "1d", "period": "1y" }
-    interval values (yfinance format): 1m 2m 5m 15m 30m 60m 1h 1d 5d 1wk 1mo 3mo
-    period values: 1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max
-    """
-    try:
-        import yfinance as _yf
-    except ImportError:
-        return jsonify({'success': False, 'error': 'yfinance not installed'}), 503
-
-    body     = request.get_json(force=True, silent=True) or {}
-    ticker   = (body.get('ticker') or 'AAPL').upper().strip()[:20]
-    interval = body.get('interval', '1d')
-    period   = body.get('period', '1y')
-
-    # Map the TV-style intervals from the UI to yfinance equivalents
-    _iv_map = {
-        '1m': '1m',  '5m': '5m',  '15m': '15m', '30m': '30m',
-        '1h': '60m', '4h': '60m',
-        '1D': '1d',  '1W': '1wk', '1M': '1mo',
-    }
-    # Map interval → sensible default period when not specified
-    _period_map = {
-        '1m': '1d',  '5m': '5d',  '15m': '5d',  '30m': '60d',
-        '60m': '60d', '1h': '60d', '4h': '6mo',
-        '1d': '1y',  '1D': '1y',  '1wk': '5y', '1W': '5y',
-        '1mo': 'max', '1M': 'max',
-    }
-    yf_interval = _iv_map.get(interval, interval)
-    yf_period   = period if period != 'auto' else _period_map.get(yf_interval, '1y')
-
-    try:
-        import numpy as _np
-        import pandas as _pd
-        tk   = _yf.Ticker(ticker)
-        hist = tk.history(period=yf_period, interval=yf_interval)
-        if hist.empty:
-            return jsonify({'success': False, 'error': f'No data returned for {ticker}'}), 404
-
-        close = hist['Close']
-        high  = hist['High']
-        low   = hist['Low']
-
-        # Indicators (NaN → None so JSON serialises cleanly)
-        def _s(series):
-            """Round a pandas Series, coerce NaN→None for JSON."""
-            return {ts: (None if _np.isnan(v) else round(float(v), 4))
-                    for ts, v in series.items()}
-
-        # EMAs
-        ema20  = _s(close.ewm(span=20,  adjust=False).mean())
-        ema50  = _s(close.ewm(span=50,  adjust=False).mean())
-        ema200 = _s(close.ewm(span=200, adjust=False).mean())
-
-        # Bollinger Bands (20, 2σ)
-        bb_mid   = close.rolling(20).mean()
-        bb_std   = close.rolling(20).std()
-        bb_upper = _s(bb_mid + 2 * bb_std)
-        bb_lower = _s(bb_mid - 2 * bb_std)
-        bb_mid   = _s(bb_mid)
-
-        # RSI (14)
-        delta = close.diff()
-        gain  = delta.where(delta > 0, 0.0).rolling(14).mean()
-        loss  = (-delta.where(delta < 0, 0.0)).rolling(14).mean()
-        rsi   = _s(100 - 100 / (1 + gain / loss.replace(0, _np.nan)))
-
-        # MACD (12, 26, 9)
-        ema12      = close.ewm(span=12, adjust=False).mean()
-        ema26      = close.ewm(span=26, adjust=False).mean()
-        macd_line  = ema12 - ema26
-        macd_sig   = macd_line.ewm(span=9, adjust=False).mean()
-        macd_hist_s = _s(macd_line - macd_sig)
-        macd_line  = _s(macd_line)
-        macd_sig   = _s(macd_sig)
-
-        # Stochastic (14, 3)
-        low14  = low.rolling(14).min()
-        high14 = high.rolling(14).max()
-        stk    = 100 * (close - low14) / (high14 - low14).replace(0, _np.nan)
-        std    = _s(stk.rolling(3).mean())
-        stk    = _s(stk)
-
-        # ATR (14)
-        tr  = _pd.concat([(high - low).abs(),
-                           (high - close.shift()).abs(),
-                           (low  - close.shift()).abs()], axis=1).max(axis=1)
-        atr = _s(tr.rolling(14).mean())
-
-        # CCI (20)
-        tp  = (high + low + close) / 3
-        cci = _s((tp - tp.rolling(20).mean()) / (0.015 * tp.rolling(20).std()))
-
-        # Build bars array
-        bars = []
-        for ts, row in hist.iterrows():
-            t = int(ts.timestamp())
-            bar = {
-                'time':   t,
-                'open':   round(float(row['Open']),   4),
-                'high':   round(float(row['High']),   4),
-                'low':    round(float(row['Low']),    4),
-                'close':  round(float(row['Close']),  4),
-                'volume': int(row['Volume']),
-                # overlays
-                'ema20':  ema20.get(ts),
-                'ema50':  ema50.get(ts),
-                'ema200': ema200.get(ts),
-                'bb_upper': bb_upper.get(ts),
-                'bb_mid':   bb_mid.get(ts),
-                'bb_lower': bb_lower.get(ts),
-                # sub-pane indicators
-                'rsi':        rsi.get(ts),
-                'macd':       macd_line.get(ts),
-                'macd_sig':   macd_sig.get(ts),
-                'macd_hist':  macd_hist_s.get(ts),
-                'stoch_k':    stk.get(ts),
-                'stoch_d':    std.get(ts),
-                'atr':        atr.get(ts),
-                'cci':        cci.get(ts),
-            }
-            bars.append(bar)
-
-        info = tk.fast_info
-        currency = getattr(info, 'currency', 'USD') or 'USD'
-
-        return jsonify({
-            'success':  True,
-            'ticker':   ticker,
-            'interval': interval,
-            'period':   yf_period,
-            'currency': currency,
-            'bars':     bars,
-        })
-    except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 500
-
-
 @app.route('/api/trading/chart', methods=['POST'])
 def trading_chart():
     """Proxy chart-img.com TradingView chart image requests.
@@ -1814,365 +1582,6 @@ def trading_chart():
         return jsonify({'error': 'chart-img API error', 'status': resp.status_code, 'details': status_msg}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-
-# ---------------------------------------------------------------------------
-# MLflow experiment history — /api/mlflow/runs/<ticker>
-# ---------------------------------------------------------------------------
-
-_ML_RUNS_ROOT = Path(__file__).resolve().parent.parent / "mlruns"
-
-
-@app.route('/api/mlflow/runs/<ticker>')
-def api_mlflow_runs(ticker):
-    """
-    Return recent MLflow runs for a ticker experiment (reads local file store directly).
-    No MLflow UI server required.
-
-    GET /api/mlflow/runs/NVDA
-    Response: { success, ticker, runs: [...], ui_url }
-    """
-    ticker = ticker.upper().strip()
-    try:
-        import mlflow
-        from mlflow.tracking import MlflowClient
-
-        tracking_uri = f"file://{_ML_RUNS_ROOT}"
-        client = MlflowClient(tracking_uri=tracking_uri)
-
-        exp = client.get_experiment_by_name(ticker)
-        if exp is None:
-            return jsonify({
-                "success": True, "ticker": ticker, "runs": [],
-                "message": "No experiment found — run the pipeline first.",
-                "ui_url":  "http://localhost:5002",
-            })
-
-        runs = client.search_runs(
-            experiment_ids=[exp.experiment_id],
-            order_by=["start_time DESC"],
-            max_results=50,
-        )
-
-        run_list = []
-        for r in runs:
-            # Only surface user-defined tags (strip internal mlflow.* keys)
-            tags = {k: v for k, v in r.data.tags.items()
-                    if not k.startswith("mlflow.")}
-            run_list.append({
-                "run_id":     r.info.run_id,
-                "run_name":   r.info.run_name or "",
-                "status":     r.info.status,
-                "start_time": r.info.start_time,
-                "tags":       tags,
-                "params":     r.data.params,
-                "metrics":    {k: round(v, 4) for k, v in r.data.metrics.items()},
-            })
-
-        return jsonify({
-            "success": True,
-            "ticker":  ticker,
-            "runs":    run_list,
-            "ui_url":  "http://localhost:5002",
-        })
-    except Exception as exc:
-        return jsonify({"success": False, "error": str(exc)}), 500
-
-
-# ---------------------------------------------------------------------------
-# ML Pipeline orchestration — /api/pipeline/run  +  /api/pipeline/status
-# ---------------------------------------------------------------------------
-
-_pipeline_jobs: dict = {}   # job_id -> job state dict
-
-_ML_ORCH = (Path(__file__).resolve().parent.parent
-            / "algorithms" / "machine_learning_algorithms" / "orchestrator.py")
-
-
-def _run_pipeline_thread(job_id: str, ticker: str) -> None:
-    """Background thread: invoke orchestrator.py and stream its output into the job dict."""
-    job = _pipeline_jobs[job_id]
-    env = os.environ.copy()
-    env["USE_TUNING"] = "0"
-
-    try:
-        proc = subprocess.Popen(
-            [sys.executable, str(_ML_ORCH), ticker],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=str(Path(__file__).resolve().parent.parent),
-            env=env,
-        )
-        for raw in proc.stdout:
-            line = raw.rstrip()
-            if line.startswith("STEP:") and line.endswith(":start"):
-                job["current_step"] = line.split(":")[1]
-            elif line.startswith("STEP:") and line.endswith(":done"):
-                job["steps_done"].append(line.split(":")[1])
-            elif line.startswith("STATUS:"):
-                st = line[7:]
-                if st == "up_to_date":
-                    job["status"] = "up_to_date"
-                elif st == "done":
-                    job["status"] = "done"
-                elif st.startswith("error:"):
-                    job["status"] = "error"
-                    job["error_step"] = st[6:]
-            elif line.startswith("LOG:"):
-                job["log"].append(line[4:])
-            elif line:
-                job["log"].append(line)
-        proc.wait()
-
-        if job["status"] == "running":
-            job["status"] = "done" if proc.returncode == 0 else "error"
-    except Exception as exc:
-        job["status"] = "error"
-        job["log"].append(f"[orchestrator error] {exc}")
-
-    job["current_step"] = None
-    job["done_at"] = datetime.datetime.utcnow().isoformat() + "Z"
-
-    # Backfill realized returns so model drift is fresh after every retrain
-    if _PREDICTOR_LOADED and job.get("status") in ("done", "up_to_date"):
-        try:
-            n = backfill_actuals(ticker)
-            if n > 0:
-                job["log"].append(f"[backfill] filled {n} prediction-actual pair(s)")
-        except Exception:
-            pass
-
-
-@app.route('/api/pipeline/run', methods=['POST'])
-def api_pipeline_run():
-    """
-    Launch the full ETL → ML pipeline for a ticker in the background.
-
-    POST /api/pipeline/run
-    Body: { "ticker": "NVDA" }
-    Response: { success, job_id, ticker }
-    """
-    body   = request.get_json(silent=True) or {}
-    ticker = str(body.get("ticker", "NVDA")).upper().strip()
-    if not ticker.isalpha() or len(ticker) > 10:
-        return jsonify({"success": False, "error": "invalid ticker symbol"}), 400
-
-    job_id = str(uuid.uuid4())
-    _pipeline_jobs[job_id] = {
-        "ticker":       ticker,
-        "status":       "running",
-        "current_step": "extract",
-        "steps_done":   [],
-        "log":          [],
-        "started_at":   datetime.datetime.utcnow().isoformat() + "Z",
-        "done_at":      None,
-    }
-    threading.Thread(
-        target=_run_pipeline_thread, args=(job_id, ticker), daemon=True
-    ).start()
-    return jsonify({"success": True, "job_id": job_id, "ticker": ticker})
-
-
-@app.route('/api/pipeline/status/<job_id>')
-def api_pipeline_status(job_id):
-    """
-    Poll the status of a pipeline job.
-
-    GET /api/pipeline/status/<job_id>
-    Response: { success, ticker, status, current_step, steps_done, log, started_at, done_at }
-      status: "running" | "done" | "up_to_date" | "error"
-    """
-    job = _pipeline_jobs.get(job_id)
-    if job is None:
-        return jsonify({"success": False, "error": "job not found"}), 404
-    return jsonify({"success": True, **job})
-
-
-@app.route('/api/pipeline/rollback', methods=['POST'])
-def api_pipeline_rollback():
-    """
-    Roll back all models for a ticker to the previous snapshot.
-
-    POST /api/pipeline/rollback
-    Body: { "ticker": "NVDA" }
-    Response:
-      { success, ticker, rolled_back: [...], results: {target: message} }
-
-    Each save_registry() call backs up the current model to {target}/prev/
-    before overwriting.  This endpoint restores from that snapshot so
-    predictor.py immediately uses the previous models without retraining.
-    """
-    body   = request.get_json(silent=True) or {}
-    ticker = str(body.get("ticker", "NVDA")).upper().strip()
-    if not ticker.isalpha() or len(ticker) > 10:
-        return jsonify({"success": False, "error": "invalid ticker symbol"}), 400
-
-    try:
-        sys.path.insert(0, str(_ML_ORCH.parent / "supervised"))
-        from registry import rollback_registry
-        result = rollback_registry(ticker, _ML_ORCH.parent / "supervised" / "model_registry")
-        if "error" in result:
-            return jsonify({"success": False, **result}), 404
-        return jsonify({"success": True, **result})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-# ---------------------------------------------------------------------------
-# AI Platform endpoints
-# ---------------------------------------------------------------------------
-
-@app.route('/api/narrate/<symbol>')
-def api_narrate(symbol):
-    """
-    GET /api/narrate/<symbol>
-    Returns an LLM-generated prose brief of the latest ML signals for symbol.
-    Optionally accepts ?price=<float> query param for the current price.
-    """
-    if not _DATA_MODULES_LOADED:
-        return jsonify({'success': False, 'error': 'data modules not loaded'}), 503
-    try:
-        from backend.predictor import predict_latest  # noqa: F401
-    except ImportError:
-        pass
-    try:
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-        from backend.predictor import predict_latest as _predict
-    except ImportError:
-        try:
-            from predictor import predict_latest as _predict
-        except ImportError:
-            return jsonify({'success': False, 'error': 'predictor not available'}), 500
-
-    try:
-        sym   = symbol.upper()
-        preds = _predict(sym)
-        price = request.args.get('price', type=float)
-
-        # Pull sentiment score from cache-friendly path
-        sent_score = None
-        try:
-            analyzer   = StockAnalyzer(sym)
-            sent_data  = analyzer.get_comprehensive_sentiment()
-            sent_score = sent_data.get('consensus', {}).get('score')
-        except Exception:
-            pass
-
-        text = narrate_predictions(sym, preds, sentiment_score=sent_score, current_price=price)
-        return jsonify({
-            'success':   True,
-            'symbol':    sym,
-            'narrative': text,
-            'signal':    preds.get('signal'),
-            'confidence': preds.get('confidence'),
-            'provider':  active_provider(),
-        })
-    except FileNotFoundError:
-        return jsonify({'success': False, 'error': 'No model registry found — run the pipeline first'}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/chat', methods=['POST'])
-def api_chat():
-    """
-    POST /api/chat
-    Body: { "symbol": "NVDA", "message": "Why is NVDA bullish?", "history": [...] }
-
-    Injects live market context (quote, predictions, sentiment) as a system
-    prompt, then streams the LLM response via Server-Sent Events so the UI
-    can display tokens as they arrive.
-
-    history format: [{"role": "user"|"assistant", "content": "..."}]
-    """
-    if not _DATA_MODULES_LOADED:
-        return jsonify({'success': False, 'error': 'data modules not loaded'}), 503
-
-    body    = request.get_json(force=True, silent=True) or {}
-    symbol  = body.get('symbol', '').upper().strip()
-    message = body.get('message', '').strip()
-    history = body.get('history', [])
-
-    if not message:
-        return jsonify({'success': False, 'error': 'message is required'}), 400
-
-    # Validate inputs
-    if len(message) > 2000:
-        return jsonify({'success': False, 'error': 'message too long (max 2000 chars)'}), 400
-    if len(history) > 20:
-        history = history[-20:]  # cap context window
-
-    # Build system context from live data
-    context_lines = ["You are an AI financial analyst for Invest.ai, an institutional trading terminal."]
-    if symbol:
-        context_lines.append(f"The user is currently analysing: {symbol}")
-        try:
-            quote = _cached_get_stock_quote(symbol)
-            if quote:
-                price = quote.get('c') or quote.get('current_price')
-                if price:
-                    context_lines.append(f"Current price: ${price:.2f}")
-        except Exception:
-            pass
-        try:
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-            try:
-                from backend.predictor import predict_latest as _predict_ctx
-            except ImportError:
-                from predictor import predict_latest as _predict_ctx
-            preds = _predict_ctx(symbol)
-            p = preds.get('predictions', {})
-            if p.get('predicted_5d_return') is not None:
-                context_lines.append(
-                    f"ML signals — 5d return forecast: {p['predicted_5d_return']*100:+.2f}%, "
-                    f"signal: {preds.get('signal', 'n/a')}, confidence: {preds.get('confidence', 'n/a')}"
-                )
-            if p.get('predicted_regime') is not None:
-                labels = {0: 'bear', 1: 'neutral', 2: 'bull'}
-                context_lines.append(f"Regime: {labels.get(p['predicted_regime'], 'unknown')}")
-        except Exception:
-            pass
-
-    context_lines += [
-        "Answer in a clear, professional tone. Cite figures when available.",
-        "Do not fabricate data. If you lack information, say so.",
-    ]
-    system_prompt = "\n".join(context_lines)
-
-    # Assemble message list: history + new user message
-    messages = [{"role": r["role"], "content": r["content"]}
-                for r in history
-                if r.get("role") in ("user", "assistant") and r.get("content")]
-    messages.append({"role": "user", "content": message})
-
-    def generate():
-        try:
-            for chunk in stream_completion(
-                messages,
-                system=system_prompt,
-                max_tokens=800,
-                temperature=0.3,
-            ):
-                # SSE format
-                yield f"data: {json.dumps({'delta': chunk})}\n\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
-        yield "data: [DONE]\n\n"
-
-    return Response(generate(), mimetype='text/event-stream',
-                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
-
-
-@app.route('/api/llm/status')
-def api_llm_status():
-    """Quick health check — which LLM provider is configured."""
-    prov = active_provider() if _DATA_MODULES_LOADED else None
-    return jsonify({
-        'success':  True,
-        'provider': prov,
-        'ready':    prov is not None,
-    })
 
 
 if __name__ == '__main__':
