@@ -30,7 +30,7 @@ _OUTPUT  = _PROJECT / "algorithms" / "machine_learning_algorithms" / "supervised
 _MONITOR = _OUTPUT / "monitoring"
 
 sys.path.insert(0, str(_PROJECT))
-from ai.llm_router import chat_completion, active_provider  # noqa: E402
+from ai_platform.llm_router import chat_completion, active_provider  # noqa: E402
 
 
 _SYSTEM = (

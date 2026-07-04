@@ -12,7 +12,7 @@ Usage:
 from __future__ import annotations
 
 from typing import Optional
-from ai.llm_router import chat_completion
+from ai_platform.llm_router import chat_completion
 
 _SYSTEM = (
     "You are a quantitative analyst at a hedge fund. "
