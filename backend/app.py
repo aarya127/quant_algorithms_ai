@@ -1590,9 +1590,14 @@ def trading_chart():
 
 import uuid
 import threading
-import queue
 
 # Global job store: { job_id: { status, ticker, current_step, error, timestamp, logs } }
+# NOTE: this store lives in-process, so it is correct ONLY under a single gunicorn
+# worker (backend/entrypoint.sh hardcodes --workers 1). render.yaml sets
+# GUNICORN_WORKERS=2, but the entrypoint ignores it — do NOT wire that env var into
+# the launch command without first moving this store to shared storage (the
+# persistent disk or a DB), or POST /run and GET /status could land on different
+# workers and status polling would 404.
 _PIPELINE_JOBS = {}
 _PIPELINE_LOCK = threading.Lock()
 
