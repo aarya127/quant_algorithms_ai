@@ -28,7 +28,8 @@ An end-to-end quantitative research and trading platform. The system combines a 
 16. [Security & Key Management](#16-security--key-management)
 17. [Quick Start](#17-quick-start)
 18. [Project Structure](#18-project-structure)
-19. [Roadmap](#19-roadmap)
+19. [Component Status](#19-component-status)
+20. [Roadmap](#20-roadmap)
 
 > **Working in this repo with a coding agent (Claude Code, Copilot, Cursor)?**
 > Read [`AGENTS.md`](AGENTS.md) first — it captures the conventions, the pipeline
@@ -46,7 +47,7 @@ An end-to-end quantitative research and trading platform. The system combines a 
 └───────────────────────────┬──────────────────────────────────────────┘
                             │ HTTP/JSON
 ┌───────────────────────────▼──────────────────────────────────────────┐
-│  Flask Backend  (32 routes, TTL cache, Gunicorn)                     │
+│  Flask Backend  (31 routes, TTL cache, Gunicorn)                     │
 │  backend/app.py                                                      │
 └──┬──────────────┬──────────────┬──────────────┬──────────────────────┘
    │              │              │              │
@@ -101,6 +102,39 @@ Render auto-builds from the Dockerfile on every push, health-checks via `/health
 
 > **Note:** the app runs a **single Gunicorn worker** (`entrypoint.sh` hardcodes `--workers 1`). `render.yaml` sets `GUNICORN_WORKERS=2`, but the entrypoint ignores it. This matters — the retraining pipeline's job store lives in-process (see [§9](#9-scheduled-retraining--mlops)). Do not raise the worker count without moving that state to shared storage.
 
+### Two Docker images
+
+| Image | Dockerfile | Contents | Used by |
+|---|---|---|---|
+| Web app | `Dockerfile` | Flask + Gunicorn + PyTorch + FinBERT (~3.5 GB) | Render web service |
+| Pipeline | `Dockerfile.pipeline` | Training deps only from `requirements-pipeline.txt` (no Flask/PyTorch/FinBERT, ~900 MB); `ENTRYPOINT` = `orchestrator.py` | The Kubernetes CronJob below |
+
+### Kubernetes manifests (`k8s/`) — ⚠️ scaffolding, not the live deploy
+
+A complete manifest set (`namespace`, `deployment`, `service`, `ingress`, `hpa`,
+`pvc`, `configmap`, `secret`, `cronjob`) for an alternative K8s deployment in
+namespace `invest-ai`. It uses **placeholder image tags and hostnames**
+(`invest-ai:latest`, `example.com`), nothing in CI applies it, and **Render is the
+live target**. Treat `k8s/` as a reference/aspirational setup until wired to a
+registry + cluster. Notably `k8s/cronjob.yaml` runs retraining a *different* way
+than production — see the scheduling note in [§9](#9-scheduled-retraining--mlops).
+
+### Helper scripts (`scripts/`)
+
+| Script | Purpose |
+|---|---|
+| `build_cpp.sh` | CMake build of the C++ engine (`performance/cpp_execution/`) |
+| `build_go.sh` | Build the Go risk service + protoc codegen (`performance/go_services/`) |
+| `build_all.sh` | Runs all three (C++, Go, Python deps) |
+| `daily_predict.sh` | **Local-only** cron helper (hardcoded machine paths) — see [§9](#9-scheduled-retraining--mlops) |
+
+### CI (`.github/workflows/ci.yml`)
+
+Runs on every push and PR to `main`. Installs light deps (numpy/pandas/sklearn/
+xgboost/lightgbm/pytest — **no torch/transformers**) and runs the four pytest
+suites with coverage. It deliberately excludes the heavy ML deps and the
+live-server smoke tests. (The daily retrain is a separate workflow — see [§9](#9-scheduled-retraining--mlops).)
+
 ---
 
 ## 3. Frontend UI
@@ -133,7 +167,7 @@ Single-page application served from `backend/templates/index.html`.
 
 ## 4. API Layer (Flask Backend)
 
-`backend/app.py` — 32 REST endpoints with a thread-safe TTL cache.
+`backend/app.py` — 31 REST endpoints with a thread-safe TTL cache.
 
 **Cache TTLs:** quotes 30 s · profile 1 h · financials/news 10 min
 
@@ -151,6 +185,7 @@ Single-page application served from `backend/templates/index.html`.
 | `/api/backtest/strategies` | GET | List available backtest strategies |
 | `/api/statistics/<symbol>` | GET | Ratios, margins, growth metrics |
 | `/api/sentiment/<symbol>` | GET | FinBERT sentiment scores |
+| `/api/sentiment/news/<symbol>` | GET | Per-article FinBERT sentiment for recent news |
 | `/api/scenarios/<symbol>` | GET | Bull/Base/Bear scenario analysis |
 | `/api/metrics/<symbol>` | GET | Evaluation grades |
 | `/api/recommendations/<symbol>` | GET | Investment recommendations |
@@ -163,6 +198,7 @@ Single-page application served from `backend/templates/index.html`.
 | `/api/news/alpaca` | GET | Alpaca real-time news stream |
 | `/api/news/combined` | GET | Merged multi-source news |
 | `/api/research/<paper>` | GET | Research paper content (LaTeX/markdown) |
+| `/api/research/<paper>/markdown` | GET | Research paper rendered as markdown |
 | `/api/research/diagnostics/notebook` | GET | Jupyter diagnostic notebook |
 | `/api/algorithm/<name>` | GET | Algorithm source + docs |
 | `/api/trading/chart` | POST | Custom TradingView-style chart render |
@@ -363,6 +399,20 @@ A GitHub Actions workflow (cron `0 2 * * 1-5` — 02:00 UTC weekdays, plus manua
 
 **Setup:** add a repo secret `RENDER_APP_URL` (`https://<app>.onrender.com`, no trailing slash) under Settings → Secrets and variables → Actions. If this is missing — or the `/api/pipeline/*` endpoints aren't deployed yet — the workflow fails within seconds on the first `curl`.
 
+### Three scheduling paths exist — only one is live
+
+The repo contains three mechanisms that all run the same retrain. Know which is real:
+
+| Path | When | Where | Status |
+|---|---|---|---|
+| `.github/workflows/daily-retrain.yml` | 02:00 UTC Mon–Fri | Render (via the API) | **✅ Active — this is production** |
+| `k8s/cronjob.yaml` | 02:00 UTC Mon–Fri (same) | Kubernetes (runs `Dockerfile.pipeline`) | ⚠️ Scaffolding — unused (see [§2](#2-deployment)) |
+| `scripts/daily_predict.sh` | 22:00 UTC / 5 PM ET | A local dev machine (hardcoded paths) | 🔧 Local convenience only |
+
+They don't run concurrently (different platforms), but only the GitHub Action is
+wired to the live app. The K8s CronJob is the "separate cron + shared PVC" pattern
+that Render can't do; if you ever migrate to K8s it becomes the real scheduler.
+
 ### MLflow tracking (`mlflow.db`, `mlruns/`)
 
 SQLite backend at the repo root, one experiment per ticker, runs named `<target>_v<version>_<date>` (e.g. `target_5d_vB_2026-05-30`). Browse locally with `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
@@ -387,7 +437,7 @@ The outgoing model is copied to `prev/` first, so `rollback_registry()` can rest
 ### LLM layer (`ai_platform/`)
 
 - `llm_router.py` — unified multi-provider client (OpenAI → Anthropic → NVIDIA priority; override with `LLM_PROVIDER`)
-- `signal_narrator.py` — turns predictions into prose (`narrate_predictions()`)
+- `signal_narrator.py` — turns predictions into prose (`narrate_predictions()`) — ⚠️ scaffolded, not yet wired to a caller
 - `llm_judge.py` — `run_judge(ticker)` runs at the end of the orchestrator, asks an LLM for a promotion verdict, and writes it to `supervised/output/monitoring/`
 
 ---
@@ -610,7 +660,7 @@ make run-backend
 ```
 quant_algorithms_ai/
 ├── backend/                              Flask app + static assets
-│   ├── app.py                              32 REST endpoints, TTL cache, pipeline jobs
+│   ├── app.py                              31 REST endpoints, TTL cache, pipeline jobs
 │   ├── predictor.py                        prediction serving + drift monitoring
 │   ├── economic_events.json                40+ calendar events 2026
 │   ├── templates/index.html                SPA (Bootstrap 5, Chart.js)
@@ -673,7 +723,42 @@ quant_algorithms_ai/
 
 ---
 
-## 19. Roadmap
+## 19. Component Status
+
+Not everything in the tree is production code. This repo mixes shipped features,
+research prototypes, and scaffolding for planned work. Use this as the honest map.
+
+**✅ Working & wired into the app**
+- Flask backend + all data providers (`data/`), FinBERT sentiment (`sentiment/`),
+  NVIDIA LLM overview + multi-provider router (`ai_platform/`)
+- The full ML retraining pipeline (`orchestrator.py` + `data_pipelines/` +
+  `supervised/` + `unsupervised/`), model registry, MLflow, and the daily retrain
+- Volatility stack (`volatility_forecasting/`: SABR/Heston calibration, market
+  validation, backtest & portfolio engines)
+
+**🔬 Real code, run standalone (not called by the app/pipeline)**
+- `time_series_models/` (ARIMA, GARCH, VAR, cointegration — ~2,000 lines; fetch
+  live from yfinance, not the feature CSVs)
+- `factor_discovery/` and `eda/eda.py` (produce the feature allow-list and EDA plots)
+- `greeks/`, `macd_rsi/` prototypes
+- `performance/cpp_execution/` (C++ order book/engine) and `performance/go_services/`
+  (Go gRPC risk engine) — real but **not imported by the deployed Flask app**; their
+  READMEs describe more subdirs than actually exist
+
+**🚧 Not yet wired**
+- `backend/predictor.py` serving/monitoring — functions exist; the `/api/predict`,
+  `/api/drift`, `/api/model/status` routes are not registered (see [§9](#9-scheduled-retraining--mlops))
+- `ai_platform/signal_narrator.py` — no caller yet
+
+**📦 Placeholder / empty (present in the tree, no implementation)**
+- All of top-level `models/` (interest-rate, execution, allocation, credit, options)
+- `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/*.py` (empty files)
+- Several `prototype.py` stubs under `execution_algorithms/`, `market_making_algorithms/`,
+  and `volatility_forecasting/research/` (theory `.tex` only)
+
+---
+
+## 20. Roadmap
 
 ### In Progress
 - [ ] Wire `predictor.py` serving/monitoring into HTTP routes (`/api/predict`, `/api/drift`, `/api/model/status`)

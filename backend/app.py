@@ -100,7 +100,7 @@ try:
         get_stock_quote
     )
     from data.alphavantage import AlphaVantage
-    from data.nvidia_llm import get_company_overview_llm
+    from ai_platform.nvidia_llm import get_company_overview_llm
     from data.charts import get_chart_data, get_multiple_timeframes, get_comparison_data, get_technical_indicators
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
     from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
@@ -1016,58 +1016,9 @@ def earnings_calendar():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/api/recommendations/<symbol>')
-def get_recommendations(symbol):
-    """Get time-based recommendations"""
-    try:
-        recommendations = {}
-        
-        for timeframe, config in TIMEFRAMES.items():
-            # Get scenario analysis
-            financials = get_basic_financials(symbol.upper())
-            quote = av.get_global_quote(symbol.upper())
-            
-            current_price = float(quote.get('05. price', 0)) if quote else 0
-            metrics = financials.get('metric', {}) if financials else {}
-            
-            eps_growth = float(metrics.get('epsGrowthTTMYoy', 10))
-            days = config['days']
-            multiplier = days / 365
-            
-            expected_return = eps_growth * multiplier
-            
-            # Recommendation logic
-            if expected_return > 15:
-                action = 'Strong Buy'
-                confidence = 'High'
-            elif expected_return > 8:
-                action = 'Buy'
-                confidence = 'Medium'
-            elif expected_return > 0:
-                action = 'Hold'
-                confidence = 'Medium'
-            else:
-                action = 'Sell'
-                confidence = 'Low'
-            
-            target_price = current_price * (1 + expected_return / 100)
-            
-            recommendations[timeframe] = {
-                'timeframe': config['label'],
-                'action': action,
-                'confidence': confidence,
-                'current_price': current_price,
-                'target_price': round(target_price, 2),
-                'expected_return': round(expected_return, 2)
-            }
-        
-        return jsonify({
-            'success': True,
-            'symbol': symbol.upper(),
-            'recommendations': recommendations
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+# NOTE: a second '/api/recommendations/<symbol>' handler (get_recommendations)
+# was removed here — it was unreachable dead code. Flask matched the first
+# registration (`recommendations`, above) and this one never ran.
 
 @app.route('/api/charts/<symbol>')
 def get_charts(symbol):
