@@ -1584,6 +1584,201 @@ def trading_chart():
         return jsonify({'error': str(e)}), 500
 
 
+# ---------------------------------------------------------------------------
+# Pipeline Job Management — for scheduled retraining via GitHub Actions
+# ---------------------------------------------------------------------------
+
+import uuid
+import threading
+import queue
+
+# Global job store: { job_id: { status, ticker, current_step, error, timestamp, logs } }
+_PIPELINE_JOBS = {}
+_PIPELINE_LOCK = threading.Lock()
+
+
+def _run_retrain_job(job_id, ticker):
+    """Run ML retraining as a subprocess, parsing orchestrator output protocol."""
+    try:
+        with _PIPELINE_LOCK:
+            if job_id in _PIPELINE_JOBS:
+                _PIPELINE_JOBS[job_id]['status'] = 'running'
+                _PIPELINE_JOBS[job_id]['current_step'] = 'initializing'
+        
+        print(f"[PIPELINE] Starting retraining for {ticker} (job {job_id})", flush=True)
+        
+        # Run the orchestrator script
+        orchestrator_script = os.path.join(
+            os.path.dirname(__file__), 
+            '..', 
+            'algorithms', 
+            'machine_learning_algorithms', 
+            'orchestrator.py'
+        )
+        
+        cmd = [sys.executable, orchestrator_script, ticker]
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=os.path.join(os.path.dirname(__file__), '..')
+        )
+        
+        up_to_date = False
+        
+        # Parse orchestrator output protocol:
+        # STEP:<name>:start  → step starting
+        # STEP:<name>:done   → step done
+        # LOG:<text>         → passthrough log
+        # STATUS:up_to_date  → data already current
+        # STATUS:done        → pipeline completed
+        # STATUS:error:<name>→ step failed
+        for line in proc.stdout:
+            line = line.rstrip()
+            
+            if line.startswith('STEP:'):
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    step_name = parts[1]
+                    step_status = parts[2]
+                    if step_status == 'start':
+                        with _PIPELINE_LOCK:
+                            _PIPELINE_JOBS[job_id]['current_step'] = step_name
+                            _PIPELINE_JOBS[job_id]['logs'].append(f"Starting step: {step_name}")
+                    elif step_status == 'done':
+                        with _PIPELINE_LOCK:
+                            _PIPELINE_JOBS[job_id]['logs'].append(f"Completed step: {step_name}")
+            
+            elif line.startswith('STATUS:'):
+                status_msg = line.split(':', 1)[1]
+                if status_msg == 'up_to_date':
+                    up_to_date = True
+                    with _PIPELINE_LOCK:
+                        _PIPELINE_JOBS[job_id]['logs'].append("Data already up to date")
+                elif status_msg == 'done':
+                    with _PIPELINE_LOCK:
+                        _PIPELINE_JOBS[job_id]['logs'].append("Pipeline completed successfully")
+                elif status_msg.startswith('error:'):
+                    error_step = status_msg.split(':', 1)[1]
+                    with _PIPELINE_LOCK:
+                        _PIPELINE_JOBS[job_id]['error'] = f"Step '{error_step}' failed"
+                        _PIPELINE_JOBS[job_id]['logs'].append(f"Error in step: {error_step}")
+            
+            elif line.startswith('LOG:'):
+                log_msg = line[4:]  # Remove 'LOG:' prefix
+                with _PIPELINE_LOCK:
+                    _PIPELINE_JOBS[job_id]['logs'].append(log_msg)
+            
+            else:
+                # Regular output
+                if line.strip():
+                    with _PIPELINE_LOCK:
+                        _PIPELINE_JOBS[job_id]['logs'].append(line)
+        
+        proc.wait()
+        
+        # Determine final status
+        if proc.returncode == 0:
+            final_status = 'up_to_date' if up_to_date else 'done'
+        else:
+            final_status = 'error'
+        
+        with _PIPELINE_LOCK:
+            _PIPELINE_JOBS[job_id]['status'] = final_status
+            if final_status != 'error' and not _PIPELINE_JOBS[job_id]['error']:
+                _PIPELINE_JOBS[job_id]['current_step'] = 'completed'
+        
+        print(f"[PIPELINE] {'✓' if proc.returncode == 0 else '✗'} Retraining {'completed' if proc.returncode == 0 else 'failed'} for {ticker} (job {job_id})", flush=True)
+        
+    except Exception as e:
+        print(f"[PIPELINE] ✗ Exception retraining {ticker} (job {job_id}): {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        with _PIPELINE_LOCK:
+            _PIPELINE_JOBS[job_id]['status'] = 'error'
+            _PIPELINE_JOBS[job_id]['error'] = str(e)
+            _PIPELINE_JOBS[job_id]['current_step'] = 'failed'
+            _PIPELINE_JOBS[job_id]['logs'].append(f"Exception: {str(e)}")
+
+
+@app.route('/api/pipeline/run', methods=['POST'])
+def pipeline_run():
+    """Start an ML retraining job for a given ticker."""
+    try:
+        data = request.get_json(force=True) or {}
+        ticker = data.get('ticker', 'NVDA').upper().strip()
+        
+        if not ticker:
+            return jsonify({'success': False, 'error': 'ticker is required'}), 400
+        
+        # Generate job ID
+        job_id = str(uuid.uuid4())[:8]
+        
+        # Create job entry
+        with _PIPELINE_LOCK:
+            _PIPELINE_JOBS[job_id] = {
+                'job_id': job_id,
+                'ticker': ticker,
+                'status': 'queued',
+                'current_step': 'queued',
+                'error': None,
+                'timestamp': datetime.datetime.now().isoformat(),
+                'logs': []
+            }
+        
+        # Start background thread
+        thread = threading.Thread(target=_run_retrain_job, args=(job_id, ticker), daemon=True)
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'job_id': job_id,
+            'ticker': ticker,
+            'status': 'queued'
+        })
+    
+    except Exception as e:
+        print(f"[PIPELINE] Error in /api/pipeline/run: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/pipeline/status/<job_id>')
+def pipeline_status(job_id):
+    """Check the status of a pipeline job."""
+    try:
+        with _PIPELINE_LOCK:
+            if job_id not in _PIPELINE_JOBS:
+                return jsonify({
+                    'success': False,
+                    'error': f'Job {job_id} not found'
+                }), 404
+            
+            job = _PIPELINE_JOBS[job_id].copy()
+        
+        response = {
+            'success': True,
+            'job_id': job_id,
+            'ticker': job['ticker'],
+            'status': job['status'],
+            'current_step': job['current_step'],
+            'timestamp': job['timestamp']
+        }
+        
+        if job['error']:
+            response['error'] = job['error']
+        
+        # Optionally include last few log lines for debugging
+        if job['logs']:
+            response['last_logs'] = job['logs'][-5:]  # Last 5 log lines
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        print(f"[PIPELINE] Error in /api/pipeline/status: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('PORT', 5001))
