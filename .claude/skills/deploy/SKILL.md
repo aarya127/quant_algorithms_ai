@@ -1,0 +1,74 @@
+---
+name: deploy
+description: Build, deploy, and troubleshoot quant_algorithms_ai on Docker/Render — the Gunicorn single-worker model, the persistent disk, secrets, health checks, and why a new route or the daily retrain workflow fails until deployed. Use for any deploy question, Render config, or "why is my endpoint / GitHub Action failing" in this repo.
+---
+
+# Deployment (Docker + Render)
+
+## How it's served
+
+- **Image** (`Dockerfile`): `python:3.11-slim`, CPU-only PyTorch, FinBERT weights
+  baked in at build time. Entry: `CMD ["./entrypoint.sh"]`.
+- **`backend/entrypoint.sh`**:
+  ```sh
+  exec gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 1 --worker-class sync --timeout 120
+  ```
+- **`render.yaml`** (Blueprint): Docker web service, `plan: standard` (1 CPU / 2 GB,
+  needed for FinBERT), `healthCheckPath: /health`, persistent 5 GB disk at
+  `/app/mnt`. Render auto-builds on every push and restarts on failure.
+
+## Two facts that change how you write code
+
+1. **Single Gunicorn worker.** `entrypoint.sh` hardcodes `--workers 1`.
+   `render.yaml` sets `GUNICORN_WORKERS=2`, **but the entrypoint ignores that env
+   var.** The retraining job store (`_PIPELINE_JOBS` in `app.py`) is an in-process
+   dict — only consistent under one worker. If you ever wire `GUNICORN_WORKERS`
+   into the launch command, first move that state to shared storage (the persistent
+   disk or a DB), or POST `/run` and GET `/status` can land on different workers → 404.
+2. **A new Flask route is inert until committed AND deployed.** Editing
+   `backend/app.py` in your working tree changes nothing on the live app. Render
+   only picks up **pushed commits**.
+
+## Secrets
+
+Loaded in priority order: **env var → `keys.txt`** (gitignored). On Render, set
+them in the dashboard (they're `sync: false` in `render.yaml`, so never committed):
+`FINNHUB_API_KEY`, `POLYGON_API_KEY`, `FISCAL_AI_API_KEY`, `ALPACA_API_KEY`,
+`ALPACA_SECRET_KEY`, `NVIDIA_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+Twitter keys, `CHART_IMG_KEY`, `ALERT_WEBHOOK_URL`.
+
+GitHub Actions needs one repo secret for retraining: **`RENDER_APP_URL`**
+(`https://<app>.onrender.com`, no trailing slash), under
+Settings → Secrets and variables → Actions.
+
+## Deploy a change
+
+```bash
+git checkout -b <branch>       # never commit straight to main
+git add -A && git commit -m "..."
+git push -u origin <branch>    # open a PR; merging to main triggers Render build
+```
+Watch the Render dashboard build logs; `entrypoint.sh` used to run an import
+pre-flight so import errors surface there. Confirm `GET /health` returns 200 after.
+
+## Troubleshooting "Daily ML Pipeline: All jobs have failed"
+
+The daily workflow (`daily-retrain.yml`) curls the **live** app. Failing in ~3 s
+= the trigger step failed:
+
+1. **Endpoints not deployed** — the `/api/pipeline/*` routes must be committed +
+   deployed. Most common cause. → push and redeploy.
+2. **`RENDER_APP_URL` missing/wrong** → instant curl failure.
+3. **App down / unhealthy** → check Render logs and `/health`.
+
+Failing after minutes = a pipeline step errored; see the `retrain-pipeline` skill.
+
+## Local run
+
+```bash
+cd backend && python app.py     # dev server on PORT (default 5001)
+# or the production server:
+PORT=8080 ./backend/entrypoint.sh
+```
+
+The polyglot build (`make all`, `make test`) covers C++/Go; see `ARCHITECTURE.md`.
