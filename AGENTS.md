@@ -36,9 +36,10 @@ redeploy**, not a code change. Also confirm the `RENDER_APP_URL` repo secret is 
 | Feature allow-list | `.../factor_discovery/output/recommended_features.txt` | consumed by supervised + unsupervised |
 | Volatility stack | `algorithms/volatility_forecasting/` | SABR/Heston, signals, backtest, portfolio |
 | LLM layer | `ai_platform/` | router, narrator, judge, nvidia |
-| Data providers | `data/` | one module per API |
+| Data providers | `data/` | one module per API — ref: [docs/data-providers.md](docs/data-providers.md) |
 | Sentiment | `sentiment/` | FinBERT US + Canadian |
-| High-perf | `performance/cpp_execution/`, `performance/go_services/` | C++ (pybind11), Go (gRPC) |
+| Time-series research | `.../time_series_models/`, `.../eda/` | standalone scripts — ref: [docs/research-scripts.md](docs/research-scripts.md) |
+| High-perf | `performance/cpp_execution/`, `performance/go_services/` | C++ (pybind11), Go (gRPC) — ref: [docs/performance.md](docs/performance.md) |
 | Tests | `tests/` | pytest + API smoke tests |
 | Deploy | `Dockerfile`, `render.yaml`, `backend/entrypoint.sh` | Render + Docker |
 | CI / schedule | `.github/workflows/{ci.yml,daily-retrain.yml}` | |

@@ -35,6 +35,11 @@ An end-to-end quantitative research and trading platform. The system combines a 
 > Read [`AGENTS.md`](AGENTS.md) first — it captures the conventions, the pipeline
 > contract, and the gotchas that aren't obvious from the code. Task-specific
 > playbooks live in [`.claude/skills/`](.claude/skills/).
+>
+> **Deep per-file references** live in [`docs/`](docs/):
+> [data providers](docs/data-providers.md) ·
+> [research & analysis scripts](docs/research-scripts.md) ·
+> [C++/Go performance components](docs/performance.md).
 
 ---
 
@@ -340,6 +345,10 @@ y = (X["Close"].shift(-5) / X["Close"] - 1).rename("fwd_5d_return")
 | `var.py` | Vector Autoregression |
 | `cointegrations.py` | Johansen cointegration testing |
 
+> These are **standalone research scripts** (run by hand, fetch live from yfinance —
+> not part of the automated pipeline). Full per-file reference incl. `eda/eda.py`:
+> [docs/research-scripts.md](docs/research-scripts.md).
+
 ---
 
 ## 9. Scheduled Retraining & MLOps
@@ -541,6 +550,10 @@ Signal: LONG_STRADDLE  |  Edge: 300 bps raw → 54 bps net after costs
 ---
 
 ## 14. High-Performance Components
+
+> Full per-file API (C++ order book/engine, pybind11 surface, Go gRPC service,
+> build steps, and the "not wired into the app / won't build as-is" caveats):
+> [docs/performance.md](docs/performance.md).
 
 ### C++ Execution Engine (`performance/cpp_execution/`)
 
