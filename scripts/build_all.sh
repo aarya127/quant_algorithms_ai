@@ -21,7 +21,7 @@ GO_STATUS="⏩"
 PYTHON_STATUS="⏩"
 
 # Build C++
-if [ -d "cpp" ]; then
+if [ -d "performance/cpp_execution" ]; then
     echo -e "${BLUE}1/3: Building C++ components...${NC}"
     if bash scripts/build_cpp.sh; then
         CPP_STATUS="${GREEN}✅${NC}"
@@ -35,7 +35,7 @@ else
 fi
 
 # Build Go
-if [ -d "go" ]; then
+if [ -d "performance/go_services" ]; then
     echo -e "${BLUE}2/3: Building Go services...${NC}"
     if bash scripts/build_go.sh; then
         GO_STATUS="${GREEN}✅${NC}"

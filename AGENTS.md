@@ -26,7 +26,7 @@ redeploy**, not a code change. Also confirm the `RENDER_APP_URL` repo secret is 
 
 | Area | Path | Notes |
 |---|---|---|
-| Flask backend | `backend/app.py` | 32 routes, TTL cache, pipeline job store |
+| Flask backend | `backend/app.py` | 31 routes, TTL cache, pipeline job store |
 | Prediction serving + drift | `backend/predictor.py` | importable functions; **HTTP routes not yet wired** |
 | Retraining driver | `algorithms/machine_learning_algorithms/orchestrator.py` | 5-step pipeline |
 | Pipeline stages | `.../data_pipelines/` | `run_pipeline.py`, `clean.py`, `normalize.py` |
@@ -108,6 +108,33 @@ Exit code 0 = done/up_to_date, 1 = a step failed.
   Render cron job couldn't share the disk).
 - **Port**: local dev defaults to `5001`; Docker/Render use `8080` via `PORT`.
 - FinBERT weights are baked into the image at build time — don't add runtime downloads.
+- **Two Docker images**: `Dockerfile` (web app, what Render builds) and
+  `Dockerfile.pipeline` (training-only, used only by the K8s CronJob).
+- **Three scheduling paths, one live**: `.github/workflows/daily-retrain.yml`
+  (Render, **production**) vs `k8s/cronjob.yaml` (unused scaffolding) vs
+  `scripts/daily_predict.sh` (local machine only). Fix a failing retrain via the
+  GitHub Action, not the other two.
+- **`k8s/` is scaffolding** — placeholder image tags/hostnames, applied by nothing.
+  Render (`render.yaml`) is the real deploy. Don't cite k8s manifests as truth.
+- **CI** = `.github/workflows/ci.yml`: `pytest` with light deps only (no
+  torch/transformers) on every push/PR. Keep unit tests importable without heavy deps.
+
+## Component status (don't trust the tree at face value)
+
+The repo mixes shipped code, standalone research, and empty scaffolding. Before
+"fixing" or extending something, check it's real:
+
+- **Wired & working**: `backend/`, `data/`, `sentiment/`, `ai_platform/` (except
+  `signal_narrator.py`), the ML pipeline + registry + MLflow, `volatility_forecasting/`.
+- **Real but standalone** (not called by app/pipeline): `time_series_models/`,
+  `eda/`, `factor_discovery/`, `greeks/`, `macd_rsi/`, and `performance/`
+  (C++/Go — real code, but not imported by the deployed app; their READMEs
+  overstate the dir layout).
+- **Not yet wired**: `backend/predictor.py` (functions exist, no routes),
+  `ai_platform/signal_narrator.py` (no caller).
+- **Empty placeholders** (imply features that don't exist): all of top-level
+  `models/`, `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/*.py`,
+  and several 0-byte `prototype.py` stubs. Don't document these as working.
 
 ---
 

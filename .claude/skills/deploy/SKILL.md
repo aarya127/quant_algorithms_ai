@@ -63,6 +63,45 @@ The daily workflow (`daily-retrain.yml`) curls the **live** app. Failing in ~3 s
 
 Failing after minutes = a pipeline step errored; see the `retrain-pipeline` skill.
 
+## Two Docker images
+
+- **`Dockerfile`** — the web app (Flask + Gunicorn + PyTorch + FinBERT, ~3.5 GB).
+  This is what Render builds.
+- **`Dockerfile.pipeline`** — training-only (deps from `requirements-pipeline.txt`,
+  no Flask/PyTorch/FinBERT, ~900 MB). `ENTRYPOINT` is `orchestrator.py`. Only the
+  Kubernetes CronJob uses it; Render retrains in-process via the API instead.
+
+## Kubernetes (`k8s/`) — scaffolding, NOT the live deploy
+
+A full manifest set (namespace `invest-ai`: deployment, service, ingress, hpa, pvc,
+configmap, secret, cronjob) for an alternative K8s target. It uses **placeholder
+image tags/hostnames** (`invest-ai:latest`, `example.com`), nothing in CI applies
+it, and **Render is production**. Don't treat `k8s/` as authoritative. Note
+`k8s/configmap.yaml` sets `GUNICORN_WORKERS=2` — irrelevant while unused, but if K8s
+ever goes live, revisit the single-worker job-store issue above first.
+
+## Three scheduling paths (only one is live)
+
+| Path | Where | Status |
+|---|---|---|
+| `.github/workflows/daily-retrain.yml` | Render, via the API | **Active — production** |
+| `k8s/cronjob.yaml` (runs `Dockerfile.pipeline`) | Kubernetes | Unused scaffolding |
+| `scripts/daily_predict.sh` | A local dev machine (hardcoded paths) | Local convenience |
+
+Don't "fix" a failing retrain by touching the K8s cronjob or the local script — the
+live one is the GitHub Action.
+
+## Helper scripts (`scripts/`)
+
+`build_cpp.sh` / `build_go.sh` / `build_all.sh` build the native components (under
+`performance/`, not root — a past bug pointed them at nonexistent `cpp/`/`go/` dirs).
+`daily_predict.sh` is a local-only cron helper with machine-specific paths.
+
+## CI
+
+`.github/workflows/ci.yml` runs `pytest` (light deps only) on every push/PR to
+`main`. See the `testing` skill.
+
 ## Local run
 
 ```bash

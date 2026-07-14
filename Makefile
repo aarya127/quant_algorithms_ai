@@ -32,9 +32,19 @@ python:
 
 test:
 	@echo "🧪 Running tests..."
-	@cd cpp/build && ctest --output-on-failure
-	@cd go && go test ./... -v
-	@cd tests && python3 run_all_tests.py
+	@if [ -d performance/cpp_execution/build ]; then \
+		echo "  → C++ (ctest)"; cd performance/cpp_execution/build && ctest --output-on-failure; \
+	else echo "  ⏭️  C++ not built — run 'make cpp' first"; fi
+	@if [ -d performance/go_services ]; then \
+		echo "  → Go (go test)"; cd performance/go_services && go test ./...; \
+	else echo "  ⏭️  Go services missing"; fi
+	@echo "  → Python unit tests (pytest)"
+	@python3 -m pytest -q \
+		tests/test_transforms.py \
+		tests/test_targets.py \
+		tests/test_evaluation_gate.py \
+		tests/test_pipeline_integration.py
+	@echo "  ℹ️  Live-API smoke suite is separate: 'cd tests && python3 run_all_tests.py' (needs API keys)"
 
 clean:
 	@echo "🧹 Cleaning build artifacts..."

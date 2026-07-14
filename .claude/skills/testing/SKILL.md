@@ -9,12 +9,25 @@ description: Run and write tests for quant_algorithms_ai, and follow its convent
 
 | Command | What it runs |
 |---|---|
-| `pytest` (from repo root) | Unit/integration tests — `tests/test_*.py`. Fast, no network. |
+| `pytest` (from repo root) | Unit/integration tests — `tests/test_*.py`. Fast, no network. **This is what CI runs.** |
 | `cd tests && python3 run_all_tests.py` | Live-API smoke suite (Finnhub, AlphaVantage). **Needs API keys**, hits the network, rate-limited. Writes to `tests/results/`. |
-| `make test` | C++ `ctest` + Go `go test ./...` + the API smoke suite (does **not** run pytest). |
+| `make test` | Guarded C++ `ctest` + Go `go test` (skipped if not built) + `pytest`. |
 
 Run `pytest` for logic changes. Reserve the API suite for verifying provider
 integrations. See `tests/README.md` for the smoke-suite details.
+
+> Historical gotcha: `make test` and `scripts/build_all.sh` used to point at
+> nonexistent root `cpp/` and `go/` dirs (the code is under `performance/`), so
+> they silently failed. Fixed — but if you see cwd errors from a Make target,
+> check it references `performance/cpp_execution/` and `performance/go_services/`.
+
+## CI (`.github/workflows/ci.yml`)
+
+Runs on every push and PR to `main`. Installs **light deps only**
+(numpy/pandas/sklearn/xgboost/lightgbm/pytest — no torch/transformers) and runs the
+four pytest suites with coverage. So: **keep unit tests importable without heavy ML
+deps** (that's why they mirror source logic instead of importing it). A separate
+workflow, `daily-retrain.yml`, handles scheduled retraining (see `retrain-pipeline`).
 
 ## The unit-test convention (important)
 
