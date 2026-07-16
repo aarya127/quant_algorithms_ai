@@ -9,7 +9,7 @@ from pathlib import Path
 
 from config import (
     SYMBOL, REGIMES_CSV, FEAT_FILE, HOLDOUT_ROWS, INIT_TRAIN, STEP,
-    REGIME_COLS, REG_TARGETS, CLF_TARGETS, OUT_DIR,
+    REGIME_COLS, REG_TARGETS, CLF_TARGETS, OUT_DIR, target_embargo,
 )
 from data import make_walk_forward_splits
 from pipeline import run_folds, run_holdout
@@ -56,9 +56,14 @@ def main():
 
         for target in REG_TARGETS + CLF_TARGETS:
             task = "regression" if target in REG_TARGETS else "classification"
-            print(f"\n── {target}  [{task}]  v{version} ──────────────────────")
+            # Per-target purge gap (= label horizon) prevents look-ahead leakage
+            # from the forward-looking target into validation/holdout.
+            embargo  = target_embargo(target)
+            folds_t  = make_walk_forward_splits(n, INIT_TRAIN, STEP, HOLDOUT_ROWS, embargo=embargo)
+            cv_idx_t = list(range(0, n - HOLDOUT_ROWS - embargo))
+            print(f"\n── {target}  [{task}]  v{version} ── embargo={embargo} ──────────")
 
-            fold_records, feat_counter = run_folds(df, folds, features, target, task)
+            fold_records, feat_counter = run_folds(df, folds_t, features, target, task)
 
             fd = pd.DataFrame(fold_records)
             fd.insert(0, "version", version)
@@ -70,7 +75,7 @@ def main():
                 plot_feat_freq(feat_counter, target, version)
 
             print(f"    → Holdout ({HOLDOUT_ROWS} rows):")
-            h_res = run_holdout(df, cv_idx, holdout_idx, features, target, task)
+            h_res = run_holdout(df, cv_idx_t, holdout_idx, features, target, task)
             all_holdout[(target, version)] = h_res
 
             # Log params, CV metrics, holdout metrics, and feature artifacts to MLflow
