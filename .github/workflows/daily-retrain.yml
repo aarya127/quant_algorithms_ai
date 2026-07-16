@@ -22,8 +22,13 @@
 name: Daily ML Pipeline
 
 on:
-  schedule:
-    - cron: '0 2 * * 1-5'   # 02:00 UTC Monday–Friday
+  # PAUSED 2026-07-16: the retrain runs in-process on the Render web service, and
+  # the free 512 MB instance OOMs mid-pipeline (the project is designed for the
+  # 2 GB "standard" plan — see render.yaml / README §9). Re-enable the schedule
+  # after upgrading the instance, or after moving retraining off the web service.
+  # Manual runs still work via the "Run workflow" button below.
+  # schedule:
+  #   - cron: '0 2 * * 1-5'   # 02:00 UTC Monday–Friday
   workflow_dispatch:          # allow manual trigger from the Actions tab
     inputs:
       ticker:
