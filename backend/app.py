@@ -1552,6 +1552,12 @@ import threading
 _PIPELINE_JOBS = {}
 _PIPELINE_LOCK = threading.Lock()
 
+# Shared secret protecting the (expensive) retrain trigger. When set, callers must
+# send a matching `X-Pipeline-Token` header; the GitHub Actions workflow sends it
+# from the PIPELINE_TRIGGER_TOKEN repo secret. When unset, the endpoint stays open
+# but logs a warning — set it in the Render dashboard to lock down this public app.
+_PIPELINE_TOKEN = os.environ.get('PIPELINE_TRIGGER_TOKEN', '').strip()
+
 
 def _run_retrain_job(job_id, ticker):
     """Run ML retraining as a subprocess, parsing orchestrator output protocol."""
@@ -1662,15 +1668,39 @@ def _run_retrain_job(job_id, ticker):
 def pipeline_run():
     """Start an ML retraining job for a given ticker."""
     try:
+        # Auth: retraining is expensive, so protect it behind a shared secret.
+        if _PIPELINE_TOKEN:
+            if request.headers.get('X-Pipeline-Token', '') != _PIPELINE_TOKEN:
+                return jsonify({'success': False, 'error': 'unauthorized'}), 401
+        else:
+            print("[PIPELINE] WARNING: /api/pipeline/run is unprotected "
+                  "(PIPELINE_TRIGGER_TOKEN not set).", flush=True)
+
         data = request.get_json(force=True) or {}
         ticker = data.get('ticker', 'NVDA').upper().strip()
-        
+
         if not ticker:
             return jsonify({'success': False, 'error': 'ticker is required'}), 400
-        
+
+        # Single-flight: refuse to start a second retrain while one is active, so a
+        # burst of triggers can't spawn parallel pipelines and OOM the instance.
+        with _PIPELINE_LOCK:
+            active = next(
+                (j for j in _PIPELINE_JOBS.values()
+                 if j['status'] in ('queued', 'running')),
+                None,
+            )
+        if active is not None:
+            return jsonify({
+                'success': False,
+                'error': 'a retrain job is already in progress',
+                'job_id': active['job_id'],
+                'status': active['status'],
+            }), 409
+
         # Generate job ID
         job_id = str(uuid.uuid4())[:8]
-        
+
         # Create job entry
         with _PIPELINE_LOCK:
             _PIPELINE_JOBS[job_id] = {

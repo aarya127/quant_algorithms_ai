@@ -48,6 +48,9 @@ jobs:
         env:
           RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
           TICKER: ${{ github.event.inputs.ticker || 'NVDA' }}
+          # Optional shared secret. Set PIPELINE_TRIGGER_TOKEN as a repo secret AND
+          # as an env var on the Render service to lock down the trigger endpoint.
+          PIPELINE_TRIGGER_TOKEN: ${{ secrets.PIPELINE_TRIGGER_TOKEN }}
         run: |
           set -uo pipefail
 
@@ -72,6 +75,7 @@ jobs:
           HTTP_CODE=$(curl -s -m 60 -w "%{http_code}" -o /tmp/trigger.json \
             -X POST "$RENDER_APP_URL/api/pipeline/run" \
             -H "Content-Type: application/json" \
+            -H "X-Pipeline-Token: ${PIPELINE_TRIGGER_TOKEN:-}" \
             -d "{\"ticker\": \"$TICKER\"}" || echo "000")
           echo "POST /api/pipeline/run → HTTP $HTTP_CODE"
           echo "--- response body ---"; cat /tmp/trigger.json 2>/dev/null || true; echo; echo "---------------------"

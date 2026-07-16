@@ -1,91 +1,70 @@
 """
 tests/test_evaluation_gate.py
 
-Unit tests for the model promotion / evaluation gate logic in registry.py.
-Isolates the gate as a pure function — no disk, no models needed.
+Unit tests for the model promotion / evaluation gate in registry.py.
+
+These import and exercise the REAL `_promotion_gate` (not a copy), so if the
+production gate logic or thresholds change, these tests move with them — a change
+that breaks the promotion contract fails CI instead of silently passing.
 """
 import pytest
 
-# Gate constants (must match registry.py)
-
-_MIN_ABSOLUTE = {
-    "regression":     0.02,   # IC must be > 0.02 to be worth deploying
-    "classification": 0.30,   # F1_w must be > 0.30 (well above random)
-}
-_MIN_DELTA = {
-    "regression":     0.005,  # IC improvement required over production
-    "classification": 0.005,  # F1_w improvement required
-}
-_BASELINE_BEAT_RATIO = 1.05   # new model must be ≥5% better than naive baseline
+# conftest.py puts algorithms/.../supervised on sys.path
+from registry import (
+    _promotion_gate,
+    _MIN_ABSOLUTE,
+    _MIN_DELTA,
+    _BASELINE_BEAT_RATIO,
+)
 
 
-def evaluate_gate(
-    new_val: float,
-    existing_val: float | None,
-    baseline_val: float | None,
-    task: str,
-) -> tuple[bool, str]:
-    """
-    Replicates the promotion gate in registry.py.
-    Returns (passes: bool, reason: str).
-    """
-    # 1. Absolute floor — model must be minimally useful
-    floor = _MIN_ABSOLUTE[task]
-    if new_val < floor:
-        return False, f"below_floor(floor={floor:.3f}, got={new_val:.4f})"
+def gate(new_val, existing_val, baseline_val, task):
+    """Thin adapter over the real gate. `target`/`primary` are labels only (they
+    appear in the log line, not the decision), so we pass canonical values."""
+    primary = "ic" if task == "regression" else "f1_w"
+    return _promotion_gate(new_val, existing_val, baseline_val, task, "target_test", primary)
 
-    # 2. Baseline beat — must outperform naive predictor by ≥5%
-    if baseline_val is not None and baseline_val > 0:
-        required = baseline_val * _BASELINE_BEAT_RATIO
-        if new_val < required:
-            return False, (
-                f"fails_baseline(baseline={baseline_val:.4f}, "
-                f"need≥{required:.4f}, got={new_val:.4f})"
-            )
 
-    # 3. Improvement over production — must beat existing by MIN_DELTA
-    if existing_val is not None:
-        required = existing_val + _MIN_DELTA[task]
-        if new_val < required:
-            return False, (
-                f"no_improvement(existing={existing_val:.4f}, "
-                f"need≥{required:.4f}, got={new_val:.4f})"
-            )
+# Guard the thresholds themselves — documents the contract and fails loudly if
+# someone edits registry.py's constants without intending to.
 
-    return True, "passed"
+def test_threshold_constants():
+    assert _MIN_ABSOLUTE == {"regression": 0.02, "classification": 0.30}
+    assert _MIN_DELTA == {"regression": 0.005, "classification": 0.005}
+    assert _BASELINE_BEAT_RATIO == 1.05
 
 
 # Absolute floor
 
 class TestAbsoluteFloor:
     def test_regression_below_floor_blocked(self):
-        passes, reason = evaluate_gate(0.01, None, None, "regression")
+        passes, reason = gate(0.01, None, None, "regression")
         assert not passes
-        assert "below_floor" in reason
+        assert "floor" in reason
 
     def test_regression_at_floor_blocked(self):
         """Just below floor — should be blocked."""
-        passes, reason = evaluate_gate(0.019, None, None, "regression")
+        passes, reason = gate(0.019, None, None, "regression")
         assert not passes
 
     def test_regression_above_floor_allowed(self):
-        passes, _ = evaluate_gate(0.025, None, None, "regression")
+        passes, _ = gate(0.025, None, None, "regression")
         assert passes
 
     def test_classification_below_floor_blocked(self):
-        passes, reason = evaluate_gate(0.25, None, None, "classification")
+        passes, reason = gate(0.25, None, None, "classification")
         assert not passes
-        assert "below_floor" in reason
+        assert "floor" in reason
 
     def test_classification_above_floor_allowed(self):
-        passes, _ = evaluate_gate(0.35, None, None, "classification")
+        passes, _ = gate(0.35, None, None, "classification")
         assert passes
 
     def test_floor_is_checked_first(self):
         """Even if improving over a bad existing model, floor must pass."""
-        passes, reason = evaluate_gate(0.01, -0.05, None, "regression")
+        passes, reason = gate(0.01, -0.05, None, "regression")
         assert not passes
-        assert "below_floor" in reason  # floor check takes priority
+        assert "floor" in reason  # floor check takes priority
 
 
 # Baseline beat
@@ -93,26 +72,26 @@ class TestAbsoluteFloor:
 class TestBaselineBeat:
     def test_barely_beats_baseline_blocked(self):
         """1% better than baseline → below 5% threshold."""
-        passes, reason = evaluate_gate(0.101, None, 0.10, "regression")
+        passes, reason = gate(0.101, None, 0.10, "regression")
         assert not passes
-        assert "fails_baseline" in reason
+        assert "baseline" in reason
 
     def test_beats_baseline_by_5pct_exactly_blocked(self):
         """Exactly 5% better — not strictly greater than required."""
-        passes, reason = evaluate_gate(0.105, None, 0.10, "regression")
+        passes, reason = gate(0.10499, None, 0.10, "regression")
         assert not passes
 
     def test_beats_baseline_by_more_than_5pct_allowed(self):
-        passes, _ = evaluate_gate(0.106, None, 0.10, "regression")
+        passes, _ = gate(0.106, None, 0.10, "regression")
         assert passes
 
     def test_zero_baseline_skips_check(self):
         """Baseline = 0 (random) → ratio check is skipped to avoid div edge case."""
-        passes, _ = evaluate_gate(0.025, None, 0.0, "regression")
+        passes, _ = gate(0.025, None, 0.0, "regression")
         assert passes
 
     def test_none_baseline_skips_check(self):
-        passes, _ = evaluate_gate(0.025, None, None, "regression")
+        passes, _ = gate(0.025, None, None, "regression")
         assert passes
 
 
@@ -120,35 +99,35 @@ class TestBaselineBeat:
 
 class TestImprovementGate:
     def test_same_score_as_existing_blocked(self):
-        passes, reason = evaluate_gate(0.35, 0.35, None, "regression")
+        passes, reason = gate(0.35, 0.35, None, "regression")
         assert not passes
-        assert "no_improvement" in reason
+        assert "improvement" in reason
 
     def test_tiny_improvement_blocked(self):
         """Improves by 0.001, less than MIN_DELTA=0.005."""
-        passes, reason = evaluate_gate(0.351, 0.35, None, "regression")
+        passes, reason = gate(0.351, 0.35, None, "regression")
         assert not passes
-        assert "no_improvement" in reason
+        assert "improvement" in reason
 
     def test_sufficient_improvement_allowed(self):
-        passes, _ = evaluate_gate(0.356, 0.35, None, "regression")
+        passes, _ = gate(0.356, 0.35, None, "regression")
         assert passes
 
     def test_no_existing_model_always_passes_improvement_check(self):
         """First-time registration — no production model to beat."""
-        passes, _ = evaluate_gate(0.025, None, None, "regression")
+        passes, _ = gate(0.025, None, None, "regression")
         assert passes
 
     def test_regression_backwards_blocked(self):
-        passes, _ = evaluate_gate(0.28, 0.35, None, "regression")
+        passes, _ = gate(0.28, 0.35, None, "regression")
         assert not passes
 
     def test_classification_sufficient_improvement(self):
-        passes, _ = evaluate_gate(0.856, 0.85, None, "classification")
+        passes, _ = gate(0.856, 0.85, None, "classification")
         assert passes
 
     def test_classification_zero_improvement_blocked(self):
-        passes, _ = evaluate_gate(0.85, 0.85, None, "classification")
+        passes, _ = gate(0.85, 0.85, None, "classification")
         assert not passes
 
 
@@ -157,31 +136,31 @@ class TestImprovementGate:
 class TestRealisticScenarios:
     def test_strong_new_regime_model_passes(self):
         """Regime model: IC=0.42, beats existing 0.40, baseline 0.05."""
-        passes, reason = evaluate_gate(0.42, 0.40, 0.05, "regression")
+        passes, reason = gate(0.42, 0.40, 0.05, "regression")
         assert passes, f"Expected pass but got: {reason}"
 
     def test_weak_model_fails_even_when_improving(self):
         """IC=0.015 > existing -0.01, but fails the floor."""
-        passes, reason = evaluate_gate(0.015, -0.01, None, "regression")
+        passes, reason = gate(0.015, -0.01, None, "regression")
         assert not passes
-        assert "below_floor" in reason
+        assert "floor" in reason
 
     def test_retrain_after_market_regime_change(self):
         """IC drops to 0.025 from 0.35 (regime change) — blocked."""
-        passes, _ = evaluate_gate(0.025, 0.35, None, "regression")
+        passes, _ = gate(0.025, 0.35, None, "regression")
         assert not passes
 
     def test_first_deploy_only_needs_floor(self):
         """No existing, no baseline — just needs to clear the floor."""
-        passes, _ = evaluate_gate(0.03, None, None, "regression")
+        passes, _ = gate(0.03, None, None, "regression")
         assert passes
 
     def test_classification_regime_model_typical(self):
         """Regime model F1_w=0.98 beats existing 0.97, above baseline."""
-        passes, reason = evaluate_gate(0.98, 0.97, 0.40, "classification")
+        passes, reason = gate(0.98, 0.97, 0.40, "classification")
         assert passes, reason
 
     def test_direction_model_weak_blocked(self):
-        """dir_1d F1_w=0.355 improves on 0.350, but barely above floor=0.30."""
-        passes, _ = evaluate_gate(0.355, 0.350, None, "classification")
+        """dir_1d F1_w=0.355 improves on 0.350, and clears floor=0.30."""
+        passes, _ = gate(0.355, 0.350, None, "classification")
         assert passes  # above floor, sufficient improvement

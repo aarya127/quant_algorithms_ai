@@ -21,6 +21,27 @@ INIT_TRAIN   = 120
 STEP         = 21
 HOLDOUT_ROWS = 51
 
+# Purge/embargo gap (rows) between train and validation/holdout, per target.
+# Targets are forward-looking, so the last `horizon` training rows carry labels
+# computed from data inside the eval window. Dropping them prevents look-ahead
+# leakage that would otherwise inflate CV/holdout metrics (and the promotion gate).
+#   target_1d / dir_1d / large_move  → label uses t+1              → 1
+#   target_5d / vol_5d               → label uses t+1..t+5         → 5
+#   target_regime                    → conservative (vol-based)    → 5
+TARGET_HORIZON = {
+    "target_1d":         1,
+    "target_dir_1d":     1,
+    "target_large_move": 1,
+    "target_5d":         5,
+    "target_vol_5d":     5,
+    "target_regime":     5,
+}
+
+
+def target_embargo(target):
+    """Rows to purge between train and eval for `target` (conservative default 5)."""
+    return TARGET_HORIZON.get(target, 5)
+
 # model config
 LASSO_ALPHA  = 5e-3
 SMOTE_K      = 5

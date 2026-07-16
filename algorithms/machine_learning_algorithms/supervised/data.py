@@ -10,13 +10,19 @@ from imblearn.over_sampling import SMOTE
 from config import LASSO_ALPHA, SMOTE_K
 
 
-def make_walk_forward_splits(n_total, init_train, step, holdout):
-    """Return list of (train_idx, val_idx) index pairs for walk-forward CV."""
+def make_walk_forward_splits(n_total, init_train, step, holdout, embargo=0):
+    """Return list of (train_idx, val_idx) index pairs for walk-forward CV.
+
+    `embargo` purges the last `embargo` rows of each training block (the ones whose
+    forward-looking label overlaps the validation window), leaving a gap between
+    train and val so validation metrics aren't inflated by look-ahead leakage.
+    """
     available = n_total - holdout
     folds, train_end = [], init_train
     while train_end < available:
-        val_end = min(train_end + step, available)
-        folds.append((list(range(0, train_end)), list(range(train_end, val_end))))
+        val_end    = min(train_end + step, available)
+        train_stop = max(0, train_end - embargo)   # purge leaked tail rows
+        folds.append((list(range(0, train_stop)), list(range(train_end, val_end))))
         train_end += step
     return folds
 
