@@ -44,14 +44,44 @@ jobs:
           RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
           TICKER: ${{ github.event.inputs.ticker || 'NVDA' }}
         run: |
+          set -uo pipefail
+
+          # 1) Secret must be set.
+          if [ -z "${RENDER_APP_URL:-}" ]; then
+            echo "::error::RENDER_APP_URL secret is not set. Add it under Settings →"
+            echo "::error::Secrets and variables → Actions (e.g. https://your-app.onrender.com, no trailing slash)."
+            exit 1
+          fi
+          echo "Target: $RENDER_APP_URL"
+
+          # 2) Is the service even up? (does not fail the step — just reports)
+          HEALTH=$(curl -s -m 30 -o /dev/null -w "%{http_code}" "$RENDER_APP_URL/health" || echo "000")
+          echo "GET /health → HTTP $HEALTH"
+          if [ "$HEALTH" != "200" ]; then
+            echo "::warning::/health returned $HEALTH — the Render service may be down, still"
+            echo "::warning::spinning up (free tier sleeps), or RENDER_APP_URL points at the wrong host."
+          fi
+
+          # 3) Trigger — capture BOTH body and status so failures are explainable.
           echo "Triggering pipeline for $TICKER..."
-          RESPONSE=$(curl -sf \
+          HTTP_CODE=$(curl -s -m 60 -w "%{http_code}" -o /tmp/trigger.json \
             -X POST "$RENDER_APP_URL/api/pipeline/run" \
             -H "Content-Type: application/json" \
-            -d "{\"ticker\": \"$TICKER\"}")
+            -d "{\"ticker\": \"$TICKER\"}" || echo "000")
+          echo "POST /api/pipeline/run → HTTP $HTTP_CODE"
+          echo "--- response body ---"; cat /tmp/trigger.json 2>/dev/null || true; echo; echo "---------------------"
 
-          echo "Response: $RESPONSE"
-          JOB_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+          if [ "$HTTP_CODE" = "000" ]; then
+            echo "::error::Could not reach $RENDER_APP_URL (connection/DNS/timeout). Check the URL and that the service is running."
+            exit 1
+          fi
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Trigger failed with HTTP $HTTP_CODE. If 404, the /api/pipeline/* routes aren't in the deployed build (redeploy). See body above."
+            exit 1
+          fi
+
+          JOB_ID=$(python3 -c "import json; print(json.load(open('/tmp/trigger.json'))['job_id'])") || {
+            echo "::error::2xx response but no job_id in body (see above)."; exit 1; }
           echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
           echo "Started job: $JOB_ID"
 
@@ -59,17 +89,25 @@ jobs:
         env:
           RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
         run: |
+          set -uo pipefail
           JOB_ID="${{ steps.trigger.outputs.job_id }}"
           MAX_POLLS=120      # 120 × 90 s = 3 hours
           POLL=0
 
           while [ $POLL -lt $MAX_POLLS ]; do
             POLL=$((POLL + 1))
-            RESP=$(curl -sf "$RENDER_APP_URL/api/pipeline/status/$JOB_ID")
-            STATUS=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
-            STEP=$(echo "$RESP"   | python3 -c "import sys,json; print(json.load(sys.stdin).get('current_step','—'))")
+            RESP=$(curl -s -m 30 "$RENDER_APP_URL/api/pipeline/status/$JOB_ID" || echo "")
+            STATUS=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "unreachable")
+            STEP=$(echo "$RESP"   | python3 -c "import sys,json; print(json.load(sys.stdin).get('current_step','—'))" 2>/dev/null || echo "—")
 
             echo "[$POLL/$MAX_POLLS] status=$STATUS  step=$STEP"
+
+            # transient network blip / cold start — don't fail the run, just retry
+            if [ "$STATUS" = "unreachable" ]; then
+              echo "  (status endpoint unreachable — retrying)"
+              sleep 90
+              continue
+            fi
 
             case "$STATUS" in
               done)
