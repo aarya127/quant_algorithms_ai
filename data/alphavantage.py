@@ -31,7 +31,8 @@ class AlphaVantage:
     def _make_request(self, params):
         """Helper method to make API requests"""
         params['apikey'] = self.api_key
-        response = requests.get(self.base_url, params=params)
+        # Timeout so a hung upstream can't pin a (single) gunicorn worker forever.
+        response = requests.get(self.base_url, params=params, timeout=15)
         return response.json()
     
     # News & Sentiment

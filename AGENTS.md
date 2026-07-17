@@ -99,11 +99,10 @@ Exit code 0 = done/up_to_date, 1 = a step failed.
 
 ## Deployment facts that change how you code
 
-- **Single Gunicorn worker.** `backend/entrypoint.sh` hardcodes `--workers 1`.
-  `render.yaml` sets `GUNICORN_WORKERS=2` but the entrypoint ignores it. The
-  pipeline job store (`_PIPELINE_JOBS` in `app.py`) is an in-process dict and is
-  **only correct under one worker**. Don't raise the worker count without moving
-  that state to shared storage (the persistent disk or a DB).
+- **Worker count** is `GUNICORN_WORKERS` (default 1; `backend/entrypoint.sh` honors it).
+  The retrain job store is now shared (SQLite, `backend/pipeline_store.py`), so >1
+  worker is safe for correctness — but each sync worker can load FinBERT (~512 MB),
+  so keep it at 1 on small instances and raise only after upgrading RAM.
 - **Persistent disk** is mounted at `/app/mnt` on Render and holds models +
   feature CSVs. It's why retraining runs *inside* the web container (a separate
   Render cron job couldn't share the disk).

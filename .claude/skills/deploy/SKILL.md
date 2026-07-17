@@ -11,7 +11,7 @@ description: Build, deploy, and troubleshoot quant_algorithms_ai on Docker/Rende
   baked in at build time. Entry: `CMD ["./entrypoint.sh"]`.
 - **`backend/entrypoint.sh`**:
   ```sh
-  exec gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 1 --worker-class sync --timeout 120
+  exec gunicorn app:app --bind "0.0.0.0:${PORT:-8080}" --workers "${GUNICORN_WORKERS:-1}" --worker-class sync --timeout 120
   ```
 - **`render.yaml`** (Blueprint): Docker web service, `plan: standard` (1 CPU / 2 GB,
   needed for FinBERT), `healthCheckPath: /health`, persistent 5 GB disk at
@@ -19,12 +19,10 @@ description: Build, deploy, and troubleshoot quant_algorithms_ai on Docker/Rende
 
 ## Two facts that change how you write code
 
-1. **Single Gunicorn worker.** `entrypoint.sh` hardcodes `--workers 1`.
-   `render.yaml` sets `GUNICORN_WORKERS=2`, **but the entrypoint ignores that env
-   var.** The retraining job store (`_PIPELINE_JOBS` in `app.py`) is an in-process
-   dict — only consistent under one worker. If you ever wire `GUNICORN_WORKERS`
-   into the launch command, first move that state to shared storage (the persistent
-   disk or a DB), or POST `/run` and GET `/status` can land on different workers → 404.
+1. **Worker count** = `GUNICORN_WORKERS` (default 1; entrypoint honors it). The
+   retrain job store is shared (SQLite, `backend/pipeline_store.py`), so >1 worker
+   is correctness-safe now — but each sync worker can load FinBERT (~512 MB), so
+   keep it at 1 on the free tier and raise only after upgrading RAM.
 2. **A new Flask route is inert until committed AND deployed.** Editing
    `backend/app.py` in your working tree changes nothing on the live app. Render
    only picks up **pushed commits**.
@@ -77,8 +75,9 @@ A full manifest set (namespace `invest-ai`: deployment, service, ingress, hpa, p
 configmap, secret, cronjob) for an alternative K8s target. It uses **placeholder
 image tags/hostnames** (`invest-ai:latest`, `example.com`), nothing in CI applies
 it, and **Render is production**. Don't treat `k8s/` as authoritative. Note
-`k8s/configmap.yaml` sets `GUNICORN_WORKERS=2` — irrelevant while unused, but if K8s
-ever goes live, revisit the single-worker job-store issue above first.
+`k8s/configmap.yaml` sets `GUNICORN_WORKERS=2`; if K8s ever goes live with >1 pod,
+point `PIPELINE_DB_PATH` at the shared PVC so the SQLite job store is shared across
+pods (a per-pod ephemeral DB would make `/status` 404 against the wrong pod).
 
 ## Three scheduling paths (only one is live)
 
