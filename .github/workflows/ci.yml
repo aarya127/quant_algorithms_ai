@@ -39,7 +39,14 @@ jobs:
             numpy pandas scipy \
             scikit-learn xgboost lightgbm joblib \
             flask cachetools \
-            pytest pytest-cov
+            pytest pytest-cov pyflakes
+
+      - name: Static check — no undefined names in backend
+        run: |
+          # NameErrors only surface at request time (routes 500 in prod while
+          # /health stays green) — catch them statically instead.
+          UNDEF=$(python -m pyflakes backend/ | grep "undefined name" || true)
+          if [ -n "$UNDEF" ]; then echo "$UNDEF"; exit 1; fi
 
       - name: Run unit tests — transforms
         run: |
