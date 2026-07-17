@@ -285,7 +285,7 @@ async function loadDashboard() {
                         </div>
                     </div>
                     <div class="index-price">${priceStr}</div>
-                    <canvas class="index-sparkline" id="${sparkId}"></canvas>
+                    <div class="index-sparkline-wrap"><canvas class="index-sparkline" id="${sparkId}"></canvas></div>
                 </div>`;
             }).join('');
 
@@ -356,7 +356,12 @@ function drawSparklines(history) {
                 }]
             },
             options: {
-                responsive: false,
+                // responsive:true sizes the chart to its .index-sparkline-wrap
+                // container (position:relative, fixed height). responsive:false
+                // fell back to the 300×150 default canvas × devicePixelRatio,
+                // overflowing the cards.
+                responsive: true,
+                maintainAspectRatio: false,
                 animation: false,
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: { x: { display: false }, y: { display: false } }

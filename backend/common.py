@@ -4,7 +4,31 @@ common.py — shared helpers used by app.py and the route blueprints.
 Kept dependency-light (flask + stdlib only) so any blueprint can import it
 without dragging in the data layer.
 """
+import os
+
 from flask import jsonify, request
+
+
+def keys_txt_value(header_substring):
+    """Local-dev fallback: read an API key from the project-root keys.txt.
+
+    Finds the first line containing `header_substring` (case-insensitive) and
+    returns the next non-empty line, matching the convention finnhub.py and
+    alphavantage.py already use. Returns '' if the file or section is missing —
+    callers should try the env var first.
+    """
+    path = os.path.join(os.path.dirname(__file__), '..', 'keys.txt')
+    try:
+        with open(path) as fh:
+            lines = [ln.strip() for ln in fh.readlines()]
+        for i, line in enumerate(lines):
+            if header_substring.lower() in line.lower():
+                for nxt in lines[i + 1:]:
+                    if nxt:
+                        return nxt
+    except OSError:
+        pass
+    return ''
 
 # Map US tickers to TSX equivalents for Canadian stocks (to get CAD prices)
 CANADIAN_STOCKS_MAP = {

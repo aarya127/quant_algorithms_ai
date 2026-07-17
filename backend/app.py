@@ -240,34 +240,46 @@ def search_stocks(query):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e), 'results': []})
 
+# Dashboard "Market Overview" cards — single source of truth for both
+# /api/indices (quotes) and /api/indices/history (sparklines).
+MARKET_INDICES = [
+    ('^GSPC',   'S&P 500'),
+    ('^IXIC',   'NASDAQ'),
+    ('^DJI',    'Dow Jones'),
+    ('^GSPTSE', 'TSX'),
+    ('^RUT',    'Russell 2000'),
+    ('^VIX',    'VIX'),
+    ('XIC.TO',  'iShares TSX Composite'),
+    ('^FTSE',   'FTSE 100'),
+    ('^N225',   'Nikkei 225'),
+    ('^TNX',    'US 10Y Yield'),
+]
+
 @app.route('/api/indices')
 def market_indices():
-    """Get live market indices: S&P 500, NASDAQ, TSX, Dow, Russell 2000, VIX"""
-    indices = [
-        ('^GSPC',   'S&P 500'),
-        ('^IXIC',   'NASDAQ'),
-        ('^DJI',    'Dow Jones'),
-        ('^GSPTSE', 'TSX'),
-        ('^RUT',    'Russell 2000'),
-        ('^VIX',    'VIX'),
-    ]
-    result = []
-    for symbol, name in indices:
+    """Get live market indices for the dashboard cards (see MARKET_INDICES)"""
+    def _quote(entry):
+        symbol, name = entry
         try:
             fi = yf.Ticker(symbol).fast_info
             price = fi.last_price
             prev  = fi.previous_close
             change = round(price - prev, 2)
             pct    = round((change / prev) * 100, 2) if prev else 0
-            result.append({
+            return {
                 'symbol': symbol,
                 'name': name,
                 'price': round(price, 2),
                 'change': change,
                 'pct_change': pct,
-            })
+            }
         except Exception:
-            pass
+            return None
+
+    # Parallel fetch (10 symbols serially would take seconds); map() preserves
+    # MARKET_INDICES order, which is the card display order.
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        result = [q for q in ex.map(_quote, MARKET_INDICES) if q]
     return jsonify({'success': True, 'indices': result})
 
 @app.route('/api/indices/history')
@@ -282,18 +294,21 @@ def indices_history():
         period = '1mo'
     if interval not in allowed_intervals:
         interval = '1d'
-    symbols = ['^GSPC', '^IXIC', '^DJI', '^GSPTSE', '^RUT', '^VIX']
-    result = {}
-    for symbol in symbols:
+    def _hist(entry):
+        symbol, _name = entry
         try:
             df = yf.Ticker(symbol).history(period=period, interval=interval)
             if not df.empty:
-                result[symbol] = {
+                return symbol, {
                     'labels': [d.strftime('%b %d') for d in df.index],
                     'closes': [round(float(v), 2) for v in df['Close']],
                 }
         except Exception:
             pass
+        return symbol, None
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        result = {sym: hist for sym, hist in ex.map(_hist, MARKET_INDICES) if hist}
     return jsonify({'success': True, 'history': result})
 
 @app.route('/api/dashboard')
@@ -1224,11 +1239,16 @@ def trading_chart():
     """Proxy chart-img.com TradingView chart image requests.
     
     Tries the v2 POST endpoint first (paid plan); falls back to v1 GET (free plan).
-    Auth header: x-api-key.  Set CHART_IMG_KEY env var to override the default key.
+    Auth: x-api-key header — CHART_IMG_KEY env var, falling back to keys.txt
+    (section header containing "chart-img") for local dev.
     """
     import requests as _req
+    from common import keys_txt_value
 
-    CHART_IMG_KEY = os.environ.get('CHART_IMG_KEY', '')
+    CHART_IMG_KEY = os.environ.get('CHART_IMG_KEY', '') or keys_txt_value('chart-img')
+    if not CHART_IMG_KEY:
+        return jsonify({'error': 'chart-img API key not configured',
+                        'details': 'Set CHART_IMG_KEY (env or Render dashboard) or add a chart-img section to keys.txt.'}), 503
 
     data = request.get_json(force=True) or {}
     symbol   = data.get('symbol', 'NASDAQ:AAPL')
