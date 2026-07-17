@@ -400,45 +400,57 @@ def sentiment_news(symbol):
 
 @bp.route('/api/scenarios/<symbol>')
 def scenario_analysis(symbol):
-    """Generate bull/base/bear scenarios using comprehensive data"""
+    """Bull/base/bear scenarios — numbers from scenario_engine (vol-scaled
+    statistical, or the ML registry when the ticker has trained models);
+    rationale text from the cached LLM analyst brief when available."""
     try:
+        import scenario_engine
         timeframe = request.args.get('timeframe', '1M')
-        
-        analyzer = StockAnalyzer(symbol.upper())
-        scenarios_data = analyzer.get_enhanced_scenarios(timeframe)
-        
-        # Format for frontend
-        scenarios = scenarios_data.get('scenarios', {})
-        
+        sc = scenario_engine.compute_scenarios(symbol, timeframe)
+
+        # LLM narrative is additive: use the cached brief if present; a miss
+        # falls back to honest generated-from-numbers text (no LLM call here —
+        # the Signal Brief panel warms the cache).
+        rationale = {'bull': None, 'base': None, 'bear': None}
+        factors = []
+        try:
+            import llm_analyst
+            with llm_analyst._lock:
+                brief = llm_analyst._brief_cache.get(symbol.upper())
+            if brief:
+                rationale = brief.get('scenario_rationale') or rationale
+                factors = {'bull': brief.get('bull_factors') or [],
+                           'bear': brief.get('bear_factors') or []}
+        except Exception:
+            pass
+
+        def case(name, up_factors):
+            c = sc['scenarios'][f'{name}_case']
+            default_txt = (f"{name.title()} case: ±1σ over {sc['horizon_days']} trading days "
+                           f"at {sc['annualized_vol']:.0%} annualized vol "
+                           f"({sc['engine']}); probability from this ticker's own "
+                           f"return distribution.")
+            return {
+                'price_target': c['price_target'],
+                'probability': c['probability'],
+                'return': c['return'],
+                'factors': (factors.get(up_factors) if isinstance(factors, dict) else None) or [],
+                'rationale': (rationale.get(name) or default_txt),
+            }
+
         return jsonify({
             'success': True,
-            'symbol': symbol.upper(),
-            'current_price': scenarios_data.get('current_price', 0),
+            'symbol': sc['symbol'],
+            'current_price': sc['current_price'],
             'timeframe': timeframe,
-            'sentiment_score': scenarios_data.get('sentiment_score', 50),
-            'eps_growth': scenarios_data.get('eps_growth', 10),
-            'data_sources': scenarios_data.get('data_sources', []),
-            'bull_case': {
-                'price_target': scenarios['bull_case']['price_target'],
-                'probability': scenarios['bull_case']['probability'],
-                'return': scenarios['bull_case']['return'],
-                'factors': scenarios['bull_case']['factors'],
-                'rationale': scenarios['bull_case']['rationale']
-            },
-            'base_case': {
-                'price_target': scenarios['base_case']['price_target'],
-                'probability': scenarios['base_case']['probability'],
-                'return': scenarios['base_case']['return'],
-                'factors': scenarios['base_case']['factors'],
-                'rationale': scenarios['base_case']['rationale']
-            },
-            'bear_case': {
-                'price_target': scenarios['bear_case']['price_target'],
-                'probability': scenarios['bear_case']['probability'],
-                'return': scenarios['bear_case']['return'],
-                'factors': scenarios['bear_case']['factors'],
-                'rationale': scenarios['bear_case']['rationale']
-            }
+            'engine': sc['engine'],
+            'model_backed': sc['model_backed'],
+            'annualized_vol': sc['annualized_vol'],
+            'p_up': sc['p_up'],
+            'data_sources': ['yfinance history', sc['engine']],
+            'bull_case': case('bull', 'bull'),
+            'base_case': case('base', 'bull'),
+            'bear_case': case('bear', 'bear'),
         })
         
     except Exception as e:
@@ -461,78 +473,114 @@ def stock_metrics(symbol):
 
 @bp.route('/api/recommendations/<symbol>')
 def recommendations(symbol):
-    """Get time-based recommendations"""
+    """Time-based recommendations driven by scenario_engine numbers (empirical
+    p_up + expected return), with LLM narrative when the brief is cached.
+    Every recommendation is logged so its hit rate can be measured later."""
     try:
-        analyzer = StockAnalyzer(symbol.upper())
-        comprehensive_data = analyzer.get_comprehensive_data()
-        metrics = analyzer.get_detailed_metrics()
-        
-        # Get sentiment and metrics for recommendations
-        sentiment = comprehensive_data.get('sentiment', {}).get('consensus', {})
-        sentiment_score = sentiment.get('score', 50)
-        overall_grade = metrics.get('overall_grade', 'C')
-        
-        # Generate recommendations for each timeframe
-        recommendations_data = {}
-        
+        import scenario_engine
+        symbol_u = symbol.upper()
+
+        brief = None
+        try:
+            import llm_analyst
+            with llm_analyst._lock:
+                brief = llm_analyst._brief_cache.get(symbol_u)
+        except Exception:
+            pass
+
         timeframes = [
             ('1W', 'Short-term Trading'),
             ('1M', 'Swing Trading'),
             ('3M', 'Medium-term Investment'),
             ('6M', 'Position Trading'),
-            ('1Y', 'Long-term Investment')
+            ('1Y', 'Long-term Investment'),
         ]
-        
+
+        recommendations_data = {}
+        current_price = None
         for tf, description in timeframes:
-            scenarios = analyzer.get_enhanced_scenarios(tf)
-            base_return = scenarios['scenarios']['base_case']['return']
-            
-            # Decision logic based on multiple factors
-            if sentiment_score > 65 and overall_grade in ['A', 'B'] and base_return > 10:
+            sc = scenario_engine.compute_scenarios(symbol_u, tf)
+            current_price = sc['current_price']
+            base_return = sc['scenarios']['base_case']['return']
+            p_up = sc['p_up']
+
+            # Action from the empirical odds; confidence = distance from a coin
+            # flip (calibrated to the ticker's own return history, not vibes).
+            if p_up >= 0.62 and base_return > 2:
                 action = 'Strong Buy'
-                confidence = 0.85
-            elif sentiment_score > 55 and overall_grade in ['A', 'B', 'C'] and base_return > 5:
+            elif p_up >= 0.55 and base_return > 0:
                 action = 'Buy'
-                confidence = 0.70
-            elif sentiment_score > 45 and base_return > 0:
-                action = 'Hold'
-                confidence = 0.60
-            elif sentiment_score < 40 or base_return < -5:
-                action = 'Sell'
-                confidence = 0.75
-            elif sentiment_score < 30:
-                action = 'Strong Sell'
-                confidence = 0.80
+            elif p_up <= 0.38 or base_return < -5:
+                action = 'Strong Sell' if p_up <= 0.33 else 'Sell'
             else:
                 action = 'Hold'
-                confidence = 0.50
-            
-            reasoning = f"{description}: Based on {sentiment.get('sentiment', 'neutral')} sentiment (score: {sentiment_score:.1f}/100), " \
-                       f"grade {overall_grade}, and projected {base_return:.1f}% return in {tf}. "
-            
-            if action in ['Strong Buy', 'Buy']:
-                reasoning += f"Positive outlook supported by strong fundamentals and favorable sentiment."
-            elif action == 'Hold':
-                reasoning += f"Mixed signals suggest maintaining current position."
-            else:
-                reasoning += f"Concerns about fundamentals or market sentiment warrant caution."
-            
+            confidence = round(0.5 + abs(p_up - 0.5), 2)
+
+            reasoning = (f"{description}: {p_up:.0%} of comparable {sc['horizon_days']}-day "
+                         f"periods finished positive ({sc['engine']}); base case "
+                         f"{base_return:+.1f}%.")
+            if brief and brief.get('narrative'):
+                reasoning += f" Analyst view: {brief['narrative']}"
+
             recommendations_data[tf] = {
                 'action': action,
                 'confidence': confidence,
                 'reasoning': reasoning,
                 'timeframe': description,
-                'expected_return': base_return
+                'expected_return': base_return,
+                'p_up': p_up,
+                'model_backed': sc['model_backed'],
             }
-        
+
+        # Audit trail — measurable hit rate later (price at recommendation time)
+        try:
+            import datetime as _dt, json as _json
+            log_path = os.path.join(_BACKEND, 'recommendation_log.jsonl')
+            with open(log_path, 'a') as fh:
+                fh.write(_json.dumps({
+                    'ts': _dt.datetime.now().isoformat(),
+                    'symbol': symbol_u, 'price': current_price,
+                    'recommendations': {tf: {k: r[k] for k in ('action', 'p_up', 'expected_return')}
+                                        for tf, r in recommendations_data.items()},
+                }) + '\n')
+        except OSError:
+            pass
+
+        return jsonify({
+            'success': True,
+            'symbol': symbol_u,
+            'recommendations': recommendations_data,
+            'signal': (brief or {}).get('signal'),
+            'engine_note': 'probabilities from empirical return distribution; '
+                           'ML-registry drift/vol where a trained model exists',
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@bp.route('/api/narrate/<symbol>')
+def narrate(symbol):
+    """AI Signal Brief — LLM narrative over computed numbers (llm_analyst).
+    The frontend panel has called this endpoint since the UI was built; it now
+    exists. First call per symbol/hour does one LLM round-trip; then cached."""
+    try:
+        import llm_analyst
+        brief = llm_analyst.generate_brief(symbol.upper())
+        if brief is None:
+            return jsonify({'success': False,
+                            'error': 'No LLM provider available or brief generation failed'}), 503
         return jsonify({
             'success': True,
             'symbol': symbol.upper(),
-            'recommendations': recommendations_data,
-            'sentiment_score': sentiment_score,
-            'overall_grade': overall_grade
+            'signal': brief.get('signal', 'neutral'),
+            'narrative': brief.get('narrative', ''),
+            'competitive_position': brief.get('competitive_position'),
+            'bull_factors': brief.get('bull_factors', []),
+            'bear_factors': brief.get('bear_factors', []),
+            'risk_flags': brief.get('risk_flags', []),
+            'provider': brief.get('provider'),
         })
-        
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 

@@ -905,12 +905,16 @@ async function loadScenarios(symbol, timeframe) {
             return;
         }
         
+        const engineBadge = data.model_backed
+            ? '<span class="badge bg-success" title="Targets use the trained ML registry (predicted return + volatility)">⚡ model-backed</span>'
+            : '<span class="badge bg-secondary" title="Targets use realized volatility and this ticker\'s own return distribution">statistical</span>';
         container.innerHTML = `
             <div class="alert alert-info mb-3">
-                <strong>Current Price:</strong> $${data.current_price.toFixed(2)} | 
-                <strong>Sentiment Score:</strong> ${data.sentiment_score.toFixed(1)}/100 | 
-                <strong>EPS Growth:</strong> ${data.eps_growth.toFixed(1)}%
-                <br><small>Using data from: ${data.data_sources.join(', ')}</small>
+                <strong>Current Price:</strong> $${data.current_price.toFixed(2)} |
+                <strong>P(up):</strong> ${(data.p_up * 100).toFixed(0)}% |
+                <strong>Ann. Vol:</strong> ${(data.annualized_vol * 100).toFixed(0)}%
+                ${engineBadge}
+                <br><small>Engine: ${data.engine} — probabilities from this ticker's own return history</small>
             </div>
             <div class="scenario-container">
                 ${createScenarioCard('bull', data.bull_case)}
@@ -1059,13 +1063,16 @@ async function loadRecommendations(symbol) {
             return;
         }
         
+        const signalBadge = data.signal
+            ? `<span class="badge ${data.signal === 'long' ? 'bg-success' : data.signal === 'short' ? 'bg-danger' : 'bg-secondary'}">AI signal: ${data.signal.toUpperCase()}</span>`
+            : '';
         container.innerHTML = `
             <div class="alert alert-info mb-3">
-                <strong>Analysis Base:</strong> Sentiment Score: ${data.sentiment_score.toFixed(1)}/100 | 
-                Grade: ${data.overall_grade}
+                <strong>Analysis Base:</strong> ${data.engine_note || 'empirical return distribution'}
+                ${signalBadge}
             </div>
             <div class="recommendations-container">
-                ${Object.entries(data.recommendations).map(([timeframe, rec]) => 
+                ${Object.entries(data.recommendations).map(([timeframe, rec]) =>
                     createRecommendationCard(timeframe, rec)
                 ).join('')}
             </div>
