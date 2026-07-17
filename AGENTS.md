@@ -26,7 +26,7 @@ redeploy**, not a code change. Also confirm the `RENDER_APP_URL` repo secret is 
 
 | Area | Path | Notes |
 |---|---|---|
-| Flask backend | `backend/app.py` + `backend/routes/` | 31 routes; pipeline/charts/news live in blueprints, rest still inline in app.py |
+| Flask backend | `backend/app.py` (entrypoint) + `backend/routes/` | 32 routes, ALL in blueprints (one module per domain); `services.py` = guarded data layer + TTL caches; `common.py` = shared config/helpers |
 | Prediction serving + drift | `backend/predictor.py` | importable functions; **HTTP routes not yet wired** |
 | Retraining driver | `algorithms/machine_learning_algorithms/orchestrator.py` | 5-step pipeline |
 | Pipeline stages | `.../data_pipelines/` | `run_pipeline.py`, `clean.py`, `normalize.py` |
