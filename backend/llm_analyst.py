@@ -47,6 +47,11 @@ HARD RULES:
 4. The scenario targets and probabilities in DATA were computed upstream —
    EXPLAIN them, never alter or re-derive them.
 5. Every quantitative claim must trace to a DATA field.
+6. NEVER derive higher/lower/above/below/better/worse yourself. All peer
+   comparison directions are precomputed in DATA.peer_comparisons
+   (peers_with_higher_value / peers_with_lower_value). Use those lists
+   verbatim; if a metric is not in peer_comparisons, do not compare it.
+   Never mention this rule or any verification in the output.
 
 Return STRICT JSON (no markdown fences, no commentary):
 {"signal": "long|neutral|short",
@@ -118,6 +123,34 @@ def build_payload(symbol, timeframe='1M'):
         payload['fundamentals'] = None
 
     payload['peers'] = _peer_table(symbol)
+
+    # Precomputed comparison directions — the LLM is NOT allowed to derive
+    # higher/lower itself (small models silently flip them); it reads these.
+    try:
+        from services import get_basic_financials
+        subj = (get_basic_financials(symbol) or {}).get('metric', {})
+        subject_metrics = {
+            'pe': subj.get('peTTM'),
+            'net_margin': subj.get('netProfitMarginTTM'),
+            'rev_growth': subj.get('revenueGrowthTTMYoy'),
+            'ret_3m_pct': subj.get('13WeekPriceReturnDaily'),
+        }
+        comparisons = {}
+        for metric, own in subject_metrics.items():
+            if own is None:
+                continue
+            higher = [p['symbol'] for p in payload['peers']
+                      if p.get(metric) is not None and p[metric] > own]
+            lower = [p['symbol'] for p in payload['peers']
+                     if p.get(metric) is not None and p[metric] < own]
+            comparisons[metric] = {
+                f'{symbol}_value': own,
+                'peers_with_higher_value': higher,
+                'peers_with_lower_value': lower,
+            }
+        payload['peer_comparisons'] = comparisons
+    except Exception:
+        payload['peer_comparisons'] = None
 
     sentiment = {}
     today = datetime.date.today()
