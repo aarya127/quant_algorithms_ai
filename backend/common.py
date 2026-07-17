@@ -30,6 +30,32 @@ def keys_txt_value(header_substring):
         pass
     return ''
 
+# Configuration
+DEFAULT_STOCKS = ["NVDA", "TD", "ACDVF", "MSFT", "ENB", "RCI", "CVE", "HUBS", "MU", "CNSWF", "AMD"]
+
+TIMEFRAMES = {
+    '1W': {'days': 7, 'label': '1 Week'},
+    '1M': {'days': 30, 'label': '1 Month'},
+    '3M': {'days': 90, 'label': '3 Months'},
+    '6M': {'days': 180, 'label': '6 Months'},
+    '1Y': {'days': 365, 'label': '1 Year'},
+}
+
+# Dashboard "Market Overview" cards — single source of truth for both
+# /api/indices (quotes) and /api/indices/history (sparklines).
+MARKET_INDICES = [
+    ('^GSPC',   'S&P 500'),
+    ('^IXIC',   'NASDAQ'),
+    ('^DJI',    'Dow Jones'),
+    ('^GSPTSE', 'TSX'),
+    ('^RUT',    'Russell 2000'),
+    ('^VIX',    'VIX'),
+    ('XIC.TO',  'iShares TSX Composite'),
+    ('^FTSE',   'FTSE 100'),
+    ('^N225',   'Nikkei 225'),
+    ('^TNX',    'US 10Y Yield'),
+]
+
 # Map US tickers to TSX equivalents for Canadian stocks (to get CAD prices)
 CANADIAN_STOCKS_MAP = {
     'TD': 'TD.TO',

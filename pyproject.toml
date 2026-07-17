@@ -1,0 +1,30 @@
+# Project metadata + tool configuration.
+#
+# Note on packaging: this repo is not yet an installable package — the backend,
+# pipeline scripts, and tests locate modules via sys.path setup at their entry
+# points (see backend/app.py, orchestrator.py, tests/conftest.py). Making it
+# installable would require converting the supervised/ package's flat imports
+# (`from config import ...`) to package-relative ones — tracked as future work.
+# This file is the single home for project metadata and pytest configuration.
+
+[project]
+name = "quant-algorithms-ai"
+version = "0.1.0"
+description = "Quantitative research and trading platform: Flask dashboard, multi-source data pipeline, FinBERT sentiment, daily ML retraining with MLflow + model registry"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Aarya Shah" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The live-API smoke scripts (test_finnhub*, test_alphavantage*, test_canadian*)
+# need real keys, hit the network, and are driven by tests/run_all_tests.py —
+# exclude them so a bare `pytest` from the repo root runs only the offline suite.
+addopts = """
+  -q
+  --ignore=tests/test_finnhub.py
+  --ignore=tests/test_finnhub_full.py
+  --ignore=tests/test_alphavantage.py
+  --ignore=tests/test_alphavantage_full.py
+  --ignore=tests/test_canadian_stocks.py
+"""
