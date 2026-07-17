@@ -55,8 +55,11 @@ curl -X POST "$RENDER_APP_URL/api/pipeline/run" \
 curl "$RENDER_APP_URL/api/pipeline/status/a1b2c3d4"
 # status: queued → running → done | up_to_date | error
 ```
-The job runs in a background thread; the store (`_PIPELINE_JOBS`) is an in-process
-dict — correct only under the single Gunicorn worker (see the `deploy` skill).
+The job runs in a background thread; state is persisted to a shared SQLite store
+(`backend/pipeline_store.py`) — consistent across workers, bounded logs, old jobs
+evicted. Trigger is single-flight (409 if one is running) and token-protected when
+`PIPELINE_TRIGGER_TOKEN` is set. On the free tier the DB is ephemeral, so a full
+restart still loses in-flight jobs (set `PIPELINE_DB_PATH` to a persistent disk).
 
 ## Daily schedule
 

@@ -105,7 +105,7 @@ services:
 
 Render auto-builds from the Dockerfile on every push, health-checks via `/health`, and restarts on failure. Secrets are set in the Render dashboard (marked `sync: false` in `render.yaml`), never committed.
 
-> **Note:** the app runs a **single Gunicorn worker** (`entrypoint.sh` hardcodes `--workers 1`). `render.yaml` sets `GUNICORN_WORKERS=2`, but the entrypoint ignores it. This matters — the retraining pipeline's job store lives in-process (see [§9](#9-scheduled-retraining--mlops)). Do not raise the worker count without moving that state to shared storage.
+> **Note:** worker count is `GUNICORN_WORKERS` (default **1**; `entrypoint.sh` honors the env var). The retrain job store is now a shared SQLite store (see [§9](#9-scheduled-retraining--mlops)), so >1 worker is safe for correctness — but each sync worker can lazily load FinBERT (~512 MB), so keep it at **1** on the 512 MB free tier and only raise it after upgrading RAM.
 
 ### Two Docker images
 
@@ -398,7 +398,7 @@ curl https://<app>.onrender.com/api/pipeline/status/a1b2c3d4
 
 `status` ∈ `queued` → `running` → `done` | `up_to_date` | `error`.
 
-> **Design caveat:** the job store (`_PIPELINE_JOBS` in `app.py`) is an **in-process dict**. It is correct only under a single Gunicorn worker (see [§2](#2-deployment)); with multiple workers, the POST and the poll could hit different processes and status would 404. A worker restart mid-run also orphans the job. Fine for the current single-worker daily cadence; revisit before scaling out.
+> **Job store:** retrain-job state lives in a small SQLite store (`backend/pipeline_store.py`, WAL mode) — consistent across Gunicorn workers, with bounded per-job logs and automatic eviction of old jobs. It survives worker recycles as long as the DB file survives; on Render's **free tier the filesystem is ephemeral**, so a full restart still loses in-flight jobs. Point `PIPELINE_DB_PATH` at a persistent disk (paid plans) for true cross-restart durability. The trigger endpoint is single-flight (returns 409 if a job is already running) and protected by `PIPELINE_TRIGGER_TOKEN` when set.
 
 ### Daily schedule (`.github/workflows/daily-retrain.yml`)
 
@@ -678,7 +678,8 @@ quant_algorithms_ai/
 │   ├── economic_events.json                40+ calendar events 2026
 │   ├── templates/index.html                SPA (Bootstrap 5, Chart.js)
 │   ├── static/css|js|research/
-│   └── entrypoint.sh                       Gunicorn startup (--workers 1)
+│   ├── pipeline_store.py                   SQLite retrain-job store (bounded, shared)
+│   └── entrypoint.sh                       Gunicorn startup (GUNICORN_WORKERS, default 1)
 │
 ├── algorithms/
 │   ├── machine_learning_algorithms/

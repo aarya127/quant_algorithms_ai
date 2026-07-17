@@ -21,8 +21,9 @@ and load automatically when relevant:
 
 - A new Flask route is **inert until committed + deployed to Render**. That's the
   usual root cause of the daily-retrain failure email — deploy, don't just edit.
-- **Single Gunicorn worker** (`entrypoint.sh` → `--workers 1`); the pipeline job
-  store is in-process, so don't scale workers without moving it to shared storage.
+- **Workers** = `GUNICORN_WORKERS` (default 1). The retrain job store is shared
+  (SQLite, `backend/pipeline_store.py`), so >1 worker is correctness-safe — but keep
+  it at 1 on the free tier (each worker can load FinBERT ~512 MB).
 - Pipeline stages hand off via `<SYMBOL>_*.csv` files; the 6 canonical targets are
   defined once in `data_pipelines/normalize.py`.
 - Trained models live in `supervised/model_registry/`, not top-level `models/`.

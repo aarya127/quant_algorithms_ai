@@ -211,3 +211,9 @@ mlruns/
 !mlruns/artifacts/
 !mlruns/artifacts/.gitkeep
 
+
+# Local pipeline job store (SQLite)
+pipeline_state.db
+pipeline_state.db-wal
+pipeline_state.db-shm
+backend/pipeline_state.db*

@@ -45,8 +45,11 @@ services:
         value: production
       - key: FLASK_DEBUG
         value: "false"
+      # Keep at 1 on small instances: each sync worker can load FinBERT (~512 MB).
+      # The retrain job store is shared (SQLite), so raising this is safe for
+      # correctness once the instance has the RAM headroom.
       - key: GUNICORN_WORKERS
-        value: "2"
+        value: "1"
 
       # Secrets — set these in the Render dashboard, NOT here
       # (sync: false means Render will prompt you to fill them in)
