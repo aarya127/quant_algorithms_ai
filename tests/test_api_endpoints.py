@@ -30,6 +30,7 @@ pytest.importorskip("cachetools", reason="cachetools not installed — backend d
 import app as app_module          # noqa: E402
 import pipeline_store             # noqa: E402
 import routes.pipeline as pipeline_routes  # noqa: E402
+import routes.news as news_routes          # noqa: E402
 
 
 @pytest.fixture()
@@ -172,7 +173,7 @@ def test_compare_invalid_period_400(client):
 # and proceed. The outward calls are stubbed so no network is touched.
 
 def test_twitter_news_bad_count_does_not_500(client, monkeypatch):
-    monkeypatch.setattr(app_module, "get_market_tweets",
+    monkeypatch.setattr(news_routes, "get_market_tweets",
                         lambda symbol=None, count=20: [], raising=False)
     r = client.get("/api/news/twitter?count=abc")
     assert r.status_code == 200
@@ -180,7 +181,7 @@ def test_twitter_news_bad_count_does_not_500(client, monkeypatch):
 
 
 def test_alpaca_news_bad_count_does_not_500(client, monkeypatch):
-    monkeypatch.setattr(app_module, "get_recent_news",
+    monkeypatch.setattr(news_routes, "get_recent_news",
                         lambda count=20, symbol=None: [], raising=False)
     r = client.get("/api/news/alpaca?count=-5")
     assert r.status_code == 200
@@ -193,7 +194,7 @@ def test_twitter_news_count_is_capped(client, monkeypatch):
         seen["count"] = count
         return []
 
-    monkeypatch.setattr(app_module, "get_market_tweets", fake_tweets, raising=False)
+    monkeypatch.setattr(news_routes, "get_market_tweets", fake_tweets, raising=False)
     client.get("/api/news/twitter?count=99999")
     assert seen["count"] == 100  # clamped to the max
 

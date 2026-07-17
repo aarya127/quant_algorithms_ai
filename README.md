@@ -673,7 +673,9 @@ make run-backend
 ```
 quant_algorithms_ai/
 ├── backend/                              Flask app + static assets
-│   ├── app.py                              31 REST endpoints, TTL cache, pipeline jobs
+│   ├── app.py                              Flask app + legacy inline routes (migrating)
+│   ├── routes/                             Blueprints: pipeline.py, charts.py, news.py
+│   ├── common.py                           shared helpers (ticker map, param validation)
 │   ├── predictor.py                        prediction serving + drift monitoring
 │   ├── economic_events.json                40+ calendar events 2026
 │   ├── templates/index.html                SPA (Bootstrap 5, Chart.js)
