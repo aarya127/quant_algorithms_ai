@@ -9,7 +9,7 @@ import datetime
 from flask import Blueprint, jsonify, request
 
 from concurrent.futures import ThreadPoolExecutor
-from common import DEFAULT_STOCKS, MARKET_INDICES
+from common import DEFAULT_STOCKS, MARKET_INDICES, get_ticker_for_charts, is_canadian_stock
 from services import yf, get_company_news
 
 bp = Blueprint('market', __name__)

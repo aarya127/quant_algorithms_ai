@@ -477,16 +477,10 @@ async function loadStockOverview(symbol) {
         if (data.company) {
             let companyHTML = `<div class="company-details">`;
             
-            // Show loading placeholder for AI overview
-            companyHTML += `
-                <div class="alert alert-light mb-3" id="aiOverviewContainer">
-                    <h6><i class="fas fa-robot"></i> AI-Generated Overview</h6>
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <small class="text-muted ms-2">Generating AI overview...</small>
-                </div>
-            `;
+            // AI overview container starts hidden — it only appears if the
+            // backend actually returns an overview (feature may be disabled).
+            // No premature "Generating…" spinner for something that may never come.
+            companyHTML += `<div id="aiOverviewContainer" style="display:none"></div>`;
             
             // Business Description
             if (data.company.longBusinessSummary) {
@@ -653,9 +647,10 @@ async function loadAIOverview(symbol) {
                 <p class="mb-0" style="white-space: pre-wrap;">${data.ai_overview}</p>
                 <small class="text-muted">Powered by NVIDIA Llama 3.1 70B</small>
             `;
+            container.style.display = '';
             console.log(`✓ AI overview loaded for ${symbol}`);
         } else {
-            // AI overview is disabled - hide the section entirely
+            // AI overview is disabled - keep the section hidden
             container.style.display = 'none';
             console.log(`ℹ️ AI overview disabled for faster loading`);
         }

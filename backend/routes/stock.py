@@ -6,8 +6,11 @@ import sys
 import json
 import datetime
 
+from concurrent.futures import ThreadPoolExecutor
+
 from flask import Blueprint, jsonify, request
 
+from common import get_ticker_for_charts, is_canadian_stock
 from services import (
     yf, StockAnalyzer, get_company_overview_llm,
     get_company_profile, get_stock_quote, get_basic_financials, get_company_news,
@@ -175,32 +178,19 @@ def stock_details(symbol):
 
 @bp.route('/api/ai-overview/<symbol>')
 def get_ai_overview(symbol):
-    """Get AI-generated company overview (loads separately for speed)"""
-    try:
-        # TEMPORARILY DISABLED: NVIDIA API is too slow/unreliable
-        # Uncomment below to re-enable AI overviews
-        
-        # Get company profile to get the full name
-        company = get_company_profile(symbol.upper())
-        company_name = company.get('name', symbol.upper()) if company else symbol.upper()
-        
-        # Generate AI overview (DISABLED - uncomment to enable)
-        # ai_overview = get_company_overview_llm(company_name, symbol.upper())
-        
-        # Return basic company description instead of AI overview
-        return jsonify({
-            'success': True,
-            'symbol': symbol.upper(),
-            'ai_overview': None,  # Disabled for speed
-            'message': 'AI overview feature temporarily disabled for faster loading. Enable in app.py if needed.'
-        })
-        
-    except Exception as e:
-        print(f"❌ Error generating AI overview for {symbol}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
+    """Get AI-generated company overview (loads separately for speed)
+
+    TEMPORARILY DISABLED (NVIDIA API too slow/unreliable for the request path).
+    Returns immediately — no upstream calls — so the UI never waits on a
+    feature that is off. To re-enable: fetch the profile name and call
+    get_company_overview_llm(company_name, symbol) here.
+    """
+    return jsonify({
+        'success': True,
+        'symbol': symbol.upper(),
+        'ai_overview': None,  # Disabled for speed
+        'message': 'AI overview is currently disabled.'
+    })
 
 @bp.route('/api/statistics/<symbol>')
 def get_statistics(symbol):
