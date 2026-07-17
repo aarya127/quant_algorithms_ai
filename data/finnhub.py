@@ -34,6 +34,10 @@ def get_stock_quote(symbol):
     """Get real-time stock quote"""
     return _client.quote(symbol)
 
+def get_company_peers(symbol):
+    """Get industry peer tickers (list of symbols, incl. the symbol itself)"""
+    return _client.company_peers(symbol)
+
 def get_company_news(symbol, from_date, to_date):
     """Get company news for a specific symbol"""
     return _client.company_news(symbol, _from=from_date, to=to_date)

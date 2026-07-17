@@ -217,3 +217,7 @@ pipeline_state.db
 pipeline_state.db-wal
 pipeline_state.db-shm
 backend/pipeline_state.db*
+
+# LLM analyst + recommendation audit logs (runtime data)
+backend/analyst_log.jsonl
+backend/recommendation_log.jsonl
