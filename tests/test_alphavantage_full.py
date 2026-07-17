@@ -11,7 +11,7 @@ from time import sleep
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from Data.alphavantage import AlphaVantage
+from data.alphavantage import AlphaVantage
 
 # Test configuration
 TEST_SYMBOL = "NVDA"

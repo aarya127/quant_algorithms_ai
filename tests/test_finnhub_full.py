@@ -11,7 +11,7 @@ from time import sleep
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from Data.finnhub import (
+from data.finnhub import (
     get_company_news,
     get_basic_financials,
     get_earnings_surprises,

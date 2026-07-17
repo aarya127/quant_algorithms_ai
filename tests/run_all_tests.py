@@ -92,6 +92,9 @@ def main():
             print(f"   - {f}")
     print()
 
+    # Propagate failure: a smoke suite that exits 0 on FAILED is worse than none.
+    return 0 if all(results.values()) else 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

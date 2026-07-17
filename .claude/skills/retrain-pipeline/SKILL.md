@@ -37,7 +37,8 @@ per step). Browse it: `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
 
 ## Output protocol (parser lives in backend/app.py)
 
-The orchestrator prints a line protocol; `_run_retrain_job` in `app.py` parses it.
+The orchestrator prints a line protocol; `_run_retrain_job` in
+`backend/routes/pipeline.py` parses it.
 **If you change one side, change the other.**
 ```
 STEP:<name>:start   STEP:<name>:done   LOG:<text>
