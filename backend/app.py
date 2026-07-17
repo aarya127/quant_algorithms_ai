@@ -140,9 +140,11 @@ TIMEFRAMES = {
 from routes.pipeline import bp as _pipeline_bp
 from routes.charts import bp as _charts_bp
 from routes.news import bp as _news_bp
+from routes.trading import bp as _trading_bp
 app.register_blueprint(_pipeline_bp)
 app.register_blueprint(_charts_bp)
 app.register_blueprint(_news_bp)
+app.register_blueprint(_trading_bp)
 
 @app.route('/health')
 def health():
@@ -1233,72 +1235,6 @@ def get_research_markdown(paper_name):
             'success': False,
             'error': str(e)
         }), 500
-
-@app.route('/api/trading/chart', methods=['POST'])
-def trading_chart():
-    """Proxy chart-img.com TradingView chart image requests.
-    
-    Tries the v2 POST endpoint first (paid plan); falls back to v1 GET (free plan).
-    Auth: x-api-key header — CHART_IMG_KEY env var, falling back to keys.txt
-    (section header containing "chart-img") for local dev.
-    """
-    import requests as _req
-    from common import keys_txt_value
-
-    CHART_IMG_KEY = os.environ.get('CHART_IMG_KEY', '') or keys_txt_value('chart-img')
-    if not CHART_IMG_KEY:
-        return jsonify({'error': 'chart-img API key not configured',
-                        'details': 'Set CHART_IMG_KEY (env or Render dashboard) or add a chart-img section to keys.txt.'}), 503
-
-    data = request.get_json(force=True) or {}
-    symbol   = data.get('symbol', 'NASDAQ:AAPL')
-    interval = data.get('interval', '1D')
-    style    = data.get('style', 'candle')
-    width    = int(data.get('width', 800))
-    height   = int(data.get('height', 600))
-    headers  = {'x-api-key': CHART_IMG_KEY, 'content-type': 'application/json'}
-
-    # Convert study name strings to v2 object array.
-    # Supports "EMA:N" shorthand → {"name": "Moving Average Exponential", "input": {"length": N}}
-    raw_studies = data.get('studies', [])
-    studies_v2 = []
-    for s in raw_studies:
-        if s.startswith('EMA:'):
-            try:
-                length = int(s.split(':')[1])
-            except (IndexError, ValueError):
-                length = 20
-            studies_v2.append({'name': 'Moving Average Exponential', 'input': {'length': length}})
-        else:
-            studies_v2.append({'name': s})
-
-    try:
-        payload = {
-            'symbol': symbol, 'interval': interval,
-            'style': style, 'theme': 'dark',
-            'studies': studies_v2, 'width': width, 'height': height,
-            'timezone': 'America/New_York',
-        }
-        resp = _req.post(
-            'https://api.chart-img.com/v2/tradingview/advanced-chart',
-            json=payload, headers=headers, timeout=45,
-        )
-        if resp.status_code == 200:
-            return Response(resp.content, mimetype='image/png')
-        try:
-            err_body = resp.json()
-        except Exception:
-            err_body = resp.text
-        status_msg = str(err_body)
-        if resp.status_code == 403:
-            status_msg = 'chart-img access denied — check API key or daily quota.'
-        elif resp.status_code == 429:
-            status_msg = 'chart-img rate/limit exceeded. Try again shortly.'
-        return jsonify({'error': 'chart-img API error', 'status': resp.status_code, 'details': status_msg}), 502
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
 
 if __name__ == '__main__':
     try:
