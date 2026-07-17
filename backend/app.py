@@ -117,15 +117,12 @@ except Exception as _import_err:
 # Configuration
 DEFAULT_STOCKS = ["NVDA", "TD", "ACDVF", "MSFT", "ENB", "RCI", "CVE", "HUBS", "MU", "CNSWF", "AMD"]
 
-# Map US tickers to TSX equivalents for Canadian stocks (to get CAD prices)
-CANADIAN_STOCKS_MAP = {
-    'TD': 'TD.TO',
-    'ACDVF': 'AC.TO',  # Air Canada
-    'ENB': 'ENB.TO',
-    'RCI': 'RCI-B.TO',  # Rogers Class B
-    'CVE': 'CVE.TO',
-    'CNSWF': 'CSU.TO'  # Constellation Software
-}
+# Shared helpers (Canadian ticker mapping, chart param validation, safe int args)
+# live in common.py so route blueprints can use them without importing this module.
+from common import (
+    CANADIAN_STOCKS_MAP, get_ticker_for_charts, is_canadian_stock,
+    VALID_PERIODS, VALID_INTERVALS, _int_arg, _validate_chart_args,
+)
 
 TIMEFRAMES = {
     '1W': {'days': 7, 'label': '1 Week'},
@@ -135,41 +132,15 @@ TIMEFRAMES = {
     '1Y': {'days': 365, 'label': '1 Year'},
 }
 
-def get_ticker_for_charts(symbol):
-    """Get the appropriate ticker symbol for charts (TSX for Canadian stocks)"""
-    return CANADIAN_STOCKS_MAP.get(symbol, symbol)
-
-def is_canadian_stock(symbol):
-    """Check if a stock is Canadian"""
-    return symbol in CANADIAN_STOCKS_MAP
-
-# Valid yfinance chart parameters — reject anything else with a 400 instead of
-# passing garbage through to the data layer (uncaught 500s otherwise).
-VALID_PERIODS   = {'1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max'}
-VALID_INTERVALS = {'1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo'}
-
-def _int_arg(name, default, max_val=None):
-    """Parse an int query param safely: bad input falls back to the default
-    instead of raising an uncaught ValueError (→ 500)."""
-    try:
-        val = int(request.args.get(name, default))
-    except (TypeError, ValueError):
-        val = default
-    if max_val is not None:
-        val = min(val, max_val)
-    return max(val, 1)
-
-def _validate_chart_args(period, interval):
-    """Return an error response tuple for invalid chart params, or None if OK."""
-    if period not in VALID_PERIODS:
-        return jsonify({'success': False,
-                        'error': f'invalid period {period!r}',
-                        'valid_periods': sorted(VALID_PERIODS)}), 400
-    if interval not in VALID_INTERVALS:
-        return jsonify({'success': False,
-                        'error': f'invalid interval {interval!r}',
-                        'valid_intervals': sorted(VALID_INTERVALS)}), 400
-    return None
+# ---------------------------------------------------------------------------
+# Route blueprints — one module per API domain (see backend/routes/).
+# Registered before the legacy inline routes below; remaining domains (stock,
+# news, sentiment, research, backtest) migrate incrementally.
+# ---------------------------------------------------------------------------
+from routes.pipeline import bp as _pipeline_bp
+from routes.charts import bp as _charts_bp
+app.register_blueprint(_pipeline_bp)
+app.register_blueprint(_charts_bp)
 
 @app.route('/health')
 def health():
@@ -1033,105 +1004,6 @@ def earnings_calendar():
 # was removed here — it was unreachable dead code. Flask matched the first
 # registration (`recommendations`, above) and this one never ran.
 
-@app.route('/api/charts/<symbol>')
-def get_charts(symbol):
-    """Get chart data for a stock
-    
-    Query Parameters:
-    - period: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max (default: 1y)
-    - interval: 1m, 2m, 5m, 15m, 30m, 60m, 1h, 1d, 5d, 1wk, 1mo (default: 1d)
-    """
-    period = request.args.get('period', '1y')
-    interval = request.args.get('interval', '1d')
-    err = _validate_chart_args(period, interval)
-    if err:
-        return err
-
-    try:
-        symbol_upper = symbol.upper()
-        # Use TSX symbol for Canadian stocks to get CAD prices
-        chart_symbol = get_ticker_for_charts(symbol_upper)
-
-        data = get_chart_data(chart_symbol, period, interval)
-        # Keep the original symbol in response
-        data['display_symbol'] = symbol_upper
-        data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/charts/<symbol>/all-timeframes')
-def get_all_timeframes(symbol):
-    """Get chart data for all timeframes"""
-    try:
-        symbol_upper = symbol.upper()
-        # Use TSX symbol for Canadian stocks to get CAD prices
-        chart_symbol = get_ticker_for_charts(symbol_upper)
-
-        data = get_multiple_timeframes(chart_symbol)
-        data['display_symbol'] = symbol_upper
-        data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/charts/compare')
-def compare_charts():
-    """Compare multiple stocks
-    
-    Query Parameters:
-    - symbols: Comma-separated list of symbols (e.g., AAPL,MSFT,GOOGL)
-    - period: Time period (default: 1y)
-    - interval: Data interval (default: 1d)
-    """
-    symbols_param = request.args.get('symbols', '')
-    symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
-    
-    if not symbols:
-        return jsonify({
-            'success': False,
-            'error': 'No symbols provided'
-        }), 400
-    
-    period = request.args.get('period', '1y')
-    interval = request.args.get('interval', '1d')
-    err = _validate_chart_args(period, interval)
-    if err:
-        return err
-
-    try:
-        data = get_comparison_data(symbols, period, interval)
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/charts/<symbol>/indicators')
-def get_indicators(symbol):
-    """Get chart data with technical indicators (RSI, MACD, Bollinger Bands, Moving Averages)
-    
-    Query Parameters:
-    - period: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max (default: 1y)
-    - interval: 1m, 2m, 5m, 15m, 30m, 60m, 1h, 1d, 5d, 1wk, 1mo (default: 1d)
-    """
-    period = request.args.get('period', '1y')
-    interval = request.args.get('interval', '1d')
-    err = _validate_chart_args(period, interval)
-    if err:
-        return err
-
-    try:
-        symbol_upper = symbol.upper()
-        # Use TSX symbol for Canadian stocks to get CAD prices
-        chart_symbol = get_ticker_for_charts(symbol_upper)
-
-        data = get_technical_indicators(chart_symbol, period, interval)
-        # Keep the original symbol in response
-        data['display_symbol'] = symbol_upper
-        data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 @app.route('/api/news/twitter')
 def twitter_news():
     """Get latest market news from Twitter
@@ -1568,196 +1440,6 @@ def trading_chart():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-# ---------------------------------------------------------------------------
-# Pipeline Job Management — for scheduled retraining via GitHub Actions
-# ---------------------------------------------------------------------------
-
-import uuid
-import threading
-
-# Retrain-job state lives in a small SQLite store (see pipeline_store.py): durable
-# across worker recycles, consistent across gunicorn workers, with bounded logs and
-# automatic eviction of old jobs. Point PIPELINE_DB_PATH at the persistent disk for
-# true cross-restart durability on paid Render plans.
-import pipeline_store
-pipeline_store.init_db()
-
-# Shared secret protecting the (expensive) retrain trigger. When set, callers must
-# send a matching `X-Pipeline-Token` header; the GitHub Actions workflow sends it
-# from the PIPELINE_TRIGGER_TOKEN repo secret. When unset, the endpoint stays open
-# but logs a warning — set it in the Render dashboard to lock down this public app.
-_PIPELINE_TOKEN = os.environ.get('PIPELINE_TRIGGER_TOKEN', '').strip()
-
-
-# Hard ceiling on a single retrain run (seconds). Overridable via env; prevents a
-# hung orchestrator step from pinning a worker/subprocess indefinitely.
-_RETRAIN_TIMEOUT = int(os.environ.get('PIPELINE_TIMEOUT_SECONDS', str(3 * 60 * 60)))
-
-
-def _run_retrain_job(job_id, ticker):
-    """Run ML retraining as a subprocess, parsing orchestrator output protocol."""
-    proc = None
-    try:
-        pipeline_store.set_status(job_id, status='running', current_step='initializing')
-        print(f"[PIPELINE] Starting retraining for {ticker} (job {job_id})", flush=True)
-
-        orchestrator_script = os.path.join(
-            os.path.dirname(__file__), '..',
-            'algorithms', 'machine_learning_algorithms', 'orchestrator.py',
-        )
-        cmd = [sys.executable, orchestrator_script, ticker]
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=os.path.join(os.path.dirname(__file__), '..'),
-        )
-
-        deadline = time.monotonic() + _RETRAIN_TIMEOUT
-        up_to_date = False
-
-        # Parse orchestrator output protocol:
-        #   STEP:<name>:start|done · LOG:<text> · STATUS:up_to_date|done|error:<name>
-        for line in proc.stdout:
-            if time.monotonic() > deadline:
-                raise TimeoutError(f"retrain exceeded {_RETRAIN_TIMEOUT}s")
-            line = line.rstrip()
-
-            if line.startswith('STEP:'):
-                parts = line.split(':')
-                if len(parts) >= 3:
-                    step_name, step_status = parts[1], parts[2]
-                    if step_status == 'start':
-                        pipeline_store.set_status(job_id, current_step=step_name)
-                        pipeline_store.append_log(job_id, f"Starting step: {step_name}")
-                    elif step_status == 'done':
-                        pipeline_store.append_log(job_id, f"Completed step: {step_name}")
-
-            elif line.startswith('STATUS:'):
-                status_msg = line.split(':', 1)[1]
-                if status_msg == 'up_to_date':
-                    up_to_date = True
-                    pipeline_store.append_log(job_id, "Data already up to date")
-                elif status_msg == 'done':
-                    pipeline_store.append_log(job_id, "Pipeline completed successfully")
-                elif status_msg.startswith('error:'):
-                    error_step = status_msg.split(':', 1)[1]
-                    pipeline_store.set_status(job_id, error=f"Step '{error_step}' failed")
-                    pipeline_store.append_log(job_id, f"Error in step: {error_step}")
-
-            elif line.startswith('LOG:'):
-                pipeline_store.append_log(job_id, line[4:])
-
-            elif line.strip():
-                pipeline_store.append_log(job_id, line)
-
-        proc.wait(timeout=60)
-
-        if proc.returncode == 0:
-            final_status = 'up_to_date' if up_to_date else 'done'
-            job = pipeline_store.get_job(job_id)
-            step = 'completed' if not (job and job.get('error')) else None
-            pipeline_store.set_status(job_id, status=final_status, current_step=step)
-        else:
-            pipeline_store.set_status(job_id, status='error')
-
-        print(f"[PIPELINE] {'✓' if proc.returncode == 0 else '✗'} Retraining "
-              f"{'completed' if proc.returncode == 0 else 'failed'} for {ticker} (job {job_id})",
-              flush=True)
-
-    except Exception as e:
-        print(f"[PIPELINE] ✗ Exception retraining {ticker} (job {job_id}): {e}", flush=True)
-        import traceback
-        traceback.print_exc()
-        pipeline_store.set_status(job_id, status='error', error=str(e), current_step='failed')
-        pipeline_store.append_log(job_id, f"Exception: {str(e)}")
-    finally:
-        # Never orphan the orchestrator (and its child step subprocesses).
-        if proc is not None and proc.poll() is None:
-            proc.kill()
-            try:
-                proc.wait(timeout=10)
-            except Exception:
-                pass
-
-
-@app.route('/api/pipeline/run', methods=['POST'])
-def pipeline_run():
-    """Start an ML retraining job for a given ticker."""
-    try:
-        # Auth: retraining is expensive, so protect it behind a shared secret.
-        if _PIPELINE_TOKEN:
-            if request.headers.get('X-Pipeline-Token', '') != _PIPELINE_TOKEN:
-                return jsonify({'success': False, 'error': 'unauthorized'}), 401
-        else:
-            print("[PIPELINE] WARNING: /api/pipeline/run is unprotected "
-                  "(PIPELINE_TRIGGER_TOKEN not set).", flush=True)
-
-        data = request.get_json(force=True) or {}
-        ticker = data.get('ticker', 'NVDA').upper().strip()
-
-        if not ticker:
-            return jsonify({'success': False, 'error': 'ticker is required'}), 400
-
-        # Single-flight: refuse to start a second retrain while one is active, so a
-        # burst of triggers can't spawn parallel pipelines and OOM the instance.
-        active = pipeline_store.active_job()
-        if active is not None:
-            return jsonify({
-                'success': False,
-                'error': 'a retrain job is already in progress',
-                'job_id': active['job_id'],
-                'status': active['status'],
-            }), 409
-
-        # Generate job ID and persist it
-        job_id = str(uuid.uuid4())[:8]
-        pipeline_store.create_job(job_id, ticker)
-
-        # Start background thread
-        thread = threading.Thread(target=_run_retrain_job, args=(job_id, ticker), daemon=True)
-        thread.start()
-        
-        return jsonify({
-            'success': True,
-            'job_id': job_id,
-            'ticker': ticker,
-            'status': 'queued'
-        })
-    
-    except Exception as e:
-        print(f"[PIPELINE] Error in /api/pipeline/run: {e}", flush=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/pipeline/status/<job_id>')
-def pipeline_status(job_id):
-    """Check the status of a pipeline job."""
-    try:
-        job = pipeline_store.get_job(job_id)
-        if job is None:
-            return jsonify({'success': False, 'error': f'Job {job_id} not found'}), 404
-
-        response = {
-            'success': True,
-            'job_id': job_id,
-            'ticker': job['ticker'],
-            'status': job['status'],
-            'current_step': job['current_step'],
-            'timestamp': job['timestamp'],
-        }
-        if job.get('error'):
-            response['error'] = job['error']
-        if job.get('logs'):
-            response['last_logs'] = job['logs'][-5:]
-
-        return jsonify(response)
-    
-    except Exception as e:
-        print(f"[PIPELINE] Error in /api/pipeline/status: {e}", flush=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':

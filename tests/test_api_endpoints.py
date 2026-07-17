@@ -29,12 +29,13 @@ pytest.importorskip("cachetools", reason="cachetools not installed — backend d
 # conftest.py puts backend/ on sys.path
 import app as app_module          # noqa: E402
 import pipeline_store             # noqa: E402
+import routes.pipeline as pipeline_routes  # noqa: E402
 
 
 @pytest.fixture()
 def client(monkeypatch):
-    # Never spawn the real orchestrator from tests.
-    monkeypatch.setattr(app_module, "_run_retrain_job", lambda job_id, ticker: None)
+    # Never spawn the real orchestrator from tests (route lives in the blueprint).
+    monkeypatch.setattr(pipeline_routes, "_run_retrain_job", lambda job_id, ticker: None)
     app_module.app.config["TESTING"] = True
     with app_module.app.test_client() as c:
         yield c
