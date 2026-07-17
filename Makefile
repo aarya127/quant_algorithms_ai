@@ -43,7 +43,8 @@ test:
 		tests/test_transforms.py \
 		tests/test_targets.py \
 		tests/test_evaluation_gate.py \
-		tests/test_pipeline_integration.py
+		tests/test_pipeline_integration.py \
+		tests/test_api_endpoints.py
 	@echo "  ℹ️  Live-API smoke suite is separate: 'cd tests && python3 run_all_tests.py' (needs API keys)"
 
 clean:
