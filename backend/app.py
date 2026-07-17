@@ -143,6 +143,34 @@ def is_canadian_stock(symbol):
     """Check if a stock is Canadian"""
     return symbol in CANADIAN_STOCKS_MAP
 
+# Valid yfinance chart parameters — reject anything else with a 400 instead of
+# passing garbage through to the data layer (uncaught 500s otherwise).
+VALID_PERIODS   = {'1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max'}
+VALID_INTERVALS = {'1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo'}
+
+def _int_arg(name, default, max_val=None):
+    """Parse an int query param safely: bad input falls back to the default
+    instead of raising an uncaught ValueError (→ 500)."""
+    try:
+        val = int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        val = default
+    if max_val is not None:
+        val = min(val, max_val)
+    return max(val, 1)
+
+def _validate_chart_args(period, interval):
+    """Return an error response tuple for invalid chart params, or None if OK."""
+    if period not in VALID_PERIODS:
+        return jsonify({'success': False,
+                        'error': f'invalid period {period!r}',
+                        'valid_periods': sorted(VALID_PERIODS)}), 400
+    if interval not in VALID_INTERVALS:
+        return jsonify({'success': False,
+                        'error': f'invalid interval {interval!r}',
+                        'valid_intervals': sorted(VALID_INTERVALS)}), 400
+    return None
+
 @app.route('/health')
 def health():
     """Railway healthcheck endpoint — always returns 200 immediately"""
@@ -317,10 +345,16 @@ def dashboard_data():
                     'datetime': article.get('datetime', 0)
                 })
         
+        # Market hours in US/Eastern (server clock is UTC on Render) incl. weekends.
+        from zoneinfo import ZoneInfo
+        now_et = datetime.datetime.now(ZoneInfo('America/New_York'))
+        is_open = (now_et.weekday() < 5
+                   and (now_et.hour, now_et.minute) >= (9, 30)
+                   and now_et.hour < 16)
         return jsonify({
             'success': True,
             'trending': trending,
-            'market_status': 'Open' if 9 <= datetime.datetime.now().hour < 16 else 'Closed',
+            'market_status': 'Open' if is_open else 'Closed',
             'timestamp': datetime.datetime.now().isoformat()
         })
     except Exception as e:
@@ -655,29 +689,7 @@ def sentiment_analysis(symbol):
             response['articles_analyzed'] = 0
         
         return jsonify(response)
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-        total = len(sentiments)
-        overall = 'neutral'
-        if total > 0:
-            if positive_count > negative_count and positive_count > neutral_count:
-                overall = 'positive'
-            elif negative_count > positive_count:
-                overall = 'negative'
-        
-        return jsonify({
-            'success': True,
-            'symbol': symbol.upper(),
-            'overall_sentiment': overall,
-            'distribution': {
-                'positive': positive_count,
-                'negative': negative_count,
-                'neutral': neutral_count
-            },
-            'sentiments': sentiments,
-            'total_analyzed': total
-        })
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -1031,28 +1043,37 @@ def get_charts(symbol):
     """
     period = request.args.get('period', '1y')
     interval = request.args.get('interval', '1d')
-    
-    symbol_upper = symbol.upper()
-    # Use TSX symbol for Canadian stocks to get CAD prices
-    chart_symbol = get_ticker_for_charts(symbol_upper)
-    
-    data = get_chart_data(chart_symbol, period, interval)
-    # Keep the original symbol in response
-    data['display_symbol'] = symbol_upper
-    data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
-    return jsonify(data)
+    err = _validate_chart_args(period, interval)
+    if err:
+        return err
+
+    try:
+        symbol_upper = symbol.upper()
+        # Use TSX symbol for Canadian stocks to get CAD prices
+        chart_symbol = get_ticker_for_charts(symbol_upper)
+
+        data = get_chart_data(chart_symbol, period, interval)
+        # Keep the original symbol in response
+        data['display_symbol'] = symbol_upper
+        data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/charts/<symbol>/all-timeframes')
 def get_all_timeframes(symbol):
     """Get chart data for all timeframes"""
-    symbol_upper = symbol.upper()
-    # Use TSX symbol for Canadian stocks to get CAD prices
-    chart_symbol = get_ticker_for_charts(symbol_upper)
-    
-    data = get_multiple_timeframes(chart_symbol)
-    data['display_symbol'] = symbol_upper
-    data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
-    return jsonify(data)
+    try:
+        symbol_upper = symbol.upper()
+        # Use TSX symbol for Canadian stocks to get CAD prices
+        chart_symbol = get_ticker_for_charts(symbol_upper)
+
+        data = get_multiple_timeframes(chart_symbol)
+        data['display_symbol'] = symbol_upper
+        data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/charts/compare')
 def compare_charts():
@@ -1070,13 +1091,19 @@ def compare_charts():
         return jsonify({
             'success': False,
             'error': 'No symbols provided'
-        })
+        }), 400
     
     period = request.args.get('period', '1y')
     interval = request.args.get('interval', '1d')
-    
-    data = get_comparison_data(symbols, period, interval)
-    return jsonify(data)
+    err = _validate_chart_args(period, interval)
+    if err:
+        return err
+
+    try:
+        data = get_comparison_data(symbols, period, interval)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/charts/<symbol>/indicators')
 def get_indicators(symbol):
@@ -1088,16 +1115,22 @@ def get_indicators(symbol):
     """
     period = request.args.get('period', '1y')
     interval = request.args.get('interval', '1d')
-    
-    symbol_upper = symbol.upper()
-    # Use TSX symbol for Canadian stocks to get CAD prices
-    chart_symbol = get_ticker_for_charts(symbol_upper)
-    
-    data = get_technical_indicators(chart_symbol, period, interval)
-    # Keep the original symbol in response
-    data['display_symbol'] = symbol_upper
-    data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
-    return jsonify(data)
+    err = _validate_chart_args(period, interval)
+    if err:
+        return err
+
+    try:
+        symbol_upper = symbol.upper()
+        # Use TSX symbol for Canadian stocks to get CAD prices
+        chart_symbol = get_ticker_for_charts(symbol_upper)
+
+        data = get_technical_indicators(chart_symbol, period, interval)
+        # Keep the original symbol in response
+        data['display_symbol'] = symbol_upper
+        data['currency'] = 'CAD' if is_canadian_stock(symbol_upper) else 'USD'
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/news/twitter')
 def twitter_news():
@@ -1109,7 +1142,7 @@ def twitter_news():
     - type: 'market' for general market news, 'financial' for financial news sources
     """
     symbol = request.args.get('symbol', None)
-    count = min(int(request.args.get('count', 20)), 100)
+    count = _int_arg('count', 20, max_val=100)
     news_type = request.args.get('type', 'market')
     
     try:
@@ -1141,7 +1174,7 @@ def alpaca_news():
     - count: Number of news items to return (default: 20)
     """
     symbol = request.args.get('symbol', None)
-    count = int(request.args.get('count', 20))
+    count = _int_arg('count', 20, max_val=100)
     
     try:
         news_items = get_recent_news(count=count, symbol=symbol)
@@ -1167,7 +1200,7 @@ def combined_news():
     - count: Number of items per source (default: 10)
     """
     symbol = request.args.get('symbol', None)
-    count = int(request.args.get('count', 10))
+    count = _int_arg('count', 10, max_val=100)
     
     try:
         all_news = []

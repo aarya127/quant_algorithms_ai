@@ -38,13 +38,13 @@ jobs:
           pip install --prefer-binary \
             numpy pandas scipy \
             scikit-learn xgboost lightgbm joblib \
+            flask cachetools \
             pytest pytest-cov
 
       - name: Run unit tests — transforms
         run: |
           pytest tests/test_transforms.py \
-            -v --tb=short \
-            --cov=tests --cov-report=term-missing
+            -v --tb=short
 
       - name: Run unit tests — target construction
         run: |
@@ -61,6 +61,11 @@ jobs:
           pytest tests/test_pipeline_integration.py \
             -v --tb=short
 
+      - name: Run API endpoint tests — Flask test_client (no network)
+        run: |
+          pytest tests/test_api_endpoints.py \
+            -v --tb=short
+
       - name: Summary
         if: always()
         run: |
@@ -69,4 +74,5 @@ jobs:
                  tests/test_targets.py \
                  tests/test_evaluation_gate.py \
                  tests/test_pipeline_integration.py \
+                 tests/test_api_endpoints.py \
             --tb=no -q 2>&1 | tail -5
