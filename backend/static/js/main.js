@@ -2371,12 +2371,15 @@ function loadCharts(symbol, period = '1d', interval = '5m') {
             if (data.success && data.indicators) {
                 console.log('✓ RSI data points:', data.indicators.rsi ? data.indicators.rsi.length : 0);
                 console.log('✓ MACD data points:', data.indicators.macd ? data.indicators.macd.macd.length : 0);
+                setIndicatorPanelMessage(null);  // clear any earlier notice
                 renderRSIChart(data);
                 renderMACDChart(data);
                 renderPriceChartWithIndicators(data);
                 console.log(`✓ Technical indicators loaded`);
             } else {
                 console.warn('⚠️ No technical indicators data:', data);
+                // Tell the user why instead of leaving the panels silently blank
+                setIndicatorPanelMessage(data.error || 'Indicator data unavailable for this timeframe.');
             }
         })
         .catch(error => {
@@ -3152,6 +3155,26 @@ function formatStatRow(label, value) {
 }
 
 // Render RSI Chart
+// Show (or clear, when msg is null) an explanatory note in the RSI/MACD panels.
+// Keeps the canvases in place so later successful loads can still render.
+function setIndicatorPanelMessage(msg) {
+    ['rsiChart', 'macdChart'].forEach(function(id) {
+        const canvas = document.getElementById(id);
+        if (!canvas || !canvas.parentElement) return;
+        let note = canvas.parentElement.querySelector('.indicator-msg');
+        if (msg) {
+            if (!note) {
+                note = document.createElement('p');
+                note.className = 'indicator-msg text-muted small mb-0';
+                canvas.parentElement.insertBefore(note, canvas);
+            }
+            note.textContent = msg;
+        } else if (note) {
+            note.remove();
+        }
+    });
+}
+
 function renderRSIChart(data) {
     console.log('🎨 renderRSIChart called with data:', data);
     const ctx = document.getElementById('rsiChart');

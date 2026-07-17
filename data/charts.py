@@ -243,19 +243,31 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
         
         # Check if we have enough data points
         if len(hist) < MIN_POINTS_NEEDED:
-            # Try to fetch more data with a longer period
-            print(f"⚠️ Only {len(hist)} data points available. Trying longer period...")
-            alternative_periods = ['3mo', '6mo', '1y', '2y']
-            
-            for alt_period in alternative_periods:
-                if alt_period == period:
+            # Retry with a longer window — but fallbacks must respect yfinance's
+            # intraday limits (1m ≈ last 7 days; 2m–90m ≈ last 60 days). Extending
+            # the period while keeping an intraday interval returns EMPTY data,
+            # which is why "1d/5m" early in the trading session (< 50 bars so far
+            # today) used to fail with "0 data points". Each fallback is a
+            # (period, interval) pair that yfinance can actually serve.
+            print(f"⚠️ Only {len(hist)} data points available. Trying longer window...")
+            if interval == '1m':
+                attempts = [('5d', '1m'), ('5d', '5m'), ('1mo', '30m'), ('6mo', '1d'), ('1y', '1d')]
+            elif interval in ('2m', '5m', '15m', '30m', '90m'):
+                attempts = [('5d', interval), ('1mo', interval), ('3mo', '1h'), ('6mo', '1d'), ('1y', '1d')]
+            elif interval in ('60m', '1h'):
+                attempts = [('1mo', interval), ('3mo', interval), ('6mo', '1d'), ('1y', '1d')]
+            else:
+                attempts = [('3mo', interval), ('6mo', interval), ('1y', interval), ('2y', interval)]
+
+            for alt_period, alt_interval in attempts:
+                if (alt_period, alt_interval) == (period, interval):
                     continue
-                hist = ticker.history(period=alt_period, interval=interval)
+                hist = ticker.history(period=alt_period, interval=alt_interval)
                 if len(hist) >= MIN_POINTS_NEEDED:
-                    period = alt_period
-                    print(f"✓ Using {alt_period} period with {len(hist)} data points")
+                    period, interval = alt_period, alt_interval
+                    print(f"✓ Using {alt_period}/{alt_interval} with {len(hist)} data points")
                     break
-            
+
             # If still not enough data, return error
             if len(hist) < MIN_POINTS_NEEDED:
                 return {
