@@ -150,7 +150,7 @@ html, body {
 
 /* INDEX CARDS */
 .index-cards-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 16px; margin-bottom: 24px; }
-.index-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease; }
+.index-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease; overflow: hidden; min-width: 0; }
 .index-card:hover { border-color: var(--accent); background: var(--bg-hover); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
 .index-card-skeleton { height: 110px; background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 12px; }
 @keyframes shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
@@ -166,7 +166,10 @@ html, body {
 .index-change-abs.pos { color: var(--pos); }
 .index-change-abs.neg { color: var(--neg); }
 .index-price { font-size: 22px; font-weight: 700; color: var(--text-1); margin-bottom: 8px; letter-spacing: -0.5px; }
-.index-sparkline { width: 100%; height: 40px; display: block; }
+/* Fixed-height positioned container — Chart.js (responsive mode) sizes the
+   canvas to this box. Never style the canvas itself in responsive mode. */
+.index-sparkline-wrap { position: relative; width: 100%; height: 48px; overflow: hidden; }
+.index-sparkline { display: block; }
 
 /* DASHBOARD LOWER */
 .dashboard-lower { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
