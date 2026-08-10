@@ -11,7 +11,7 @@ from data.alphavantage import AlphaVantage
 from data.finnhub import get_basic_financials
 
 
-def get_company_statistics(symbol: str) -> dict:
+def get_company_statistics(symbol: str, info: dict = None, financials: dict = None) -> dict:
     """
     Get comprehensive company statistics including:
     - Profile (Market Cap, EV, Shares, Revenue, Employees)
@@ -21,10 +21,12 @@ def get_company_statistics(symbol: str) -> dict:
     - Financial Health (Cash, Debt, Ratios)
     - Growth (CAGR for Revenue and EPS)
     - Dividends
-    
+
     Args:
         symbol: Stock ticker symbol
-    
+        info: pre-fetched yfinance Ticker.info dict (fetched here if None)
+        financials: pre-fetched Finnhub basic financials (fetched here if None)
+
     Returns:
         Dictionary with organized company statistics
     """
@@ -42,8 +44,8 @@ def get_company_statistics(symbol: str) -> dict:
     
     try:
         # Primary source: yfinance (most comprehensive and free)
-        stock = yf.Ticker(symbol)
-        info = stock.info
+        if info is None:
+            info = yf.Ticker(symbol).info
         
         # ===== PROFILE =====
         stats['profile'] = {
@@ -145,7 +147,7 @@ def get_company_statistics(symbol: str) -> dict:
         
         # ===== ENHANCE WITH FINNHUB DATA =====
         try:
-            finnhub_data = get_basic_financials(symbol)
+            finnhub_data = financials if financials is not None else get_basic_financials(symbol)
             if finnhub_data and 'metric' in finnhub_data:
                 metrics = finnhub_data['metric']
                 

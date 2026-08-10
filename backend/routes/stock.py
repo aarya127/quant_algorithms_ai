@@ -196,11 +196,27 @@ def get_ai_overview(symbol):
 def get_statistics(symbol):
     """Get comprehensive company statistics"""
     try:
-        print(f"📊 Fetching statistics for {symbol.upper()}...")
-        
+        symbol_upper = symbol.upper()
+        print(f"📊 Fetching statistics for {symbol_upper}...")
+
+        # Fetch both upstreams in parallel through the shared TTL caches
+        # (yf info: 5 min, Finnhub financials: 10 min) — the Overview tab
+        # usually warmed these already, making this a cache hit.
+        def _safe(fn, *args):
+            try:
+                return fn(*args)
+            except Exception:
+                return None
+
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            f_info = ex.submit(_safe, _cached_yf_info, symbol_upper)
+            f_fins = ex.submit(_safe, _cached_get_basic_financials, symbol_upper)
+            info = f_info.result()
+            fins = f_fins.result()
+
         # Get raw statistics
-        stats = get_company_statistics(symbol.upper())
-        
+        stats = get_company_statistics(symbol_upper, info=info, financials=fins)
+
         # Format for display
         formatted_stats = format_statistics_for_display(stats)
         

@@ -3,10 +3,32 @@ Stock Charts Data Module
 Uses yfinance to fetch historical price data for charting
 """
 
+import threading
+
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from cachetools import TTLCache
+
+# Short TTL cache over yfinance history: the chart and indicator endpoints
+# request the same (symbol, period, interval) window back-to-back, and
+# timeframe switches often revisit a window within a couple of minutes.
+_HIST_CACHE = TTLCache(maxsize=256, ttl=120)
+_HIST_LOCK = threading.Lock()
+
+
+def _get_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
+    """Fetch price history via yfinance with a 2-minute TTL cache."""
+    key = (symbol, period, interval)
+    with _HIST_LOCK:
+        cached = _HIST_CACHE.get(key)
+    if cached is not None:
+        return cached
+    hist = yf.Ticker(symbol).history(period=period, interval=interval)
+    with _HIST_LOCK:
+        _HIST_CACHE[key] = hist
+    return hist
 
 
 def get_chart_data(symbol: str, period: str = "1y", interval: str = "1d") -> dict:
@@ -24,12 +46,9 @@ def get_chart_data(symbol: str, period: str = "1y", interval: str = "1d") -> dic
     
     try:
         print(f"📊 Fetching {period} chart data for {symbol} with {interval} interval...")
-        
-        # Create ticker object
-        ticker = yf.Ticker(symbol)
-        
-        # Fetch historical data
-        hist = ticker.history(period=period, interval=interval)
+
+        # Fetch historical data (TTL-cached)
+        hist = _get_history(symbol, period, interval)
         
         if hist.empty:
             print(f"❌ No chart data found for {symbol}")
@@ -121,9 +140,8 @@ def get_comparison_data(symbols: list, period: str = "1y", interval: str = "1d")
         }
         
         for symbol in symbols:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period=period, interval=interval)
-            
+            hist = _get_history(symbol, period, interval)
+
             if not hist.empty:
                 # Normalize to percentage change from start
                 start_price = hist['Close'].iloc[0]
@@ -231,10 +249,10 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
         # Minimum data points needed for indicators
         MIN_POINTS_NEEDED = 50  # Need at least 50 points for reliable indicators (26 for MACD + buffer)
         
-        # Get base chart data
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period=period, interval=interval)
-        
+        # Get base chart data (TTL-cached — the plain chart endpoint fetches
+        # the same window, so one of the two requests is a cache hit)
+        hist = _get_history(symbol, period, interval)
+
         if hist.empty:
             return {
                 "success": False,
@@ -262,7 +280,7 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
             for alt_period, alt_interval in attempts:
                 if (alt_period, alt_interval) == (period, interval):
                     continue
-                hist = ticker.history(period=alt_period, interval=alt_interval)
+                hist = _get_history(symbol, alt_period, alt_interval)
                 if len(hist) >= MIN_POINTS_NEEDED:
                     period, interval = alt_period, alt_interval
                     print(f"✓ Using {alt_period}/{alt_interval} with {len(hist)} data points")
