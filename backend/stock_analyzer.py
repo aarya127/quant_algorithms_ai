@@ -446,18 +446,35 @@ class StockAnalyzer:
             'data_sources': list(sentiment.get('sources', {}).keys())
         }
     
-    def get_detailed_metrics(self) -> Dict:
-        """Get detailed metrics with comparisons"""
-        data = self.get_comprehensive_data()
-        financials = data.get('financials', {})
-        
-        # Extract metrics
-        pe_ratio = financials.get('pe_ratio', 20) or 20
-        roe = financials.get('roe', 15) or 15
-        profit_margin = financials.get('profit_margin', 10) or 10
-        eps_growth = financials.get('eps_growth', 10) or 10
-        revenue_growth = financials.get('revenue_growth', 10) or 10
-        debt_to_equity = financials.get('debt_to_equity', 0.5) or 0.5
+    def get_detailed_metrics(self, financials: dict = None) -> Dict:
+        """Get detailed metrics with comparisons.
+
+        Grading needs only the Finnhub basic-financials ratios, so that is the
+        only upstream call made here (or none, when the caller passes a
+        pre-fetched `financials` payload). Do NOT route this through
+        get_comprehensive_data(): that fans out to ~10-15 API calls and lazily
+        loads FinBERT (~512 MB) — enough to hit the worker timeout or OOM the
+        free-tier instance — for data this method never reads.
+
+        Args:
+            financials: raw Finnhub basic-financials response (with 'metric'),
+                        e.g. from services._cached_get_basic_financials.
+        """
+        if financials is None:
+            try:
+                financials = get_basic_financials(self.symbol)
+            except Exception as e:
+                print(f"Financials error: {e}")
+                financials = None
+        metric = (financials or {}).get('metric', {}) or {}
+
+        # Extract metrics (same Finnhub fields get_comprehensive_data mapped)
+        pe_ratio = metric.get('peBasicExclExtraTTM', 20) or 20
+        roe = metric.get('roeTTM', 15) or 15
+        profit_margin = metric.get('netProfitMarginTTM', 10) or 10
+        eps_growth = metric.get('epsGrowthTTMYoy', 10) or 10
+        revenue_growth = metric.get('revenueGrowthTTMYoy', 10) or 10
+        debt_to_equity = metric.get('totalDebt/totalEquityQuarterly', 0.5) or 0.5
         
         # Scoring functions
         def grade_valuation(pe: float) -> tuple:

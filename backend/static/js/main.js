@@ -982,12 +982,15 @@ async function loadMetrics(symbol) {
         const endTime = Date.now();
         
         console.log(`✓ ${symbol} metrics loaded in ${endTime - startTime}ms`);
-        console.log(`  Overall Grade: ${data.overall_grade} (${data.average_score.toFixed(1)}/100)`);
-        
+
+        // Check success BEFORE touching data fields: data.average_score is
+        // undefined on an error payload, and a throw here would land in the
+        // generic catch below and mask the backend's actual error message.
         if (!data.success) {
             container.innerHTML = `<div class="alert alert-warning">${data.error || 'Failed to load metrics'}</div>`;
             return;
         }
+        console.log(`  Overall Grade: ${data.overall_grade} (${data.average_score.toFixed(1)}/100)`);
         
         // Update overall grade
         document.getElementById('overallGrade').innerHTML = `

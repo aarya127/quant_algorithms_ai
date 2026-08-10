@@ -477,7 +477,11 @@ def stock_metrics(symbol):
     """Get comprehensive metrics and grading using StockAnalyzer"""
     try:
         analyzer = StockAnalyzer(symbol.upper())
-        metrics_data = analyzer.get_detailed_metrics()
+        try:
+            fins = _cached_get_basic_financials(symbol.upper())
+        except Exception:
+            fins = None  # get_detailed_metrics falls back to its own fetch
+        metrics_data = analyzer.get_detailed_metrics(financials=fins)
         
         return jsonify({
             'success': True,
