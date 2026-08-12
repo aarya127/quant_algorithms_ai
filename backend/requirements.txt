@@ -24,3 +24,4 @@ mlflow>=2.0.0,<3.0.0
 # LLM providers for the analyst brief (llm_router: NVIDIA NIM + OpenAI use this
 # client; anthropic optional via ANTHROPIC_API_KEY)
 openai>=1.30.0
+flask-limiter>=3.5.0

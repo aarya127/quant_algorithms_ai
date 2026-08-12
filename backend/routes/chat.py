@@ -20,6 +20,8 @@ from flask import Blueprint, Response, jsonify, request
 
 from cachetools import TTLCache
 
+from rate_limit import limiter, bypass_ok, LLM_LIMIT
+
 # project root (for the `ai_platform` package) — app.py normally sets this up
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -80,6 +82,7 @@ def llm_status():
 
 
 @bp.route('/api/chat', methods=['POST'])
+@limiter.limit(LLM_LIMIT, exempt_when=bypass_ok)
 def chat():
     """Stream an LLM reply as SSE, grounded in the viewed symbol's numbers."""
     body = request.get_json(silent=True) or {}

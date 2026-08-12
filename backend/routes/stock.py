@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, jsonify, request
 
 from common import get_ticker_for_charts, is_canadian_stock
+from rate_limit import limiter, bypass_ok, LLM_LIMIT, AV_LIMIT
 from services import (
     yf, StockAnalyzer, get_company_overview_llm,
     get_company_profile, get_stock_quote, get_basic_financials, get_company_news,
@@ -236,6 +237,7 @@ def get_statistics(symbol):
         })
 
 @bp.route('/api/sentiment/<symbol>')
+@limiter.limit(AV_LIMIT, exempt_when=bypass_ok)
 def sentiment_analysis(symbol):
     """Get comprehensive sentiment analysis from multiple sources"""
     try:
@@ -321,6 +323,7 @@ def sentiment_analysis(symbol):
         return jsonify({'success': False, 'error': str(e)})
 
 @bp.route('/api/sentiment/news/<symbol>')
+@limiter.limit(AV_LIMIT, exempt_when=bypass_ok)
 def sentiment_news(symbol):
     """
     Article-level sentiment feed + daily trend for the Sentiment tab.
@@ -580,6 +583,7 @@ def recommendations(symbol):
 
 
 @bp.route('/api/narrate/<symbol>')
+@limiter.limit(LLM_LIMIT, exempt_when=bypass_ok)
 def narrate(symbol):
     """AI Signal Brief — LLM narrative over computed numbers (llm_analyst).
     The frontend panel has called this endpoint since the UI was built; it now

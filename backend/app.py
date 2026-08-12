@@ -17,6 +17,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 # downstream data-module imports fail, keeping deploy healthchecks green.
 app = Flask(__name__)
 
+# Per-IP rate limiting — auto-enabled on Render only; local runs are unlimited.
+# See rate_limit.py for tiers, the RATE_LIMIT_ENABLED override, and the
+# X-RateLimit-Bypass token.
+import rate_limit                          # noqa: E402
+rate_limit.init_app(app)
+
 from common import DEFAULT_STOCKS          # noqa: E402
 from services import stop_news_stream      # noqa: E402  (no-op if data layer failed)
 

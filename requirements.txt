@@ -36,3 +36,4 @@ QuantLib-Python>=1.18
 numpy>=1.26.0
 matplotlib>=3.7.0
 
+flask-limiter>=3.5.0
