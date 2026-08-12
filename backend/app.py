@@ -28,9 +28,11 @@ from routes.market import bp as _market_bp        # noqa: E402
 from routes.stock import bp as _stock_bp          # noqa: E402
 from routes.backtest import bp as _backtest_bp    # noqa: E402
 from routes.research import bp as _research_bp    # noqa: E402
+from routes.chat import bp as _chat_bp            # noqa: E402
 
 for _bp in (_pipeline_bp, _charts_bp, _news_bp, _trading_bp,
-            _market_bp, _stock_bp, _backtest_bp, _research_bp):
+            _market_bp, _stock_bp, _backtest_bp, _research_bp,
+            _chat_bp):
     app.register_blueprint(_bp)
 
 
