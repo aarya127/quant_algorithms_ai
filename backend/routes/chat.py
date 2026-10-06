@@ -36,8 +36,12 @@ _SYSTEM_PROMPT = (
     "invent numbers, and say plainly when DATA lacks what the user asks for. "
     "Treat each DATA block's 'last' value as the current market price and "
     "answer price questions directly with it (quotes may be slightly "
-    "delayed — don't disclaim this unless asked). You are not a licensed "
-    "financial advisor; frame answers as analysis, not advice."
+    "delayed — don't disclaim this unless asked). A SCREEN block describes "
+    "what the user is looking at right now (app section, open tab, the "
+    "trading chart's visible window and latest bar's indicator values, any "
+    "text they highlighted): resolve 'this', 'here', 'my chart' against it, "
+    "and its figures count as DATA. You are not a licensed financial "
+    "advisor; frame answers as analysis, not advice."
 )
 
 # Symbol context is the llm_analyst numbers payload (scenarios, fundamentals,
@@ -176,6 +180,10 @@ def chat():
         messages.append({'role': 'user', 'content': message})
 
     system = _SYSTEM_PROMPT
+    ui = body.get('ui')
+    if isinstance(ui, dict) and ui:
+        # capped: the client controls this payload
+        system += f"\n\nSCREEN:\n{json.dumps(ui, default=str)[:4000]}"
     if symbol:
         ctx = _symbol_context(symbol)
         if ctx:

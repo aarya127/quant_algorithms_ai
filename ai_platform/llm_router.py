@@ -4,10 +4,14 @@ llm_router.py — Unified multi-provider LLM client for Invest.ai.
 Provider priority (first one with a valid key wins):
   1. "openai"    — GPT-4o via api.openai.com
   2. "anthropic" — Claude 3.5 Sonnet via api.anthropic.com
-  3. "nvidia"    — Llama-3.1-70B via integrate.api.nvidia.com (OpenAI-compat)
+  3. "nvidia"    — NIM free tier via integrate.api.nvidia.com (OpenAI-compat)
 
 Override with LLM_PROVIDER env var, e.g.:
     LLM_PROVIDER=anthropic  python backend/app.py
+
+Each provider has an ordered model list; a call falls through to the next model
+when one errors or returns nothing before any text is produced. Override the
+NVIDIA chain with NVIDIA_MODELS="primary,fallback".
 
 Public API
 ----------
@@ -61,18 +65,23 @@ _PROVIDERS = {
         "base_url":     "https://api.openai.com/v1",
         "env_var":      "OPENAI_API_KEY",
         "keys_section": "openai",
-        "default_model": "gpt-4o",
+        "models":       ["gpt-4o"],
     },
     "anthropic": {
         "env_var":      "ANTHROPIC_API_KEY",
         "keys_section": "anthropic",
-        "default_model": "claude-3-5-sonnet-20241022",
+        "models":       ["claude-3-5-sonnet-20241022"],
     },
     "nvidia": {
         "base_url":     "https://integrate.api.nvidia.com/v1",
         "env_var":      "NVIDIA_API_KEY",
         "keys_section": "nvidia llms",
-        "default_model": "meta/llama-3.1-70b-instruct",
+        # Two vendors, so one family being pulled from the free catalog (as
+        # meta/llama-3.1-70b-instruct was) doesn't take the chat down.
+        "models": os.environ.get(
+            "NVIDIA_MODELS",
+            "nvidia/nemotron-3-super-120b-a12b,deepseek-ai/deepseek-v4.1-flash",
+        ).split(","),
     },
 }
 
@@ -103,7 +112,7 @@ def _openai_chat(
     provider: str,
     messages: list[dict],
     *,
-    model: Optional[str],
+    model: str,
     max_tokens: int,
     temperature: float,
     timeout: float,
@@ -121,10 +130,9 @@ def _openai_chat(
         kwargs["base_url"] = cfg["base_url"]
 
     client = OpenAI(**kwargs)
-    mdl    = model or cfg["default_model"]
 
     return client.chat.completions.create(
-        model=mdl,
+        model=model,
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
@@ -140,7 +148,7 @@ def _anthropic_chat(
     messages: list[dict],
     *,
     system: Optional[str],
-    model: Optional[str],
+    model: str,
     max_tokens: int,
     temperature: float,
     timeout: float,
@@ -152,12 +160,10 @@ def _anthropic_chat(
         raise RuntimeError("anthropic package not installed — run: pip install anthropic>=0.25.0")
 
     key    = _get_key("anthropic")
-    cfg    = _PROVIDERS["anthropic"]
-    mdl    = model or cfg["default_model"]
     client = anthropic.Anthropic(api_key=key)
 
     kwargs: dict = dict(
-        model=mdl,
+        model=model,
         max_tokens=max_tokens,
         temperature=temperature,
         messages=messages,
@@ -210,26 +216,28 @@ def chat_completion(
         )
         return None
 
-    try:
-        if prov == "anthropic":
-            resp = _anthropic_chat(
-                messages, system=system, model=model,
-                max_tokens=max_tokens, temperature=temperature,
-                timeout=timeout, stream=False,
-            )
-            return resp.content[0].text
-
-        msgs = _inject_system(messages, system)
-        resp = _openai_chat(
-            prov, msgs, model=model,
-            max_tokens=max_tokens, temperature=temperature,
-            timeout=timeout, stream=False,
-        )
-        return resp.choices[0].message.content
-
-    except Exception as exc:
-        logger.error("llm_router [%s] error: %s", prov, exc)
-        return None
+    for mdl in ([model] if model else _PROVIDERS[prov]["models"]):
+        try:
+            if prov == "anthropic":
+                resp = _anthropic_chat(
+                    messages, system=system, model=mdl,
+                    max_tokens=max_tokens, temperature=temperature,
+                    timeout=timeout, stream=False,
+                )
+                text = resp.content[0].text
+            else:
+                resp = _openai_chat(
+                    prov, _inject_system(messages, system), model=mdl,
+                    max_tokens=max_tokens, temperature=temperature,
+                    timeout=timeout, stream=False,
+                )
+                text = resp.choices[0].message.content
+            if text:
+                return text
+            logger.error("llm_router [%s/%s] empty response", prov, mdl)
+        except Exception as exc:
+            logger.error("llm_router [%s/%s] error: %s", prov, mdl, exc)
+    return None
 
 
 def stream_completion(
@@ -250,28 +258,40 @@ def stream_completion(
         yield "[LLM not configured — add OPENAI_API_KEY, ANTHROPIC_API_KEY, or NVIDIA_API_KEY]"
         return
 
-    try:
-        if prov == "anthropic":
-            with _anthropic_chat(
-                messages, system=system, model=model,
-                max_tokens=max_tokens, temperature=temperature,
-                timeout=timeout, stream=True,
-            ) as stream:
-                for text in stream.text_stream:
-                    yield text
-            return
-
-        msgs   = _inject_system(messages, system)
-        stream = _openai_chat(
-            prov, msgs, model=model,
-            max_tokens=max_tokens, temperature=temperature,
-            timeout=timeout, stream=True,
-        )
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
-
-    except Exception as exc:
-        logger.error("llm_router stream [%s] error: %s", prov, exc)
-        yield f"[LLM error: {exc}]"
+    # Fall back only while nothing has been yielded — a reply can't be
+    # restarted on another model once the client is showing part of it.
+    err = "empty response"
+    for mdl in ([model] if model else _PROVIDERS[prov]["models"]):
+        started = False
+        try:
+            if prov == "anthropic":
+                with _anthropic_chat(
+                    messages, system=system, model=mdl,
+                    max_tokens=max_tokens, temperature=temperature,
+                    timeout=timeout, stream=True,
+                ) as stream:
+                    for text in stream.text_stream:
+                        started = True
+                        yield text
+            else:
+                stream = _openai_chat(
+                    prov, _inject_system(messages, system), model=mdl,
+                    max_tokens=max_tokens, temperature=temperature,
+                    timeout=timeout, stream=True,
+                )
+                for chunk in stream:
+                    # NIM can end with a choices-less usage chunk
+                    delta = chunk.choices[0].delta.content if chunk.choices else None
+                    if delta:
+                        started = True
+                        yield delta
+            if started:
+                return
+            logger.error("llm_router stream [%s/%s] empty response", prov, mdl)
+            err = "empty response"
+        except Exception as exc:
+            logger.error("llm_router stream [%s/%s] error: %s", prov, mdl, exc)
+            err = exc
+            if started:
+                break
+    yield f"[LLM error: {err}]"

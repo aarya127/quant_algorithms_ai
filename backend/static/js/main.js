@@ -3573,6 +3573,40 @@ let _lwVolChart = null;    // volume chart instance
 let _lwRSIChart = null;
 let _lwMACDChart = null;
 let _lwStochChart = null;
+let _tradingChartData = null;  // last /api/trading/ohlcv payload drawn on _lwChart
+
+// Snapshot of the trading chart for the AI chat: the window the user has
+// scrolled/zoomed to, plus the last visible bar with its indicator values.
+function tradingChartState() {
+    if (!_lwChart || !_tradingChartData) return null;
+    var bars  = _tradingChartData.bars;
+    var range = _lwChart.timeScale().getVisibleRange();
+    var vis   = range ? bars.filter(function(b) { return b.time >= range.from && b.time <= range.to; }) : [];
+    if (!vis.length) vis = bars;
+    var first = vis[0], last = vis[vis.length - 1];
+    var iso   = function(t) { return new Date(t * 1000).toISOString().slice(0, 16).replace('T', ' '); };
+
+    var indicators = [];
+    document.querySelectorAll('.trading-indicator:checked').forEach(function(cb) { indicators.push(cb.value); });
+    var lastBar = {};
+    Object.keys(last).forEach(function(k) {
+        if (last[k] != null) lastBar[k] = (k === 'time') ? iso(last[k]) : last[k];
+    });
+
+    return {
+        ticker:   _tradingChartData.ticker,
+        interval: _tradingChartData.interval,
+        currency: _tradingChartData.currency,
+        indicators_on: indicators,
+        visible_window: {
+            from: iso(first.time), to: iso(last.time), bars: vis.length,
+            high: Math.max.apply(null, vis.map(function(b) { return b.high; })),
+            low:  Math.min.apply(null, vis.map(function(b) { return b.low; })),
+            change_pct: +((last.close / first.open - 1) * 100).toFixed(2),
+        },
+        last_visible_bar: lastBar,
+    };
+}
 
 function _destroyLWCharts() {
     [['_lwChart', _lwChart], ['_lwVolChart', _lwVolChart],
@@ -3631,6 +3665,7 @@ function loadTradingChart() {
         }
         show('tradingChartResult');
         _renderLWChart(data, ticker, symbol, interval, style);
+        _tradingChartData = data;
         document.getElementById('tradingChartLabel').textContent =
             ticker + ' \u00b7 ' + interval + '  [' + data.bars.length + ' bars]';
         var src = document.getElementById('tradingChartSource');

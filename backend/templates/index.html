@@ -1821,6 +1821,28 @@
     let _chatOpen    = false;
     let _chatHistory = [];
     let _chatStreaming = false;
+    let _chatSelection = '';
+
+    // Clicking into the chat collapses the page selection, so capture it on
+    // mousedown — lets the user highlight text and ask "what does this mean?".
+    document.getElementById('chatPanel').addEventListener('mousedown', function () {
+        const sel = window.getSelection().toString().trim();
+        if (sel) _chatSelection = sel.slice(0, 1000);
+    });
+
+    // What the user is looking at, so "this", "my chart", "here" resolve.
+    function _chatUIState() {
+        const ui = { section: currentSection };
+        if (currentStock && document.getElementById('stockDetails').offsetParent) {
+            const tab = document.querySelector('#stockDetails [data-bs-toggle="tab"].active');
+            ui.stock_view = { symbol: currentStock, tab: tab ? tab.textContent.trim() : '' };
+        }
+        if (currentSection === 'trading') {
+            ui.trading_chart = tradingChartState();
+        }
+        if (_chatSelection) ui.selected_text = _chatSelection;
+        return ui;
+    }
 
     function toggleChat() {
         _chatOpen = !_chatOpen;
@@ -1871,14 +1893,20 @@
         _chatStreaming = true;
         let fullText  = '';
 
+        const ui = _chatUIState();
+        _chatSelection = '';
+
         try {
             const resp = await fetch('/api/chat', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    symbol:  (typeof currentSymbol !== 'undefined') ? currentSymbol : '',
+                    // the charted ticker wins on the Trading tab, where it's what's on screen
+                    symbol:  ui.trading_chart ? ui.trading_chart.ticker
+                           : (typeof currentSymbol !== 'undefined') ? currentSymbol : '',
                     message: msg,
                     history: _chatHistory.slice(-10),
+                    ui,
                 }),
             });
 
