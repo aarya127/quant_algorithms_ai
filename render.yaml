@@ -71,3 +71,7 @@ services:
         sync: false
       - key: CHART_IMG_KEY
         sync: false
+      # Required: /api/pipeline/run refuses all requests on Render without it.
+      # Must match the PIPELINE_TRIGGER_TOKEN GitHub repo secret.
+      - key: PIPELINE_TRIGGER_TOKEN
+        sync: false

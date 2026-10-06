@@ -6,6 +6,7 @@ scheduled-retraining GitHub Actions workflow (.github/workflows/daily-retrain.ym
 Extracted from app.py; behavior unchanged.
 """
 import os
+import re
 import sys
 import time
 import uuid
@@ -20,6 +21,7 @@ from flask import Blueprint, jsonify, request
 # automatic eviction of old jobs. Point PIPELINE_DB_PATH at the persistent disk for
 # true cross-restart durability on paid Render plans.
 import pipeline_store
+from rate_limit import on_render
 
 bp = Blueprint('pipeline', __name__)
 
@@ -30,8 +32,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Shared secret protecting the (expensive) retrain trigger. When set, callers must
 # send a matching `X-Pipeline-Token` header; the GitHub Actions workflow sends it
-# from the PIPELINE_TRIGGER_TOKEN repo secret. When unset, the endpoint stays open
-# but logs a warning — set it in the Render dashboard to lock down this public app.
+# from the PIPELINE_TRIGGER_TOKEN repo secret. When unset the endpoint is refused on
+# Render (public) and left open only for local runs.
 _PIPELINE_TOKEN = os.environ.get('PIPELINE_TRIGGER_TOKEN', '').strip()
 
 # Hard ceiling on a single retrain run (seconds). Overridable via env; prevents a
@@ -134,15 +136,16 @@ def pipeline_run():
         if _PIPELINE_TOKEN:
             if request.headers.get('X-Pipeline-Token', '') != _PIPELINE_TOKEN:
                 return jsonify({'success': False, 'error': 'unauthorized'}), 401
-        else:
-            print("[PIPELINE] WARNING: /api/pipeline/run is unprotected "
-                  "(PIPELINE_TRIGGER_TOKEN not set).", flush=True)
+        elif on_render():
+            return jsonify({'success': False,
+                            'error': 'PIPELINE_TRIGGER_TOKEN is not configured'}), 503
 
         data = request.get_json(force=True) or {}
-        ticker = data.get('ticker', 'NVDA').upper().strip()
+        ticker = str(data.get('ticker') or 'NVDA').upper().strip()
 
-        if not ticker:
-            return jsonify({'success': False, 'error': 'ticker is required'}), 400
+        # The ticker becomes part of file paths (<SYM>_*.csv, model_registry/<SYM>)
+        if not re.fullmatch(r'[A-Z0-9][A-Z0-9.\-]{0,9}', ticker):
+            return jsonify({'success': False, 'error': 'invalid ticker'}), 400
 
         # Single-flight: refuse to start a second retrain while one is active, so a
         # burst of triggers can't spawn parallel pipelines and OOM the instance.

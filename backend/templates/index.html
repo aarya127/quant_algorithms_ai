@@ -1968,7 +1968,7 @@
             if (d.success && d.narrative) {
                 const signal = d.signal || 'neutral';
                 const col    = signal === 'long' ? '#34d399' : signal === 'short' ? '#f87171' : '#94a3b8';
-                el.innerHTML = `<span style="color:${col};font-weight:600;margin-right:6px">${signal.toUpperCase()}</span>${d.narrative}`;
+                el.innerHTML = `<span style="color:${col};font-weight:600;margin-right:6px">${esc(signal.toUpperCase())}</span>${esc(d.narrative)}`;
             } else {
                 el.innerHTML = '<span class="text-muted" style="font-size:.8rem">Signal brief unavailable (run the pipeline first).</span>';
             }

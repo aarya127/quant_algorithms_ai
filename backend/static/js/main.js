@@ -1,3 +1,13 @@
+// Text from APIs, news, tweets and the LLM must go through esc() before it is
+// interpolated into innerHTML; URLs through safeUrl() (blocks javascript: links).
+const _ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => _ESC[c]);
+}
+function safeUrl(u) {
+    return /^https?:\/\//i.test(u || '') ? esc(u) : '#';
+}
+
 // Global state
 let currentStock = null;
 let notifications = [];
@@ -273,11 +283,11 @@ async function loadDashboard() {
                 const absStr = `${up ? '+' : ''}${idx.change.toFixed(2)}`;
                 const sparkId = `idxSpark_${idx.symbol.replace('^','')}`;
                 return `
-                <div class="index-card" data-symbol="${idx.symbol}">
+                <div class="index-card" data-symbol="${esc(idx.symbol)}">
                     <div class="index-card-top">
                         <div class="index-name-group">
-                            <div class="index-name">${idx.name}</div>
-                            <div class="index-badge-label">${idx.symbol}</div>
+                            <div class="index-name">${esc(idx.name)}</div>
+                            <div class="index-badge-label">${esc(idx.symbol)}</div>
                         </div>
                         <div class="index-change-group">
                             <div class="index-change-abs ${colorClass}">${absStr}</div>
@@ -381,16 +391,16 @@ function createNewsCard(news, index) {
     
     col.innerHTML = `
         <div class="card news-card h-100">
-            ${news.image ? `<img src="${news.image}" class="card-img-top" alt="News image">` : ''}
-            <span class="badge bg-${sentimentClass} news-badge">${sentiment.toUpperCase()}</span>
+            ${news.image ? `<img src="${safeUrl(news.image)}" class="card-img-top" alt="News image">` : ''}
+            <span class="badge bg-${sentimentClass} news-badge">${esc(sentiment.toUpperCase())}</span>
             <div class="card-body">
-                <h5 class="card-title">${news.headline || news.title || 'No title'}</h5>
-                <p class="card-text text-muted">${truncateText(news.summary || '', 150)}</p>
+                <h5 class="card-title">${esc(news.headline || news.title || 'No title')}</h5>
+                <p class="card-text text-muted">${esc(truncateText(news.summary || '', 150))}</p>
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">
                         <i class="far fa-clock"></i> ${formatDate(news.datetime || news.time_published)}
                     </small>
-                    ${news.url ? `<a href="${news.url}" target="_blank" class="btn btn-sm btn-outline-primary">Read More</a>` : ''}
+                    ${news.url ? `<a href="${safeUrl(news.url)}" target="_blank" class="btn btn-sm btn-outline-primary">Read More</a>` : ''}
                 </div>
             </div>
         </div>
@@ -486,8 +496,8 @@ async function loadStockOverview(symbol) {
             if (data.company.longBusinessSummary) {
                 companyHTML += `
                     <div class="alert alert-info mb-3">
-                        <h6><i class="fas fa-building"></i> About ${data.company.name}</h6>
-                        <p class="mb-0 small">${data.company.longBusinessSummary}</p>
+                        <h6><i class="fas fa-building"></i> About ${esc(data.company.name)}</h6>
+                        <p class="mb-0 small">${esc(data.company.longBusinessSummary)}</p>
                     </div>
                 `;
             }
@@ -498,12 +508,12 @@ async function loadStockOverview(symbol) {
             
             // Left column
             companyHTML += `<div class="col-md-6">`;
-            companyHTML += `<p class="mb-2"><strong>Sector:</strong> ${data.company.sector || 'N/A'}</p>`;
-            companyHTML += `<p class="mb-2"><strong>Industry:</strong> ${data.company.finnhubIndustry || 'N/A'}</p>`;
-            companyHTML += `<p class="mb-2"><strong>Exchange:</strong> ${data.company.exchange || 'N/A'}</p>`;
-            companyHTML += `<p class="mb-2"><strong>Currency:</strong> ${data.currency || 'USD'}</p>`;
+            companyHTML += `<p class="mb-2"><strong>Sector:</strong> ${esc(data.company.sector || 'N/A')}</p>`;
+            companyHTML += `<p class="mb-2"><strong>Industry:</strong> ${esc(data.company.finnhubIndustry || 'N/A')}</p>`;
+            companyHTML += `<p class="mb-2"><strong>Exchange:</strong> ${esc(data.company.exchange || 'N/A')}</p>`;
+            companyHTML += `<p class="mb-2"><strong>Currency:</strong> ${esc(data.currency || 'USD')}</p>`;
             if (data.company.city || data.company.state) {
-                companyHTML += `<p class="mb-2"><strong>Location:</strong> ${data.company.city || ''}${data.company.city && data.company.state ? ', ' : ''}${data.company.state || ''}, ${data.company.country_full || data.company.country || 'N/A'}</p>`;
+                companyHTML += `<p class="mb-2"><strong>Location:</strong> ${esc(data.company.city || '')}${data.company.city && data.company.state ? ', ' : ''}${esc(data.company.state || '')}, ${esc(data.company.country_full || data.company.country || 'N/A')}</p>`;
             }
             if (data.company.fullTimeEmployees && data.company.fullTimeEmployees > 0) {
                 companyHTML += `<p class="mb-2"><strong>Employees:</strong> ${data.company.fullTimeEmployees.toLocaleString()}</p>`;
@@ -536,7 +546,7 @@ async function loadStockOverview(symbol) {
             
             // Website link
             if (data.company.weburl) {
-                companyHTML += `<p class="mt-3"><a href="${data.company.weburl}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-external-link-alt"></i> Company Website</a></p>`;
+                companyHTML += `<p class="mt-3"><a href="${safeUrl(data.company.weburl)}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-external-link-alt"></i> Company Website</a></p>`;
             }
             
             companyHTML += `</div>`;
@@ -558,7 +568,7 @@ async function loadStockOverview(symbol) {
             newsContainer.innerHTML = `
                 <div class="mb-3">
                     <span class="badge bg-primary">
-                        <i class="fas fa-newspaper"></i> ${symbol} Specific News (${data.news.length} articles)
+                        <i class="fas fa-newspaper"></i> ${esc(symbol)} Specific News (${data.news.length} articles)
                     </span>
                     <small class="text-muted ms-2">
                         Source: Finnhub API
@@ -586,26 +596,26 @@ async function loadStockOverview(symbol) {
                 newsCard.innerHTML = `
                     <div class="card h-100 shadow-sm hover-shadow">
                         ${news.image ? `
-                            <img src="${news.image}" class="card-img-top" alt="News thumbnail" 
+                            <img src="${safeUrl(news.image)}" class="card-img-top" alt="News thumbnail" 
                                  style="height: 200px; object-fit: cover;" 
                                  onerror="this.style.display='none'">
                         ` : ''}
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start mb-2">
                                 <span class="badge bg-primary">
-                                    <i class="fas fa-globe"></i> ${source}
+                                    <i class="fas fa-globe"></i> ${esc(source)}
                                 </span>
                                 <small class="text-muted">
                                     <i class="far fa-clock"></i> ${newsDate}
                                 </small>
                             </div>
-                            <h6 class="card-title mb-2">${news.headline}</h6>
+                            <h6 class="card-title mb-2">${esc(news.headline)}</h6>
                             ${news.summary ? `
                                 <p class="card-text text-muted small mb-3">
-                                    ${truncateText(news.summary, 150)}
+                                    ${esc(truncateText(news.summary, 150))}
                                 </p>
                             ` : ''}
-                            <a href="${news.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <a href="${safeUrl(news.url)}" target="_blank" class="btn btn-sm btn-outline-primary">
                                 Read Full Article <i class="fas fa-external-link-alt ms-1"></i>
                             </a>
                         </div>
@@ -644,7 +654,7 @@ async function loadAIOverview(symbol) {
             container.className = 'alert alert-info mb-3 fade-in';
             container.innerHTML = `
                 <h6><i class="fas fa-robot"></i> AI-Generated Overview</h6>
-                <p class="mb-0" style="white-space: pre-wrap;">${data.ai_overview}</p>
+                <p class="mb-0" style="white-space: pre-wrap;">${esc(data.ai_overview)}</p>
                 <small class="text-muted">Powered by NVIDIA Llama 3.1 70B</small>
             `;
             container.style.display = '';
@@ -733,7 +743,7 @@ async function loadSentiment(symbol, days = 30) {
         const data = await resp.json();
 
         if (!data.success) {
-            container.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${data.error || 'Failed to load sentiment'}</div>`;
+            container.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${esc(data.error || 'Failed to load sentiment')}</div>`;
             return;
         }
 
@@ -764,7 +774,7 @@ async function loadSentiment(symbol, days = 30) {
 
         if (srcEl && data.source_counts) {
             srcEl.innerHTML = Object.entries(data.source_counts)
-                .map(([src, n]) => `<div><span class="badge bg-light text-dark me-1">${src}</span>${n} articles</div>`)
+                .map(([src, n]) => `<div><span class="badge bg-light text-dark me-1">${esc(src)}</span>${esc(n)} articles</div>`)
                 .join('');
         }
 
@@ -845,16 +855,16 @@ async function loadSentiment(symbol, days = 30) {
             </div>` : '';
             const scoreStr = sc != null ? (sc >= 0 ? '+' : '') + sc.toFixed(3) : '—';
             const urlStr   = a.url
-                ? `<a href="${a.url}" target="_blank" rel="noopener" class="stretched-link text-decoration-none">${a.headline}</a>`
+                ? `<a href="${safeUrl(a.url)}" target="_blank" rel="noopener" class="stretched-link text-decoration-none">${esc(a.headline)}</a>`
                 : a.headline;
             return `
             <tr>
-                <td class="text-muted small">${a.date}</td>
+                <td class="text-muted small">${esc(a.date)}</td>
                 <td class="position-relative small">${urlStr}${bar}</td>
-                <td class="small text-muted">${a.source}</td>
+                <td class="small text-muted">${esc(a.source)}</td>
                 <td class="text-center">
                     ${sc != null
-                        ? `<span class="badge bg-${cls}" title="${scoreStr}">${lbl.toUpperCase()}</span>`
+                        ? `<span class="badge bg-${cls}" title="${scoreStr}">${esc(lbl.toUpperCase())}</span>`
                         : `<span class="badge bg-light text-muted">—</span>`}
                 </td>
             </tr>`;
@@ -901,7 +911,7 @@ async function loadScenarios(symbol, timeframe) {
         console.log(`✓ ${symbol} scenarios loaded in ${endTime - startTime}ms`);
         
         if (!data.success) {
-            container.innerHTML = `<div class="alert alert-warning">${data.error || 'Failed to load scenarios'}</div>`;
+            container.innerHTML = `<div class="alert alert-warning">${esc(data.error || 'Failed to load scenarios')}</div>`;
             return;
         }
         
@@ -914,7 +924,7 @@ async function loadScenarios(symbol, timeframe) {
                 <strong>P(up):</strong> ${(data.p_up * 100).toFixed(0)}% |
                 <strong>Ann. Vol:</strong> ${(data.annualized_vol * 100).toFixed(0)}%
                 ${engineBadge}
-                <br><small>Engine: ${data.engine} — probabilities from this ticker's own return history</small>
+                <br><small>Engine: ${esc(data.engine)} — probabilities from this ticker's own return history</small>
             </div>
             <div class="scenario-container">
                 ${createScenarioCard('bull', data.bull_case)}
@@ -948,7 +958,7 @@ function createScenarioCard(type, scenario) {
             <div class="scenario-title">
                 <i class="fas ${icons[type]} text-${colors[type]}"></i>
                 ${type.toUpperCase()} CASE
-                <span class="ms-auto badge bg-${colors[type]}">${scenario.probability}%</span>
+                <span class="ms-auto badge bg-${colors[type]}">${esc(scenario.probability)}%</span>
             </div>
             <div class="price-target">
                 Target: $${scenario.price_target.toFixed(2)}
@@ -957,11 +967,11 @@ function createScenarioCard(type, scenario) {
             <hr>
             <h6>Key Factors:</h6>
             <ul class="scenario-factors">
-                ${scenario.factors.map(factor => `<li><i class="fas fa-check-circle text-${colors[type]}"></i> ${factor}</li>`).join('')}
+                ${scenario.factors.map(factor => `<li><i class="fas fa-check-circle text-${colors[type]}"></i> ${esc(factor)}</li>`).join('')}
             </ul>
             <div class="mt-3">
                 <strong>Rationale:</strong>
-                <p>${scenario.rationale}</p>
+                <p>${esc(scenario.rationale)}</p>
             </div>
         </div>
     `;
@@ -987,15 +997,15 @@ async function loadMetrics(symbol) {
         // undefined on an error payload, and a throw here would land in the
         // generic catch below and mask the backend's actual error message.
         if (!data.success) {
-            container.innerHTML = `<div class="alert alert-warning">${data.error || 'Failed to load metrics'}</div>`;
+            container.innerHTML = `<div class="alert alert-warning">${esc(data.error || 'Failed to load metrics')}</div>`;
             return;
         }
         console.log(`  Overall Grade: ${data.overall_grade} (${data.average_score.toFixed(1)}/100)`);
         
         // Update overall grade
         document.getElementById('overallGrade').innerHTML = `
-            <div class="grade-badge grade-${data.overall_grade}">
-                ${data.overall_grade}
+            <div class="grade-badge grade-${esc(data.overall_grade)}">
+                ${esc(data.overall_grade)}
             </div>
         `;
         
@@ -1003,7 +1013,7 @@ async function loadMetrics(symbol) {
             <div class="row mb-4">
                 <div class="col-md-12">
                     <div class="alert alert-info">
-                        <h5>Overall Grade: ${data.overall_grade}</h5>
+                        <h5>Overall Grade: ${esc(data.overall_grade)}</h5>
                         <p>${getGradeDescription(data.overall_grade)}</p>
                         <strong>Average Score: ${data.average_score.toFixed(1)}/100</strong>
                     </div>
@@ -1030,8 +1040,8 @@ function createMetricCard(title, metric) {
         <div class="metric-card">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="metric-title mb-0">${title}</h5>
-                <div class="grade-badge grade-${metric.grade}">
-                    ${metric.grade}
+                <div class="grade-badge grade-${esc(metric.grade)}">
+                    ${esc(metric.grade)}
                 </div>
             </div>
             <div class="metric-value">${metric.score}/100</div>
@@ -1039,7 +1049,7 @@ function createMetricCard(title, metric) {
                 <div class="progress-bar ${getProgressBarClass(metric.grade)}" 
                      style="width: ${metric.score}%"></div>
             </div>
-            <p class="metric-description">${metric.description}</p>
+            <p class="metric-description">${esc(metric.description)}</p>
             <small class="text-muted">Based on ${metric.factors.length} factors</small>
         </div>
     `;
@@ -1062,16 +1072,16 @@ async function loadRecommendations(symbol) {
         console.log(`✓ ${symbol} recommendations loaded in ${(endTime - startTime)/1000}s`);
         
         if (!data.success) {
-            container.innerHTML = `<div class="alert alert-warning">${data.error || 'Failed to load recommendations'}</div>`;
+            container.innerHTML = `<div class="alert alert-warning">${esc(data.error || 'Failed to load recommendations')}</div>`;
             return;
         }
         
         const signalBadge = data.signal
-            ? `<span class="badge ${data.signal === 'long' ? 'bg-success' : data.signal === 'short' ? 'bg-danger' : 'bg-secondary'}">AI signal: ${data.signal.toUpperCase()}</span>`
+            ? `<span class="badge ${data.signal === 'long' ? 'bg-success' : data.signal === 'short' ? 'bg-danger' : 'bg-secondary'}">AI signal: ${esc(data.signal.toUpperCase())}</span>`
             : '';
         container.innerHTML = `
             <div class="alert alert-info mb-3">
-                <strong>Analysis Base:</strong> ${data.engine_note || 'empirical return distribution'}
+                <strong>Analysis Base:</strong> ${esc(data.engine_note || 'empirical return distribution')}
                 ${signalBadge}
             </div>
             <div class="recommendations-container">
@@ -1101,12 +1111,12 @@ function createRecommendationCard(timeframe, rec) {
         <div class="recommendation-card">
             <div class="recommendation-header">
                 <h5><i class="far fa-clock"></i> ${timeframe}</h5>
-                <span class="timeframe-badge">${rec.action}</span>
+                <span class="timeframe-badge">${esc(rec.action)}</span>
             </div>
             <div class="recommendation-action">
-                ${rec.action}
+                ${esc(rec.action)}
             </div>
-            <p>${rec.reasoning}</p>
+            <p>${esc(rec.reasoning)}</p>
             <div>
                 <small>Confidence Level</small>
                 <div class="confidence-bar">
@@ -1240,7 +1250,7 @@ async function loadEarningsCalendar() {
                                    dateObj.getFullYear() === today.getFullYear();
                     
                     calendarHTML += `
-                        <div class="calendar-date-group mb-3 ${isToday ? 'today-highlight' : ''}" data-date="${date}">
+                        <div class="calendar-date-group mb-3 ${isToday ? 'today-highlight' : ''}" data-date="${esc(date)}">
                             <h6 class="calendar-date-header ${isToday ? 'text-primary fw-bold' : ''}">
                                 <i class="far fa-calendar"></i> ${formattedDate}
                                 ${isToday ? '<span class="badge bg-primary ms-2">TODAY</span>' : ''}
@@ -1276,18 +1286,18 @@ async function loadEarningsCalendar() {
                                               event.importance === 'medium' ? '⚡' : '📌';
                         
                         calendarHTML += `
-                            <div class="list-group-item calendar-event-item" data-type="${event.type}" data-importance="${event.importance}">
+                            <div class="list-group-item calendar-event-item" data-type="${esc(event.type)}" data-importance="${esc(event.importance)}">
                                 <div class="d-flex justify-content-between align-items-start">
                                     <div class="flex-grow-1">
                                         <div class="mb-1">
                                             <span class="badge bg-${badgeClass} me-2">
-                                                <i class="fas ${icon}"></i> ${event.type}
+                                                <i class="fas ${icon}"></i> ${esc(event.type)}
                                             </span>
-                                            ${event.symbol ? `<span class="badge bg-dark me-2">${event.symbol}</span>` : ''}
+                                            ${event.symbol ? `<span class="badge bg-dark me-2">${esc(event.symbol)}</span>` : ''}
                                             <span class="importance-badge">${importanceIcon}</span>
                                         </div>
                                         <div class="event-description">
-                                            ${event.description}
+                                            ${esc(event.description)}
                                         </div>
                                     </div>
                                 </div>
@@ -1341,7 +1351,7 @@ async function loadMarketNews() {
                 warningDiv.className = 'col-12 mb-3';
                 warningDiv.innerHTML = `
                     <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                        <i class="fas fa-exclamation-triangle"></i> <strong>Twitter/X API Notice:</strong> ${data.warning}
+                        <i class="fas fa-exclamation-triangle"></i> <strong>Twitter/X API Notice:</strong> ${esc(data.warning)}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 `;
@@ -1422,22 +1432,22 @@ function displayNews(newsItems) {
                 <div class="card h-100 shadow-sm hover-shadow news-card border-start border-info border-4">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-2">
-                            <img src="${profileImg}" class="rounded-circle me-2" width="40" height="40" alt="${item.author.name}">
+                            <img src="${safeUrl(profileImg)}" class="rounded-circle me-2" width="40" height="40" alt="${esc(item.author.name)}">
                             <div class="flex-grow-1">
                                 <span class="badge bg-info mb-1">
                                     <i class="fab fa-twitter"></i> Twitter
                                 </span>
-                                <div class="fw-bold">${item.author.name}${verified}</div>
-                                <small class="text-muted">@${item.author.username}</small>
+                                <div class="fw-bold">${esc(item.author.name)}${verified}</div>
+                                <small class="text-muted">@${esc(item.author.username)}</small>
                             </div>
                         </div>
                         <small class="text-muted d-block mb-2">
                             <i class="far fa-clock"></i> ${newsDate}
                         </small>
-                        <p class="card-text">${item.summary}</p>
+                        <p class="card-text">${esc(item.summary)}</p>
                         ${item.symbols && item.symbols.length > 0 ? `
                             <div class="mb-2">
-                                ${item.symbols.map(s => `<span class="badge bg-secondary me-1">$${s}</span>`).join('')}
+                                ${item.symbols.map(s => `<span class="badge bg-secondary me-1">$${esc(s)}</span>`).join('')}
                             </div>
                         ` : ''}
                         <div class="d-flex justify-content-between align-items-center">
@@ -1445,7 +1455,7 @@ function displayNews(newsItems) {
                                 <i class="fas fa-heart"></i> ${item.metrics.likes}
                                 <i class="fas fa-retweet ms-2"></i> ${item.metrics.retweets}
                             </div>
-                            <a href="${item.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <a href="${safeUrl(item.url)}" target="_blank" class="btn btn-sm btn-outline-primary">
                                 View <i class="fas fa-external-link-alt"></i>
                             </a>
                         </div>
@@ -1461,21 +1471,21 @@ function displayNews(newsItems) {
                 <div class="card h-100 shadow-sm hover-shadow news-card">
                     <div class="card-body">
                         <span class="badge bg-${sourceColor} mb-2">
-                            <i class="fas ${sourceIcon}"></i> ${item.source}
+                            <i class="fas ${sourceIcon}"></i> ${esc(item.source)}
                         </span>
                         <small class="text-muted d-block mb-2">
                             <i class="far fa-clock"></i> ${newsDate}
                         </small>
-                        ${item.author ? `<small class="text-muted d-block mb-2"><i class="fas fa-user"></i> ${item.author}</small>` : ''}
-                        <h6 class="card-title">${item.headline}</h6>
-                        <p class="card-text text-muted">${truncateText(item.summary, 150)}</p>
+                        ${item.author ? `<small class="text-muted d-block mb-2"><i class="fas fa-user"></i> ${esc(item.author)}</small>` : ''}
+                        <h6 class="card-title">${esc(item.headline)}</h6>
+                        <p class="card-text text-muted">${esc(truncateText(item.summary, 150))}</p>
                         ${item.symbols && item.symbols.length > 0 ? `
                             <div class="mb-2">
-                                ${item.symbols.map(s => `<span class="badge bg-secondary me-1">$${s}</span>`).join('')}
+                                ${item.symbols.map(s => `<span class="badge bg-secondary me-1">$${esc(s)}</span>`).join('')}
                             </div>
                         ` : ''}
                         ${item.url ? `
-                            <a href="${item.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <a href="${safeUrl(item.url)}" target="_blank" class="btn btn-sm btn-outline-primary">
                                 Read More <i class="fas fa-external-link-alt"></i>
                             </a>
                         ` : ''}
@@ -1547,16 +1557,16 @@ async function loadMLSignals() {
             ].map(([label, val, fmt]) => {
                 const cell = val !== undefined && val !== null ? fmt(val) : '—';
                 return `<tr><td class="text-muted small">${label}</td>
-                         <td class="fw-semibold small">${cell}</td></tr>`;
+                         <td class="fw-semibold small">${esc(cell)}</td></tr>`;
             }).join('');
 
             if (predBody) predBody.innerHTML = `
                 <div class="row g-3 align-items-center mb-3">
                     <div class="col-auto">
-                        <span class="badge bg-${signalColor} fs-5 px-3 py-2">${signal.toUpperCase()}</span>
+                        <span class="badge bg-${signalColor} fs-5 px-3 py-2">${esc(signal.toUpperCase())}</span>
                     </div>
                     <div class="col-auto">
-                        <span class="badge bg-${confColor} text-dark">Confidence: ${conf.toUpperCase()}</span>
+                        <span class="badge bg-${confColor} text-dark">Confidence: ${esc(conf.toUpperCase())}</span>
                     </div>
                     <div class="col-auto">
                         ${anomaly
@@ -1571,7 +1581,7 @@ async function loadMLSignals() {
                 </div>`;
         } else {
             if (predBody) predBody.innerHTML =
-                `<div class="alert alert-warning mb-0">${d.error || 'No prediction available'}</div>`;
+                `<div class="alert alert-warning mb-0">${esc(d.error || 'No prediction available')}</div>`;
         }
     } else {
         if (predBody) predBody.innerHTML =
@@ -1590,7 +1600,7 @@ async function loadMLSignals() {
                                : d.overall_status === 'warning' ? 'warning' : 'danger';
             const flagRows = (d.drift_flags || []).slice(0, 8).map(f =>
                 `<tr>
-                    <td class="small text-truncate" style="max-width:120px" title="${f.feature}">${f.feature}</td>
+                    <td class="small text-truncate" style="max-width:120px" title="${esc(f.feature)}">${esc(f.feature)}</td>
                     <td class="small text-end">${(+f.latest_value).toFixed(2)}</td>
                     <td class="small text-end">${(+f.training_mean).toFixed(2)}</td>
                     <td class="small text-end ${Math.abs(f.z_score) > 4 ? 'text-danger fw-bold' : ''}">${(+f.z_score).toFixed(1)}</td>
@@ -1599,7 +1609,7 @@ async function loadMLSignals() {
             if (driftBody) driftBody.innerHTML = `
                 <div class="p-3">
                     <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="badge bg-${statusColor} text-uppercase">${d.overall_status}</span>
+                        <span class="badge bg-${statusColor} text-uppercase">${esc(d.overall_status)}</span>
                         <small class="text-muted">${d.n_drift_flags}/${d.n_features_checked} features (${pct}%)</small>
                     </div>
                     ${d.drift_flags && d.drift_flags.length > 0 ? `
@@ -1619,7 +1629,7 @@ async function loadMLSignals() {
                 </div>`;
         } else {
             if (driftBody) driftBody.innerHTML =
-                `<div class="p-3"><div class="alert alert-warning mb-0">${d.error}</div></div>`;
+                `<div class="p-3"><div class="alert alert-warning mb-0">${esc(d.error)}</div></div>`;
         }
     } else {
         if (driftBody) driftBody.innerHTML =
@@ -1638,11 +1648,11 @@ async function loadMLSignals() {
                     const score = meta.metric_value !== undefined && meta.metric_value !== null
                         ? (+meta.metric_value).toFixed(4) : '—';
                     rows.push(`<tr>
-                        <td class="small fw-semibold">${target.replace('target_','')}</td>
-                        <td class="small">${meta.model_type || '—'}</td>
-                        <td class="small">${metric}</td>
+                        <td class="small fw-semibold">${esc(target.replace('target_',''))}</td>
+                        <td class="small">${esc(meta.model_type || '—')}</td>
+                        <td class="small">${esc(metric)}</td>
                         <td class="small text-end">${score}</td>
-                        <td class="small text-muted">${(meta.created_at || '').slice(0,10)}</td>
+                        <td class="small text-muted">${esc((meta.created_at || '').slice(0,10))}</td>
                     </tr>`);
                 }
             }
@@ -1691,7 +1701,7 @@ async function loadMLflowRuns() {
 
         if (!d.success) {
             if (body) body.innerHTML =
-                `<div class="p-3 alert alert-danger mb-0 small">${d.error}</div>`;
+                `<div class="p-3 alert alert-danger mb-0 small">${esc(d.error)}</div>`;
             return;
         }
 
@@ -1700,7 +1710,7 @@ async function loadMLflowRuns() {
 
         if (runs.length === 0) {
             if (body) body.innerHTML =
-                `<div class="p-3 text-muted small">${d.message || 'No runs yet. Run the pipeline first.'}</div>`;
+                `<div class="p-3 text-muted small">${esc(d.message || 'No runs yet. Run the pipeline first.')}</div>`;
             return;
         }
 
@@ -1719,10 +1729,10 @@ async function loadMLflowRuns() {
                 ? (+score >= 0.3 ? 'text-success fw-semibold' : +score >= 0 ? '' : 'text-danger')
                 : '';
             return `<tr>
-                <td class="small">${date}</td>
-                <td class="small fw-semibold">${target.replace('target_','')}</td>
-                <td class="small text-center"><span class="badge bg-secondary">${version}</span></td>
-                <td class="small">${model}</td>
+                <td class="small">${esc(date)}</td>
+                <td class="small fw-semibold">${esc(target.replace('target_',''))}</td>
+                <td class="small text-center"><span class="badge bg-secondary">${esc(version)}</span></td>
+                <td class="small">${esc(model)}</td>
                 <td class="small text-center">${nFeat}</td>
                 <td class="small text-end ${scoreCls}">${scoreStr}</td>
             </tr>`;
@@ -1747,7 +1757,7 @@ async function loadMLflowRuns() {
             </div>`;
     } catch (e) {
         if (body) body.innerHTML =
-            `<div class="p-3 text-muted small">MLflow data unavailable: ${e}</div>`;
+            `<div class="p-3 text-muted small">MLflow data unavailable: ${esc(e)}</div>`;
     }
 }
 
@@ -1848,7 +1858,7 @@ function _renderPipelineStatus(job) {
                          : active ? 'bg-warning text-dark'
                          :          'bg-secondary opacity-50';
             const icon   = done ? '✓' : active ? '…' : '○';
-            return `<span class="badge ${cls} rounded-pill px-2">${icon} ${step}</span>`;
+            return `<span class="badge ${cls} rounded-pill px-2">${icon} ${esc(step)}</span>`;
         }).join(' ');
     }
 
@@ -1980,7 +1990,7 @@ function viewAlgorithm(name, title) {
         })
         .catch(err => {
             document.getElementById('codeViewerLoading').innerHTML =
-                `<div class="alert alert-danger m-3">Failed to load source code: ${err.message}</div>`;
+                `<div class="alert alert-danger m-3">Failed to load source code: ${esc(err.message)}</div>`;
         });
 }
 
@@ -2040,7 +2050,7 @@ function runBacktest() {
     .then(r => r.json())
     .then(data => {
         if (!data.success) {
-            resultsDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+            resultsDiv.innerHTML = `<div class="alert alert-danger">Error: ${esc(data.error)}</div>`;
             return;
         }
 
@@ -2086,7 +2096,7 @@ function runBacktest() {
         const attr = data.attribution;
         const attrDiv = document.getElementById('backtestAttribution');
         const regimeRows = Object.entries(attr.regime_performance)
-            .map(([r, v]) => `<div class="metric-item"><strong>${r}:</strong> <span class="${v >= 0 ? 'text-success' : 'text-danger'}">$${v.toLocaleString()}</span></div>`)
+            .map(([r, v]) => `<div class="metric-item"><strong>${esc(r)}:</strong> <span class="${v >= 0 ? 'text-success' : 'text-danger'}">$${v.toLocaleString()}</span></div>`)
             .join('');
         attrDiv.innerHTML = `
             <div class="metric-item"><strong>Delta hedge:</strong> <span>$${attr.delta_hedge_contribution.toLocaleString()}</span></div>
@@ -2106,7 +2116,7 @@ function runBacktest() {
         createBacktestChart(data.equity_curve, data.initial_capital);
     })
     .catch(err => {
-        resultsDiv.innerHTML = `<div class="alert alert-danger">Request failed: ${err.message}</div>`;
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Request failed: ${esc(err.message)}</div>`;
     });
 }
 
@@ -2641,7 +2651,7 @@ function showChartError(message) {
     if (priceCanvas && priceCanvas.parentElement) {
         priceCanvas.parentElement.innerHTML = `
             <div class="alert alert-warning" role="alert">
-                <i class="fas fa-exclamation-triangle"></i> ${message}
+                <i class="fas fa-exclamation-triangle"></i> ${esc(message)}
             </div>
         `;
     }
@@ -2714,21 +2724,21 @@ function displaySearchResults(results) {
     }
     
     resultsContainer.innerHTML = results.map(stock => `
-        <div class="search-result-item" data-symbol="${stock.symbol}">
+        <div class="search-result-item" data-symbol="${esc(stock.symbol)}">
             <div class="d-flex justify-content-between align-items-center w-100">
                 <div>
-                    <strong>${stock.symbol}</strong>
-                    <div class="small text-muted">${stock.name}</div>
+                    <strong>${esc(stock.symbol)}</strong>
+                    <div class="small text-muted">${esc(stock.name)}</div>
                     <div class="small">
-                        <span class="badge bg-secondary">${stock.exchange}</span>
-                        ${stock.sector ? `<span class="badge bg-info ms-1">${stock.sector}</span>` : ''}
+                        <span class="badge bg-secondary">${esc(stock.exchange)}</span>
+                        ${stock.sector ? `<span class="badge bg-info ms-1">${esc(stock.sector)}</span>` : ''}
                     </div>
                 </div>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-primary view-stock-btn" data-symbol="${stock.symbol}">
+                    <button class="btn btn-sm btn-primary view-stock-btn" data-symbol="${esc(stock.symbol)}">
                         <i class="fas fa-eye"></i>
                     </button>
-                    <button class="btn btn-sm btn-success add-to-watchlist-btn" data-symbol="${stock.symbol}" data-name="${stock.name}">
+                    <button class="btn btn-sm btn-success add-to-watchlist-btn" data-symbol="${esc(stock.symbol)}" data-name="${esc(stock.name)}">
                         <i class="fas fa-plus"></i>
                     </button>
                 </div>
@@ -2868,12 +2878,12 @@ function addWatchlistItem(container, symbol, name) {
 
     item.innerHTML = `
         <div class="wl-left">
-            <span class="wl-symbol">${symbol}</span>
-            <span class="wl-name" id="wlName_${symbol}">${name || '\u2014'}</span>
+            <span class="wl-symbol">${esc(symbol)}</span>
+            <span class="wl-name" id="wlName_${esc(symbol)}">${esc(name || '\u2014')}</span>
         </div>
         <div class="wl-right">
-            <span class="wl-price" id="wlPrice_${symbol}">\u2014</span>
-            <span class="wl-change" id="wlChange_${symbol}">\u2014</span>
+            <span class="wl-price" id="wlPrice_${esc(symbol)}">\u2014</span>
+            <span class="wl-change" id="wlChange_${esc(symbol)}">\u2014</span>
         </div>
     `;
 
@@ -2895,11 +2905,11 @@ function addWatchlistItem(container, symbol, name) {
         tr.className = 'leader-row stock-item';
         tr.dataset.symbol = symbol;
         tr.innerHTML = `
-            <td class="leader-symbol">${symbol}</td>
-            <td class="leader-last" id="vlLast_${symbol}">\u2014</td>
-            <td class="leader-chg" id="vlChg_${symbol}">\u2014</td>
-            <td class="leader-vol" id="vlVol_${symbol}">\u2014</td>
-            <td><div class="depth-bar"><div class="depth-fill depth-green" id="vlDepth_${symbol}" style="width:50%"></div></div></td>
+            <td class="leader-symbol">${esc(symbol)}</td>
+            <td class="leader-last" id="vlLast_${esc(symbol)}">\u2014</td>
+            <td class="leader-chg" id="vlChg_${esc(symbol)}">\u2014</td>
+            <td class="leader-vol" id="vlVol_${esc(symbol)}">\u2014</td>
+            <td><div class="depth-bar"><div class="depth-fill depth-green" id="vlDepth_${esc(symbol)}" style="width:50%"></div></div></td>
         `;
         tr.addEventListener('click', () => { showSection('dashboard'); setActiveNav(document.getElementById('navDashboard')); loadStockDetails(symbol); });
         tbody.appendChild(tr);
@@ -2914,7 +2924,7 @@ function showNotification(message, type = 'info') {
     toast.style.cssText = 'top: 80px; right: 20px; z-index: 9999; min-width: 250px;';
     toast.innerHTML = `
         <i class="fas fa-${type === 'success' ? 'check-circle' : 'info-circle'}"></i>
-        ${message}
+        ${esc(message)}
     `;
     
     document.body.appendChild(toast);
@@ -2942,7 +2952,7 @@ async function loadCompanyStatistics(symbol) {
             container.innerHTML = `
                 <div class="alert alert-warning">
                     <i class="fas fa-exclamation-triangle"></i>
-                    Unable to load statistics for ${symbol}. Please try again later.
+                    Unable to load statistics for ${esc(symbol)}. Please try again later.
                 </div>
             `;
             return;
@@ -3150,7 +3160,7 @@ async function loadCompanyStatistics(symbol) {
         document.getElementById('companyStatistics').innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-circle"></i>
-                Error loading statistics: ${error.message}
+                Error loading statistics: ${esc(error.message)}
             </div>
         `;
     }
@@ -3161,7 +3171,7 @@ function formatStatRow(label, value) {
     if (value === null || value === undefined || value === '—' || value === 'N/A') {
         return `<tr><td class="text-muted">${label}</td><td class="text-end text-muted">—</td></tr>`;
     }
-    return `<tr><td>${label}</td><td class="text-end"><strong>${value}</strong></td></tr>`;
+    return `<tr><td>${label}</td><td class="text-end"><strong>${esc(value)}</strong></td></tr>`;
 }
 
 // Render RSI Chart

@@ -6,6 +6,7 @@ Shared config is in common.py; the guarded data layer + TTL caches in services.p
 """
 
 import os
+import re
 import sys
 
 from flask import Flask, render_template, jsonify
@@ -40,6 +41,21 @@ for _bp in (_pipeline_bp, _charts_bp, _news_bp, _trading_bp,
             _market_bp, _stock_bp, _backtest_bp, _research_bp,
             _chat_bp):
     app.register_blueprint(_bp)
+
+# Finnhub/AlphaVantage keys travel as URL query params, and requests puts the full
+# URL in connection/HTTP error messages — which routes return as `error: str(e)`
+# and pipeline status returns as logs. Redact them from every JSON response.
+_KEY_PARAM = re.compile(r'(?i)\b(token|apikey|api_key)=[^&\s"\'\\]+')
+
+
+@app.after_request
+def _redact_api_keys(resp):
+    if resp.is_json and not resp.is_streamed:
+        body = resp.get_data(as_text=True)
+        redacted = _KEY_PARAM.sub(r'\1=REDACTED', body)
+        if redacted != body:
+            resp.set_data(redacted)
+    return resp
 
 
 @app.route('/health')
