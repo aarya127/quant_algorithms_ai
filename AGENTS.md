@@ -12,13 +12,15 @@ how to *change* it safely. Task-specific playbooks live in
 
 ## The one thing that bites everyone first
 
-**Adding a Flask route in `backend/app.py` does nothing in production until it is
-committed AND deployed to Render.** The daily retraining workflow calls
-`/api/pipeline/run` on the *live* Render app. If those endpoints only exist in
-your working tree (or an uncommitted diff), the workflow fails in ~3 seconds on
-the first `curl`, and you get a "Daily ML Pipeline: All jobs have failed" email.
-The fix for that class of failure is almost always **commit + push + let Render
-redeploy**, not a code change. Also confirm the `RENDER_APP_URL` repo secret is set.
+**Production retraining does not run on Render.** The free 512 MB instance OOMed
+running the pipeline in-process, so `.github/workflows/daily-retrain.yml` runs
+`orchestrator.py` on the Actions runner and force-pushes the registry,
+`<TICKER>_features_with_regimes.csv` and `mlflow.db` to the `models` branch. The
+web app pulls that branch on Render at most every 6 h (`backend/model_sync.py`).
+So a "Daily ML Pipeline: All jobs have failed" email means a pipeline step failed
+on the runner — read that step's log in the Actions tab; redeploying Render won't
+fix it. Separately, a new Flask route still does nothing in production until it is
+committed AND deployed to Render.
 
 ---
 
@@ -26,8 +28,9 @@ redeploy**, not a code change. Also confirm the `RENDER_APP_URL` repo secret is 
 
 | Area | Path | Notes |
 |---|---|---|
-| Flask backend | `backend/app.py` (entrypoint) + `backend/routes/` | 32 routes, ALL in blueprints (one module per domain); `services.py` = guarded data layer + TTL caches; `common.py` = shared config/helpers |
-| Prediction serving + drift | `backend/predictor.py` | importable functions; **HTTP routes not yet wired** |
+| Flask backend | `backend/app.py` (entrypoint) + `backend/routes/` | 38 routes, ALL in blueprints (one module per domain); `services.py` = guarded data layer + TTL caches; `common.py` = shared config/helpers |
+| Prediction serving + drift | `backend/predictor.py` | served by `backend/routes/ml.py` (`/api/predict`, `/api/drift`, `/api/model/status`, `/api/mlflow/runs`) |
+| Model sync | `backend/model_sync.py` | pulls the `models` branch on Render (≤ every 6 h); no-op locally |
 | Retraining driver | `algorithms/machine_learning_algorithms/orchestrator.py` | 5-step pipeline |
 | Pipeline stages | `.../data_pipelines/` | `run_pipeline.py`, `clean.py`, `normalize.py` |
 | Supervised models | `.../supervised/` | `models.py`, `registry.py`, `main.py` |
@@ -43,7 +46,7 @@ redeploy**, not a code change. Also confirm the `RENDER_APP_URL` repo secret is 
 | Tests | `tests/` | pytest + API smoke tests |
 | Deploy | `Dockerfile`, `render.yaml`, `backend/entrypoint.sh` | Render + Docker |
 | CI / schedule | `.github/workflows/{ci.yml,daily-retrain.yml}` | |
-| MLflow store | `mlflow.db`, `mlruns/` | SQLite, repo root |
+| MLflow store | `mlflow.db`, `mlruns/` | SQLite, repo root; production copy lives on the `models` branch |
 
 `models/` (top-level) is pricing-**theory** scaffolding, mostly placeholders. Do
 not put trained ML artefacts there — they belong in the supervised model registry.
@@ -71,7 +74,7 @@ Every stage is a standalone script invoked as `python <script>.py TICKER`,
 defaulting the ticker to `NVDA`, resolving paths via `Path(__file__).parent` so
 it runs from any cwd. New stages must follow this.
 
-**Orchestrator output protocol** (parsed by `app.py`; keep in sync if you change either side):
+**Orchestrator output protocol** (parsed by `backend/routes/pipeline.py`; keep in sync if you change either side):
 ```
 STEP:<name>:start | STEP:<name>:done | LOG:<text>
 STATUS:up_to_date | STATUS:done | STATUS:error:<name>
@@ -103,15 +106,15 @@ Exit code 0 = done/up_to_date, 1 = a step failed.
   The retrain job store is now shared (SQLite, `backend/pipeline_store.py`), so >1
   worker is safe for correctness — but each sync worker can load FinBERT (~512 MB),
   so keep it at 1 on small instances and raise only after upgrading RAM.
-- **Persistent disk** is mounted at `/app/mnt` on Render and holds models +
-  feature CSVs. It's why retraining runs *inside* the web container (a separate
-  Render cron job couldn't share the disk).
+- **No persistent disk.** The live service runs on the free tier with an ephemeral
+  filesystem; served models come from the `models` branch sync. `render.yaml` still
+  declares `plan: standard` and a disk, but the disk is unused.
 - **Port**: local dev defaults to `5001`; Docker/Render use `8080` via `PORT`.
 - FinBERT weights are baked into the image at build time — don't add runtime downloads.
 - **Two Docker images**: `Dockerfile` (web app, what Render builds) and
   `Dockerfile.pipeline` (training-only, used only by the K8s CronJob).
 - **Three scheduling paths, one live**: `.github/workflows/daily-retrain.yml`
-  (Render, **production**) vs `k8s/cronjob.yaml` (unused scaffolding) vs
+  (GitHub Actions runner, **production**) vs `k8s/cronjob.yaml` (unused scaffolding) vs
   `scripts/daily_predict.sh` (local machine only). Fix a failing retrain via the
   GitHub Action, not the other two.
 - **`k8s/` is scaffolding** — placeholder image tags/hostnames, applied by nothing.
@@ -130,8 +133,7 @@ The repo mixes shipped code, standalone research, and empty scaffolding. Before
   `eda/`, `factor_discovery/`, `greeks/`, `macd_rsi/`, and `performance/`
   (C++/Go — real code, but not imported by the deployed app; their READMEs
   overstate the dir layout).
-- **Not yet wired**: `backend/predictor.py` (functions exist, no routes),
-  `ai_platform/signal_narrator.py` (no caller).
+- **Not yet wired**: `ai_platform/signal_narrator.py` (no caller).
 - **Empty placeholders** (imply features that don't exist): all of top-level
   `models/`, `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/*.py`,
   and several 0-byte `prototype.py` stubs. Don't document these as working.

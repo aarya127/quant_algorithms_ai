@@ -99,11 +99,11 @@ services:
     healthCheckPath: /health  # GET /health → 200 OK
     disk:
       name: invest-ai-data
-      mountPath: /app/mnt     # persistent — survives redeploys; holds models + feature CSVs
+      mountPath: /app/mnt     # unused — nothing the app needs lives here
       sizeGB: 5
 ```
 
-Render auto-builds from the Dockerfile on every push, health-checks via `/health`, and restarts on failure. Secrets are set in the Render dashboard (marked `sync: false` in `render.yaml`), never committed.
+The live service actually runs on the free tier (512 MB) with no persistent disk; trained models come from the `models` branch (see [§9](#9-scheduled-retraining--mlops)). Render auto-builds from the Dockerfile on every push, health-checks via `/health`, and restarts on failure. Secrets are set in the Render dashboard (marked `sync: false` in `render.yaml`), never committed.
 
 > **Note:** worker count is `GUNICORN_WORKERS` (default **1**; `entrypoint.sh` honors the env var). The retrain job store is now a shared SQLite store (see [§9](#9-scheduled-retraining--mlops)), so >1 worker is safe for correctness — but each sync worker can lazily load FinBERT (~512 MB), so keep it at **1** on the 512 MB free tier and only raise it after upgrading RAM.
 
@@ -207,7 +207,7 @@ Single-page application served from `backend/templates/index.html`.
 | `/api/research/diagnostics/notebook` | GET | Jupyter diagnostic notebook |
 | `/api/algorithm/<name>` | GET | Algorithm source + docs |
 | `/api/trading/chart` | POST | Custom TradingView-style chart render |
-| `/api/pipeline/run` | POST | **Start a scheduled model-retraining job** (see [§9](#9-scheduled-retraining--mlops)) |
+| `/api/pipeline/run` | POST | **Start a model-retraining job** — local runs; refused on Render (see [§9](#9-scheduled-retraining--mlops)) |
 | `/api/pipeline/status/<job_id>` | GET | **Poll a retraining job's status** |
 
 ---
@@ -381,32 +381,34 @@ python algorithms/machine_learning_algorithms/orchestrator.py NVDA
 # USE_TUNING=1 enables hyperparameter search (default 0 for the fast daily path)
 ```
 
-### Triggering via the API
+### Triggering via the API (local)
 
-The pipeline runs **inside the Render web container** as a background thread, so it shares the persistent disk where models and feature CSVs live.
+The ML Signals tab's **Run Pipeline** button calls these endpoints, which run the orchestrator as a background thread in the Flask process. Use them locally — on Render the trigger returns 503 while `PIPELINE_TRIGGER_TOKEN` is unset (the intended production state; with a token set, callers must send it as `X-Pipeline-Token`).
 
 ```bash
 # Start a job
-curl -X POST https://<app>.onrender.com/api/pipeline/run \
+curl -X POST http://localhost:5001/api/pipeline/run \
   -H "Content-Type: application/json" -d '{"ticker":"NVDA"}'
 # → {"success": true, "job_id": "a1b2c3d4", "status": "queued"}
 
 # Poll it
-curl https://<app>.onrender.com/api/pipeline/status/a1b2c3d4
+curl http://localhost:5001/api/pipeline/status/a1b2c3d4
 # → {"status": "running", "current_step": "supervised", "last_logs": [...]}
 ```
 
 `status` ∈ `queued` → `running` → `done` | `up_to_date` | `error`.
 
-> **Job store:** retrain-job state lives in a small SQLite store (`backend/pipeline_store.py`, WAL mode) — consistent across Gunicorn workers, with bounded per-job logs and automatic eviction of old jobs. It survives worker recycles as long as the DB file survives; on Render's **free tier the filesystem is ephemeral**, so a full restart still loses in-flight jobs. Point `PIPELINE_DB_PATH` at a persistent disk (paid plans) for true cross-restart durability. The trigger endpoint is single-flight (returns 409 if a job is already running) and protected by `PIPELINE_TRIGGER_TOKEN` when set.
+> **Job store:** retrain-job state lives in a small SQLite store (`backend/pipeline_store.py`, WAL mode) — consistent across Gunicorn workers, with bounded per-job logs and automatic eviction of old jobs. It survives worker recycles as long as the DB file survives (`PIPELINE_DB_PATH` overrides its location). The trigger endpoint is single-flight (returns 409 if a job is already running).
 
 ### Daily schedule (`.github/workflows/daily-retrain.yml`)
 
-A GitHub Actions workflow (cron `0 2 * * 1-5` — 02:00 UTC weekdays, plus manual dispatch) POSTs to `/api/pipeline/run` on the live app, then polls `/status` every 90 s until the job finishes. The run's green/red badge is your daily retraining health signal.
+A GitHub Actions workflow (cron `0 2 * * 1-5` — 02:00 UTC weekdays, plus manual dispatch with a ticker input) runs `orchestrator.py` **on the Actions runner**. Each run is a full rebuild; only the model registry and `mlflow.db` carry over, restored from the `models` branch so the promotion gate compares against the models being served. Afterwards it force-pushes a single-commit `models` branch containing `supervised/model_registry/**`, `data_pipelines/<TICKER>_features_with_regimes.csv`, and `mlflow.db`. The run's green/red badge is your daily retraining health signal; a failure email means a pipeline step failed on the runner — read that step's log in the Actions tab.
 
-**Why GitHub Actions and not a Render Cron Job?** Render disks attach to only one service, so a separate cron job couldn't share the trained models with the web service. Running the pipeline *inside* the web container sidesteps that.
+**Serving the results:** on Render, `backend/model_sync.py` downloads the `models` branch tarball at most every 6 h (triggered by the prediction, drift, model-status and MLflow-runs endpoints) and unpacks only those paths over the copies baked into the image. Local runs never sync.
 
-**Setup:** add a repo secret `RENDER_APP_URL` (`https://<app>.onrender.com`, no trailing slash) under Settings → Secrets and variables → Actions. If this is missing — or the `/api/pipeline/*` endpoints aren't deployed yet — the workflow fails within seconds on the first `curl`.
+**Why not on Render?** The free 512 MB instance ran out of memory running the pipeline in-process.
+
+**Setup:** data-provider keys come from repo secrets under Settings → Secrets and variables → Actions — `FINNHUB_API_KEY`, `ALPHAVANTAGE_API_KEY`, `POLYGON_API_KEY`, `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `NVIDIA_API_KEY`. A missing key just skips that source.
 
 ### Three scheduling paths exist — only one is live
 
@@ -414,17 +416,17 @@ The repo contains three mechanisms that all run the same retrain. Know which is 
 
 | Path | When | Where | Status |
 |---|---|---|---|
-| `.github/workflows/daily-retrain.yml` | 02:00 UTC Mon–Fri | Render (via the API) | **✅ Active — this is production** |
+| `.github/workflows/daily-retrain.yml` | 02:00 UTC Mon–Fri | GitHub Actions runner → `models` branch | **✅ Active — this is production** |
 | `k8s/cronjob.yaml` | 02:00 UTC Mon–Fri (same) | Kubernetes (runs `Dockerfile.pipeline`) | ⚠️ Scaffolding — unused (see [§2](#2-deployment)) |
 | `scripts/daily_predict.sh` | 22:00 UTC / 5 PM ET | A local dev machine (hardcoded paths) | 🔧 Local convenience only |
 
-They don't run concurrently (different platforms), but only the GitHub Action is
-wired to the live app. The K8s CronJob is the "separate cron + shared PVC" pattern
-that Render can't do; if you ever migrate to K8s it becomes the real scheduler.
+They don't run concurrently (different platforms), but only the GitHub Action
+publishes to the `models` branch the live app serves from. If you ever migrate to
+K8s, the CronJob becomes the real scheduler.
 
 ### MLflow tracking (`mlflow.db`, `mlruns/`)
 
-SQLite backend at the repo root, one experiment per ticker, runs named `<target>_v<version>_<date>` (e.g. `target_5d_vB_2026-05-30`). Browse locally with `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
+SQLite backend at the repo root, one experiment per ticker, runs named `<target>_v<version>_<date>` (e.g. `target_5d_vB_2026-05-30`). Browse locally with `mlflow ui --backend-store-uri sqlite:///mlflow.db`. Production history is the `mlflow.db` on the `models` branch, served by `GET /api/mlflow/runs/<ticker>`.
 
 ### Model registry (`algorithms/machine_learning_algorithms/supervised/model_registry/`)
 
@@ -441,7 +443,7 @@ The outgoing model is copied to `prev/` first, so `rollback_registry()` can rest
 
 `predict_latest()` serves predictions from the registry; the module also computes **data drift** (feature z-score > 3.0) and **model drift** (rolling IC falling > 0.10 below the registered IC), writing reports to `supervised/output/monitoring/` and POSTing alerts to `ALERT_WEBHOOK_URL` (Slack-style webhook) when thresholds trip.
 
-> **⚠️ Not yet wired:** `predictor.py`'s docstring advertises `GET /api/predict/<ticker>`, `/api/drift/<ticker>`, and `/api/model/status`, but **those routes are not registered in `app.py`** (neither in HEAD nor the working tree). The serving/monitoring logic exists as importable functions; the HTTP endpoints still need to be added.
+Served over HTTP by `backend/routes/ml.py`: `GET /api/predict/<ticker>`, `/api/drift/<ticker>`, `/api/model/status`, and `/api/mlflow/runs/<ticker>`.
 
 ### LLM layer (`ai_platform/`)
 
@@ -676,10 +678,11 @@ quant_algorithms_ai/
 │   ├── app.py                              Flask entrypoint (~58 lines; registers blueprints)
 │   ├── routes/                             ALL API routes, one blueprint per domain:
 │   │                                         market, stock, charts, news, trading,
-│   │                                         backtest, research, pipeline
+│   │                                         backtest, research, pipeline, chat, ml
 │   ├── services.py                         guarded data-layer imports + TTL caches
 │   ├── common.py                           shared config (indices, tickers) + helpers
 │   ├── predictor.py                        prediction serving + drift monitoring
+│   ├── model_sync.py                       pulls the `models` branch on Render
 │   ├── economic_events.json                40+ calendar events 2026
 │   ├── templates/index.html                SPA (Bootstrap 5, Chart.js)
 │   ├── static/css|js|research/
@@ -765,8 +768,6 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
   READMEs describe more subdirs than actually exist
 
 **🚧 Not yet wired**
-- `backend/predictor.py` serving/monitoring — functions exist; the `/api/predict`,
-  `/api/drift`, `/api/model/status` routes are not registered (see [§9](#9-scheduled-retraining--mlops))
 - `ai_platform/signal_narrator.py` — no caller yet
 
 **📦 Placeholder / empty (present in the tree, no implementation)**
@@ -780,14 +781,14 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 ## 20. Roadmap
 
 ### In Progress
-- [ ] Wire `predictor.py` serving/monitoring into HTTP routes (`/api/predict`, `/api/drift`, `/api/model/status`)
 - [ ] Deep learning (LSTM, Transformer) in `deep_learning/`
 - [ ] Factor strategies — momentum, mean reversion, quality
 - [ ] Full backtesting harness wired to `DataTransformer` feature matrix
 - [ ] Point-in-time fundamental database for rigorous backtest training
 
 ### Completed ✅
-- [x] **Scheduled daily retraining** — orchestrator + GitHub Actions + `/api/pipeline/*`
+- [x] **Scheduled daily retraining** — orchestrator in GitHub Actions, published to the `models` branch
+- [x] **Prediction & drift endpoints** — `predictor.py` served via `backend/routes/ml.py`
 - [x] **MLflow experiment tracking** — per-ticker experiments, per-step spans
 - [x] **Model registry with promotion gate + rollback** — `supervised/registry.py`
 - [x] **Drift detection & webhook alerting** — data-drift (z-score) + model-drift (rolling IC)
@@ -803,7 +804,7 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 - [x] Portfolio engine (constructor, sizer, execution simulator)
 - [x] C++ execution engine (pybind11) + Go risk service (gRPC, Prometheus)
 - [x] Multi-exchange stock search (NYSE, NASDAQ, TSX)
-- [x] Render + Docker deployment with health checks and persistent disk
+- [x] Render + Docker deployment with health checks
 
 ---
 

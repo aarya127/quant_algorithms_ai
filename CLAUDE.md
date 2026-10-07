@@ -9,18 +9,21 @@ deployment facts, and gotchas. This file only adds Claude Code specifics.
 Task-specific playbooks are available as skills in [`.claude/skills/`](.claude/skills/)
 and load automatically when relevant:
 
-- **retrain-pipeline** — run the ML retraining pipeline; the `/api/pipeline/*`
-  endpoints; the daily GitHub Actions retrain; MLflow.
+- **retrain-pipeline** — run the ML retraining pipeline; the daily GitHub Actions
+  retrain and the `models` branch; the local `/api/pipeline/*` endpoints; MLflow;
+  diagnosing the "Daily ML Pipeline failed" email.
 - **add-ml-model** — add a supervised model or a new pipeline stage so it plugs
   into the existing feature-matrix → registry flow.
 - **deploy** — Docker/Render build, the single-worker Gunicorn model, secrets,
-  and diagnosing the "Daily ML Pipeline failed" email.
+  and how the app pulls models from the `models` branch.
 - **testing** — run the test suites and follow the pure-function test convention.
 
 ## Fast facts (details in AGENTS.md)
 
-- A new Flask route is **inert until committed + deployed to Render**. That's the
-  usual root cause of the daily-retrain failure email — deploy, don't just edit.
+- **Production retraining runs in GitHub Actions, not on Render.** The workflow
+  publishes models to the `models` branch; Render pulls it (`backend/model_sync.py`).
+  A "Daily ML Pipeline failed" email = a pipeline step failed on the runner — read
+  its log in the Actions tab. A new Flask route is still inert until deployed.
 - **Workers** = `GUNICORN_WORKERS` (default 1). The retrain job store is shared
   (SQLite, `backend/pipeline_store.py`), so >1 worker is correctness-safe — but keep
   it at 1 on the free tier (each worker can load FinBERT ~512 MB).

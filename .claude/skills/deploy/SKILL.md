@@ -1,6 +1,6 @@
 ---
 name: deploy
-description: Build, deploy, and troubleshoot quant_algorithms_ai on Docker/Render — the Gunicorn single-worker model, the persistent disk, secrets, health checks, and why a new route or the daily retrain workflow fails until deployed. Use for any deploy question, Render config, or "why is my endpoint / GitHub Action failing" in this repo.
+description: Build, deploy, and troubleshoot quant_algorithms_ai on Docker/Render — the Gunicorn single-worker model, how the app pulls models from the `models` branch, secrets, health checks, and why a new route is inert until deployed. Use for any deploy question, Render config, or "why is my endpoint / GitHub Action failing" in this repo.
 ---
 
 # Deployment (Docker + Render)
@@ -13,11 +13,12 @@ description: Build, deploy, and troubleshoot quant_algorithms_ai on Docker/Rende
   ```sh
   exec gunicorn app:app --bind "0.0.0.0:${PORT:-8080}" --workers "${GUNICORN_WORKERS:-1}" --worker-class sync --timeout 120
   ```
-- **`render.yaml`** (Blueprint): Docker web service, `plan: standard` (1 CPU / 2 GB,
-  needed for FinBERT), `healthCheckPath: /health`, persistent 5 GB disk at
-  `/app/mnt`. Render auto-builds on every push and restarts on failure.
+- **`render.yaml`** (Blueprint): Docker web service, `healthCheckPath: /health`.
+  It still declares `plan: standard` and a 5 GB disk at `/app/mnt`, but the live
+  service runs on the free tier (512 MB) and the disk is unused — nothing the app
+  needs lives on it. Render auto-builds on every push and restarts on failure.
 
-## Two facts that change how you write code
+## Three facts that change how you write code
 
 1. **Worker count** = `GUNICORN_WORKERS` (default 1; entrypoint honors it). The
    retrain job store is shared (SQLite, `backend/pipeline_store.py`), so >1 worker
@@ -26,6 +27,12 @@ description: Build, deploy, and troubleshoot quant_algorithms_ai on Docker/Rende
 2. **A new Flask route is inert until committed AND deployed.** Editing
    `backend/app.py` in your working tree changes nothing on the live app. Render
    only picks up **pushed commits**.
+3. **Served models come from the `models` branch**, not the image or a disk.
+   Retraining runs in GitHub Actions and force-pushes that branch; on Render,
+   `backend/model_sync.py` (called from `predictor.py` and `/api/mlflow/runs`)
+   downloads its tarball at most every 6 h and unpacks only the model registry,
+   `data_pipelines/` CSVs and `mlflow.db`. Local runs never sync. Look for
+   `[MODELS]` lines in the Render logs.
 
 ## Secrets
 
@@ -35,9 +42,14 @@ them in the dashboard (they're `sync: false` in `render.yaml`, so never committe
 `ALPACA_SECRET_KEY`, `NVIDIA_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
 Twitter keys, `CHART_IMG_KEY`, `ALERT_WEBHOOK_URL`.
 
-GitHub Actions needs one repo secret for retraining: **`RENDER_APP_URL`**
-(`https://<app>.onrender.com`, no trailing slash), under
-Settings → Secrets and variables → Actions.
+Leave `PIPELINE_TRIGGER_TOKEN` unset on Render: `/api/pipeline/run` then refuses
+with 503, which is intended (the free instance can't fit the pipeline).
+
+The retrain workflow reads data-provider keys from repo secrets (Settings → Secrets
+and variables → Actions): `FINNHUB_API_KEY`, `ALPHAVANTAGE_API_KEY`,
+`POLYGON_API_KEY`, `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `NVIDIA_API_KEY`. A
+missing key just skips that source. `RENDER_APP_URL` and `PIPELINE_TRIGGER_TOKEN`
+repo secrets are no longer used.
 
 ## Deploy a change
 
@@ -51,15 +63,10 @@ pre-flight so import errors surface there. Confirm `GET /health` returns 200 aft
 
 ## Troubleshooting "Daily ML Pipeline: All jobs have failed"
 
-The daily workflow (`daily-retrain.yml`) curls the **live** app. Failing in ~3 s
-= the trigger step failed:
-
-1. **Endpoints not deployed** — the `/api/pipeline/*` routes must be committed +
-   deployed. Most common cause. → push and redeploy.
-2. **`RENDER_APP_URL` missing/wrong** → instant curl failure.
-3. **App down / unhealthy** → check Render logs and `/health`.
-
-Failing after minutes = a pipeline step errored; see the `retrain-pipeline` skill.
+The daily workflow (`daily-retrain.yml`) never touches Render — it runs the pipeline
+on the Actions runner. The email means a step failed there; open the failing step's
+log in the Actions tab and see the `retrain-pipeline` skill. Redeploying Render
+won't fix it.
 
 ## Two Docker images
 
@@ -67,7 +74,8 @@ Failing after minutes = a pipeline step errored; see the `retrain-pipeline` skil
   This is what Render builds.
 - **`Dockerfile.pipeline`** — training-only (deps from `requirements-pipeline.txt`,
   no Flask/PyTorch/FinBERT, ~900 MB). `ENTRYPOINT` is `orchestrator.py`. Only the
-  Kubernetes CronJob uses it; Render retrains in-process via the API instead.
+  Kubernetes CronJob uses it; the GitHub Action installs `requirements-pipeline.txt`
+  directly instead.
 
 ## Kubernetes (`k8s/`) — scaffolding, NOT the live deploy
 
@@ -83,7 +91,7 @@ pods (a per-pod ephemeral DB would make `/status` 404 against the wrong pod).
 
 | Path | Where | Status |
 |---|---|---|
-| `.github/workflows/daily-retrain.yml` | Render, via the API | **Active — production** |
+| `.github/workflows/daily-retrain.yml` | GitHub Actions runner → `models` branch | **Active — production** |
 | `k8s/cronjob.yaml` (runs `Dockerfile.pipeline`) | Kubernetes | Unused scaffolding |
 | `scripts/daily_predict.sh` | A local dev machine (hardcoded paths) | Local convenience |
 
