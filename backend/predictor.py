@@ -77,9 +77,10 @@ def _preprocess_row(row_df: pd.DataFrame, reg: dict) -> np.ndarray:
     col_med_sel    = reg.get("col_med_sel")   # medians for selected cols
     serving_scaler = reg.get("serving_scaler")
 
-    # keep only features the model was trained on (in order)
-    present = [f for f in features if f in row_df.columns]
-    X = row_df[present].values.astype(float)
+    # Every trained feature, in order. A column missing from today's data (e.g. a
+    # news source that returned nothing) becomes NaN and gets its training median
+    # below — dropping it would shift the medians and break the scaler's shape.
+    X = row_df.reindex(columns=features).values.astype(float)
 
     # impute NaN with training medians for selected features
     if col_med_sel is not None:
