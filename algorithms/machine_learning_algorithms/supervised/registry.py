@@ -106,9 +106,41 @@ def _best_model(model_res, primary_metric):
     return best_name, best_val
 
 
+def _rescore_existing(ticker, registry_dir, target, task, primary, holdout_df):
+    """Score the production model on this run's holdout rows, so the gate compares
+    like with like: its stored metric came from an older, different window, which
+    let one lucky or leaky score block every later model. None if it can't be
+    scored (e.g. its features no longer exist), which lets the new model in."""
+    from metrics import reg_metrics, clf_metrics
+    try:
+        reg = load_registry(ticker, registry_dir, target=target)
+        X = holdout_df.reindex(columns=reg["features"]).values.astype(float)
+        if reg.get("col_med_sel") is not None:
+            X = np.where(np.isnan(X), np.asarray(reg["col_med_sel"], dtype=float), X)
+        else:
+            X = np.nan_to_num(X)
+        if reg.get("serving_scaler") is not None:
+            X = reg["serving_scaler"].transform(X)
+        y = holdout_df[target].values.astype(float)
+        ok = ~np.isnan(y)
+        model = reg["model"]
+        pred = model.predict(X[ok])
+        if task == "regression":
+            return float(reg_metrics(y[ok], pred)[primary])
+        le = reg.get("label_encoder")
+        if le is not None:
+            pred = le.inverse_transform(pred.astype(int))
+        proba = model.predict_proba(X[ok]) if hasattr(model, "predict_proba") else None
+        return float(clf_metrics(y[ok].astype(int), pred.astype(int), proba, target)[primary])
+    except Exception as exc:
+        print(f"  ! {target}: production model could not be re-scored ({exc})")
+        return None
+
+
 # save
 
-def save_registry(all_holdout, ticker, registry_dir, force: bool = False):
+def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
+                  holdout_df=None):
     """
     Save best model per target to a local folder registry.
 
@@ -118,6 +150,8 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False):
     ticker       : str
     registry_dir : Path-like  (e.g. supervised/model_registry)
     force        : bool  — skip evaluation gates (use for initial seeding only)
+    holdout_df   : DataFrame — this run's holdout rows; when given, the production
+                   model is re-scored on them instead of trusting its stored metric
     """
     reg_root   = Path(registry_dir) / ticker
     version    = "B"                                  # prefer version B
@@ -159,6 +193,9 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False):
                 existing_val  = float(existing_meta.get("metric_value", -np.inf))
             except Exception:
                 pass  # unreadable metadata → treat as first registration
+            if holdout_df is not None and existing_val is not None:
+                existing_val = _rescore_existing(ticker, registry_dir, target,
+                                                 task, primary, holdout_df)
 
         # Baseline score from model_res (the naive predictor trained alongside)
         baseline_res = model_res.get("baseline", {})

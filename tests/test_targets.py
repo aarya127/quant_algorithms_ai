@@ -1,32 +1,18 @@
 """
 tests/test_targets.py
 
-Unit tests for target construction logic (mirrors normalize.py).
+Unit tests for the real target definitions (data_pipelines/targets.py).
 Validates label correctness, no-lookahead integrity, and numerical sanity.
 """
 import numpy as np
 import pandas as pd
 import pytest
 
-FLAT_THRESHOLD = 0.005  # mirrors normalize.py
+from targets import FLAT_THRESHOLD, REGIME_MIN_HISTORY, add_targets
 
-
-# Helper: replicate normalize.py target construction
 
 def build_targets(log_ret: pd.Series) -> pd.DataFrame:
-    df = pd.DataFrame({"log_return": log_ret})
-    df["target_1d"]         = log_ret.shift(-1)
-    df["target_5d"]         = log_ret.shift(-1).rolling(5).sum().shift(-4)
-    df["target_vol_5d"]     = log_ret.shift(-1).rolling(5).std().shift(-4)
-    df["target_dir_1d"]     = np.where(
-        df["target_1d"] > FLAT_THRESHOLD,  1,
-        np.where(df["target_1d"] < -FLAT_THRESHOLD, -1, 0),
-    )
-    rolling_std             = log_ret.rolling(20).std()
-    df["target_large_move"] = (
-        df["target_1d"].abs() > 2 * rolling_std.shift(-1)
-    ).astype(float)
-    return df
+    return add_targets(pd.DataFrame({"log_return": log_ret}))
 
 
 # Regression targets
@@ -128,3 +114,45 @@ class TestNoLookahead:
         assert pd.isna(df["target_1d"].iloc[-1])
         assert pd.isna(df["target_5d"].iloc[-1])
         assert pd.isna(df["target_vol_5d"].iloc[-1])
+
+
+# Leak regressions — each of these failed with the previous definitions
+
+class TestNoLeakage:
+    def test_direction_last_row_unlabelled(self):
+        """The last row's next-day return is unknown: no label, not 'flat'."""
+        df = build_targets(pd.Series([0.01, 0.02, 0.03]))
+        assert pd.isna(df["target_dir_1d"].iloc[-1])
+
+    def test_large_move_threshold_uses_only_past_vol(self):
+        """Threshold at t = 2 × std of the 20 returns ending at t, not t+1."""
+        rng = np.random.default_rng(3)
+        r = pd.Series(rng.normal(0, 0.01, 80))
+        df = build_targets(r)
+        for t in range(19, len(r) - 1):
+            expected = abs(r.iloc[t + 1]) > 2 * r.iloc[t - 19:t + 1].std()
+            assert df["target_large_move"].iloc[t] == float(expected)
+
+    def test_regime_ignores_returns_beyond_its_horizon(self):
+        """Regime at t may use t+1..t+5; later returns must not change it."""
+        rng = np.random.default_rng(5)
+        r = pd.Series(rng.normal(0, 0.01, 200))
+        base = build_targets(r.copy())["target_regime"]
+        t = 120
+        shocked = r.copy()
+        shocked.iloc[t + 6:] *= 10          # far more volatile future
+        after = build_targets(shocked)["target_regime"]
+        pd.testing.assert_series_equal(base.iloc[:t + 1], after.iloc[:t + 1])
+
+    def test_regime_needs_history(self):
+        df = build_targets(pd.Series(np.random.default_rng(1).normal(0, 0.01, 100)))
+        assert df["target_regime"].iloc[:REGIME_MIN_HISTORY - 1].isna().all()
+
+    def test_regime_is_not_same_day_vol(self):
+        """It forecasts the next 5 days' vol, so it must follow target_vol_5d."""
+        rng = np.random.default_rng(9)
+        r = pd.Series(rng.normal(0, 0.01, 300))
+        df = build_targets(r)
+        ok = df["target_regime"].notna()
+        rho = df.loc[ok, "target_regime"].corr(df.loc[ok, "target_vol_5d"], method="spearman")
+        assert rho > 0.5

@@ -38,7 +38,7 @@ jobs:
           pip install --prefer-binary \
             numpy pandas scipy \
             scikit-learn xgboost lightgbm joblib \
-            flask cachetools \
+            flask cachetools requests yfinance \
             pytest pytest-cov pyflakes
 
       - name: Static check — no undefined names in backend
@@ -56,6 +56,11 @@ jobs:
       - name: Run unit tests — target construction
         run: |
           pytest tests/test_targets.py \
+            -v --tb=short
+
+      - name: Run unit tests — look-ahead / evaluation leaks
+        run: |
+          pytest tests/test_leakage.py \
             -v --tb=short
 
       - name: Run unit tests — evaluation gate

@@ -10,7 +10,7 @@ from imblearn.over_sampling import SMOTE
 
 from config import LASSO_ALPHA, SMOTE_K, BINARY_CLF, MULTI_CLF, USE_TUNING, TUNE_ITER, TUNE_SPLITS
 from data import prepare_fold_data
-from baselines import target_baseline
+from baselines import target_baseline, naive_signal
 from metrics import reg_metrics, clf_metrics
 from models import (reg_model_set, clf_model_set, _get_feature_importances,
                     reg_param_dists, clf_param_dists, _tune_scoring, tune_model)
@@ -185,7 +185,11 @@ def run_holdout(df, cv_idx, holdout_idx, features, target, task):
     # regression
     if task == "regression":
         y_bl = target_baseline(y_all, len(y_h_ev), target)
-        results["baseline"] = {"metrics": reg_metrics(y_h_ev, y_bl),
+        bl_metrics = reg_metrics(y_h_ev, y_bl)
+        signal = naive_signal(df.loc[holdout_idx], target)
+        if signal is not None:
+            bl_metrics["ic"] = reg_metrics(y_h_ev, signal[valid_h]).get("ic", 0.0)
+        results["baseline"] = {"metrics": bl_metrics,
                                "y_true": y_h_ev, "y_pred": y_bl}
         for name, m in reg_model_set().items():
             try:

@@ -125,7 +125,7 @@ def main():
     run_ensemble(all_holdout, df, holdout_idx, SYMBOL, OUT_DIR)
 
     # Stage 14A: local model registry
-    save_registry(all_holdout, SYMBOL, _REGISTRY_DIR)
+    save_registry(all_holdout, SYMBOL, _REGISTRY_DIR, holdout_df=df.loc[holdout_idx])
 
     # beat-the-baseline summary
     print("\n\n" + "═"*70)

@@ -179,6 +179,21 @@ def _fiscal_ai_company_id(symbol: str) -> Optional[str]:
     return _FISCAL_AI_COMPANIES.get(symbol.upper())
 
 
+def _session_date(ts) -> pd.Timestamp:
+    """Trading session whose feature row may use a news item published at `ts`.
+
+    That's its New York calendar date, or the next day when published at or
+    after the 16:00 close: the row for day t predicts close(t) -> close(t+1), so
+    it may only use what was public by t's close. Bucketing by raw UTC date put
+    after-hours news (earnings, for one) into that same day's row. Naive
+    timestamps are taken as UTC (AlphaVantage documents no zone).
+    """
+    t = pd.Timestamp(ts)
+    t = (t.tz_localize("UTC") if t.tzinfo is None else t).tz_convert("America/New_York")
+    day = t.tz_localize(None).normalize()
+    return day + pd.Timedelta(days=1) if t.hour >= 16 else day
+
+
 # ---------------------------------------------------------------------------
 # DataExtractor
 # ---------------------------------------------------------------------------
@@ -816,7 +831,7 @@ class DataExtractor:
                     pub = art.get("published_at", "")
                     if not pub:
                         continue
-                    date = pd.Timestamp(pub).tz_localize(None).normalize()
+                    date = _session_date(pub)
                     for ent in art.get("entities", []):
                         if ent.get("symbol", "").upper() != symbol.upper():
                             continue
@@ -1096,7 +1111,7 @@ class DataExtractor:
         fh = self._finnhub_news(symbol, start, end, limit=500)
         if fh is not None and not fh.empty:
             fh_prep = fh.copy()
-            fh_prep["date"]       = pd.to_datetime(fh_prep["datetime"]).dt.tz_localize(None).dt.normalize()
+            fh_prep["date"]       = fh_prep["datetime"].map(_session_date)
             fh_prep["sent_score"] = float("nan")
             fh_prep["weight"]     = 1.0
 
@@ -1350,7 +1365,7 @@ class DataExtractor:
                     score = score_map.get(raw_sent, 0.0)
 
                     rows.append({
-                        "date":       pd.to_datetime(pub, utc=True).tz_convert(None).normalize(),
+                        "date":       _session_date(pub),
                         "headline":   headline,
                         "sent_score": score,
                         "weight":     1.0,
@@ -1475,7 +1490,7 @@ class DataExtractor:
                 relevance = max(float(ts.get("relevance_score", 0.5)), 0.1)
 
                 rows.append({
-                    "date":       pd.Timestamp(dt).normalize(),
+                    "date":       _session_date(dt),
                     "headline":   headline,
                     "sent_score": score,
                     "weight":     relevance,
@@ -1568,9 +1583,7 @@ class DataExtractor:
                     score = score_map.get(raw_sent, 0.0)
 
                     rows.append({
-                        "date":       pd.to_datetime(pub).tz_localize(None).normalize()
-                                      if pd.to_datetime(pub).tzinfo is None
-                                      else pd.to_datetime(pub).tz_convert(None).normalize(),
+                        "date":       _session_date(pub),
                         "headline":   headline,
                         "sent_score": score,
                         "weight":     1.0,

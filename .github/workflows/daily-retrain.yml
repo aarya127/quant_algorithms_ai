@@ -25,6 +25,10 @@ on:
         description: 'Ticker to retrain (e.g. NVDA)'
         required: true
         default: 'NVDA'
+      publish:
+        description: 'Publish to the models branch (off = dry run, e.g. to test a branch)'
+        type: boolean
+        default: true
 
 permissions:
   contents: write           # force-push the models branch
@@ -88,6 +92,7 @@ jobs:
         run: python algorithms/machine_learning_algorithms/orchestrator.py "$TICKER"
 
       - name: Publish to the models branch
+        if: github.event_name == 'schedule' || inputs.publish
         run: |
           PUBLISHED="$RUNNER_TEMP/published"
           mkdir -p "$PUBLISHED/$REG" "$PUBLISHED/$PIPES"

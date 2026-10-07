@@ -40,7 +40,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from .extractor import DataExtractor
+from .extractor import DataExtractor, _session_date
 
 logger = logging.getLogger("DataTransformer")
 
@@ -489,9 +489,10 @@ class DataTransformer:
                         _n = daily[_src_col].notna().sum()
                         logger.info("  %-24s: %d/%d article-days with scores", _src_col, _n, len(daily))
 
-                # Articles published on weekends/holidays need to roll forward to
-                # the next trading day. Use merge_asof(direction="nearest") so each
-                # calendar-date entry attaches to the nearest trading day.
+                # Article dates are already session dates (after-close news moves
+                # to the next day, see extractor._session_date). Attach each trading
+                # day to the latest article date at or before it, so weekend/holiday
+                # news reaches the next session and nothing reaches an earlier one.
                 spine_dates = df.index.to_frame(index=False).rename(columns={"Date": "trade_date"})
                 daily_reset = daily.reset_index().rename(columns={"date": "trade_date"})
                 daily_reset["trade_date"] = daily_reset["trade_date"].astype("datetime64[us]")
@@ -501,7 +502,7 @@ class DataTransformer:
                     spine_dates.sort_values("trade_date"),
                     daily_reset.sort_values("trade_date"),
                     on="trade_date",
-                    direction="nearest",   # snap weekend articles to nearest trading day
+                    direction="backward",
                     tolerance=pd.Timedelta("4d"),  # max 4 calendar days gap
                 ).set_index("trade_date")
 
@@ -519,16 +520,14 @@ class DataTransformer:
                 # days with no articles (no look-ahead bias — scores are based
                 # on already-published articles).  Cap at 20 trading days (~4 weeks)
                 # so a stale signal doesn't propagate across an extended quiet spell.
-                # Back-fill covers the very start of the window where no prior
-                # article may exist yet (limited to 5 days to avoid large back-smear).
+                # No back-fill: that would copy later articles into earlier rows.
                 _FFILL_LIMIT = 20  # trading days
-                _BFILL_LIMIT = 5   # trading days (start-of-window only)
                 for _sc in ("news_sent_score", "news_sent_av", "news_sent_polygon",
                             "news_sent_finnhub", "news_sent_marketaux"):
-                    df[_sc] = df[_sc].ffill(limit=_FFILL_LIMIT).bfill(limit=_BFILL_LIMIT)
+                    df[_sc] = df[_sc].ffill(limit=_FFILL_LIMIT)
 
-                logger.info("  After ffill(%d)/bfill(%d): news_sent_av filled %d/%d trading days",
-                            _FFILL_LIMIT, _BFILL_LIMIT, df["news_sent_av"].notna().sum(), len(df))
+                logger.info("  After ffill(%d): news_sent_av filled %d/%d trading days",
+                            _FFILL_LIMIT, df["news_sent_av"].notna().sum(), len(df))
 
                 # 7-day rolling means for each score column
                 df["news_sent_7d"] = (
@@ -550,11 +549,7 @@ class DataTransformer:
                 # Fallback: raw article count from the simple news() method
                 news = self.ex.news(sym, start=start, end=end, limit=500)
                 if news is not None and not news.empty:
-                    dates = (
-                        pd.to_datetime(news["datetime"])
-                        .dt.tz_localize(None)
-                        .dt.normalize()
-                    )
+                    dates = pd.to_datetime(news["datetime"]).map(_session_date)
                     daily_ct = (
                         dates.value_counts()
                         .rename_axis("Date")
@@ -562,7 +557,8 @@ class DataTransformer:
                         .sort_index()
                     )
                     df = df.join(daily_ct, how="left")
-                df["news_count"]        = df.get("news_count", 0).fillna(0).astype(int)
+                df["news_count"]        = (df["news_count"].fillna(0).astype(int)
+                                           if "news_count" in df.columns else 0)
                 df["news_sent_score"]        = float("nan")
                 df["news_sent_av"]           = float("nan")
                 df["news_sent_polygon"]      = float("nan")
@@ -596,12 +592,14 @@ class DataTransformer:
             if sent is None or sent.empty:
                 return df
 
-            # Build month-start DatetimeIndex from year + month columns
+            # Date each month's totals by when they're complete and public: month
+            # end plus the 2-business-day Form 4 filing window. Keying them to the
+            # 1st showed every trading day the whole month's insider activity early.
             monthly = sent.copy()
             monthly["Date"] = pd.to_datetime(
                 monthly["year"].astype(str) + "-"
                 + monthly["month"].astype(str).str.zfill(2)
-            )
+            ) + pd.offsets.MonthEnd(0) + pd.offsets.BDay(2)
             monthly = (
                 monthly[["Date", "change", "mspr"]]
                 .rename(columns={"change": "insdr_change", "mspr": "insdr_mspr"})

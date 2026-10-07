@@ -1,7 +1,7 @@
 """
 tests/test_transforms.py
 
-Unit tests for data-cleaning logic (mirrors clean.py).
+Unit tests for data-cleaning logic (mirrors clean.py: forward-fill only).
 Self-contained — no file I/O, no network calls.
 """
 import numpy as np
@@ -17,16 +17,10 @@ def apply_null_drop(df: pd.DataFrame, threshold: float = 0.50) -> pd.DataFrame:
     return df.drop(columns=null_pct[null_pct > threshold].index.tolist())
 
 
-def apply_ffill_bfill(df: pd.DataFrame, ffill_limit: int = 20, bfill_limit: int = 5) -> pd.DataFrame:
-    return df.ffill(limit=ffill_limit).bfill(limit=bfill_limit)
-
-
-def apply_median_fill(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    for col in df.select_dtypes(include="number").columns:
-        if df[col].isnull().any():
-            df[col] = df[col].fillna(df[col].median())
-    return df
+def apply_ffill(df: pd.DataFrame, ffill_limit: int = 20) -> pd.DataFrame:
+    # Forward only: back-fill or a full-sample median would fill past rows from
+    # future data (clean.py leaves those nulls for train-only imputation).
+    return df.ffill(limit=ffill_limit)
 
 
 def drop_zero_variance(df: pd.DataFrame) -> pd.DataFrame:
@@ -37,8 +31,7 @@ def drop_zero_variance(df: pd.DataFrame) -> pd.DataFrame:
 
 def full_clean(df: pd.DataFrame) -> pd.DataFrame:
     df = apply_null_drop(df)
-    df = apply_ffill_bfill(df)
-    df = apply_median_fill(df)
+    df = apply_ffill(df)
     df = drop_zero_variance(df)
     return df
 
@@ -78,9 +71,9 @@ class TestNullDrop:
         assert "col" in apply_null_drop(df, threshold=0.50).columns
 
 
-# Forward / back fill
+# Forward fill
 
-class TestFfillBfill:
+class TestFfill:
     def test_ffill_within_limit(self):
         s = pd.Series([1.0, np.nan, np.nan, np.nan, np.nan])
         filled = s.ffill(limit=3)
@@ -96,41 +89,19 @@ class TestFfillBfill:
         assert filled.iloc[2] == 5.0
         assert pd.isna(filled.iloc[3])
 
-    def test_bfill_fills_leading_nulls(self):
-        s = pd.Series([np.nan, np.nan, 3.0, 4.0])
-        filled = s.bfill(limit=5)
-        assert filled.iloc[0] == 3.0
-        assert filled.iloc[1] == 3.0
+    def test_leading_nulls_not_filled_from_future(self):
+        """No earlier value exists, so leading nulls must stay null."""
+        df = pd.DataFrame({"col": [np.nan, np.nan, 3.0, 4.0]})
+        filled = apply_ffill(df)
+        assert filled["col"].iloc[:2].isna().all()
 
-    def test_bfill_respects_limit(self):
-        s = pd.Series([np.nan, np.nan, np.nan, 7.0])
-        filled = s.bfill(limit=1)
-        assert pd.isna(filled.iloc[0])  # beyond limit
-        assert filled.iloc[2] == 7.0   # within limit
-
-
-# Median fill
-
-class TestMedianFill:
-    def test_fills_null_with_median(self):
-        s = pd.Series([1.0, 3.0, np.nan, 5.0])
-        med = s.median()
-        df = apply_median_fill(pd.DataFrame({"col": s}))
-        assert df["col"].iloc[2] == med
-
-    def test_no_nulls_remain(self):
-        df = pd.DataFrame({"a": [1.0, np.nan, 3.0], "b": [np.nan, 2.0, np.nan]})
-        result = apply_median_fill(df)
-        assert result.isnull().sum().sum() == 0
-
-    def test_median_computed_correctly(self):
-        s = pd.Series([2.0, 4.0, 6.0, np.nan])
-        assert s.median() == pytest.approx(4.0)
-
-    def test_column_with_no_nulls_unchanged(self):
-        df = pd.DataFrame({"col": [1.0, 2.0, 3.0]})
-        result = apply_median_fill(df)
-        pd.testing.assert_series_equal(result["col"], df["col"])
+    def test_past_values_unaffected_by_future(self):
+        """Changing a later value must not change any earlier filled value."""
+        a = pd.DataFrame({"col": [1.0, np.nan, np.nan, 5.0, np.nan]})
+        b = a.copy()
+        b.loc[3, "col"] = 99.0
+        pd.testing.assert_series_equal(apply_ffill(a)["col"].iloc[:3],
+                                       apply_ffill(b)["col"].iloc[:3])
 
 
 # Zero-variance drop
@@ -162,13 +133,15 @@ class TestZeroVarianceDrop:
 # Full pipeline end-to-end
 
 class TestFullCleanPipeline:
-    def test_no_nulls_in_final_output(self):
+    def test_only_leading_nulls_remain(self):
         rng = np.random.default_rng(42)
         data = rng.random((30, 6))
         data[data < 0.2] = np.nan   # ~20% nulls throughout
         df = pd.DataFrame(data, columns=[f"f{i}" for i in range(6)])
         result = full_clean(df)
-        assert result.isnull().sum().sum() == 0
+        for col in result.columns:
+            first = result[col].first_valid_index()
+            assert result[col].loc[first:].isnull().sum() == 0
 
     def test_row_count_preserved(self):
         df = pd.DataFrame({"a": [1.0, 2.0, np.nan, 4.0], "b": [5.0] * 4})

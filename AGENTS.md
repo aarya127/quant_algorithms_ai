@@ -63,10 +63,11 @@ misbehaves.
    ```
    <SYM>_features.csv → _features_clean.csv → _features_normalized.csv → _features_with_regimes.csv
    ```
-   Plus `<SYM>_scaler.pkl` and `<SYM>_targets.csv` from the normalize step.
+   Plus `<SYM>_targets.csv` from the normalize step, which no longer scales or
+   imputes (each later step does that from its own training rows).
 
-2. **The 6 canonical targets**, defined once in `data_pipelines/normalize.py`
-   (single source of truth; mirrored in `tests/test_targets.py`):
+2. **The 6 canonical targets**, defined once in `data_pipelines/targets.py`
+   (single source of truth; `normalize.py` calls it and `tests/test_targets.py` imports it):
    - Regression: `target_1d`, `target_5d`, `target_vol_5d`
    - Classification: `target_dir_1d`, `target_large_move`, `target_regime`
 

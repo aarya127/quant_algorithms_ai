@@ -19,7 +19,7 @@ subprocesses. Each reads the previous stage's CSV and writes the next, keyed by 
 |---|---|---|---|
 | 1 | extract | `data_pipelines/run_pipeline.py TICKER [PERIOD]` | `<SYM>_features.csv` (incremental append; `PERIOD=full` forces rebuild) |
 | 2 | clean | `data_pipelines/clean.py TICKER` | `<SYM>_features_clean.csv` |
-| 3 | normalize | `data_pipelines/normalize.py TICKER` | `<SYM>_features_normalized.csv`, `<SYM>_scaler.pkl`, `<SYM>_targets.csv` |
+| 3 | normalize | `data_pipelines/normalize.py TICKER` | `<SYM>_features_normalized.csv` (raw features + targets), `<SYM>_targets.csv` |
 | 4 | unsupervised | `unsupervised/unsupervised.py TICKER` | `<SYM>_features_with_regimes.csv` |
 | 5 | supervised | `supervised/supervised.py TICKER` | model registry + `supervised/output/` |
 

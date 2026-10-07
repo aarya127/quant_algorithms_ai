@@ -36,7 +36,8 @@ import heavy modules, hit the network, or read real data files. Each re-implemen
 or isolates the behaviour under test against synthetic data. Examples:
 
 - `test_transforms.py` — mirrors `clean.py` logic
-- `test_targets.py` — mirrors `normalize.py` target construction; asserts no look-ahead
+- `test_targets.py` — imports the real `targets.add_targets`; asserts no look-ahead
+- `test_leakage.py` — news session dating, regression baseline signal, gate re-scoring
 - `test_evaluation_gate.py` — duplicates the registry promotion-gate constants as a pure `evaluate_gate`
 - `test_pipeline_integration.py` — full clean→normalize on a synthetic 80-row frame, no network
 

@@ -26,13 +26,13 @@ the ladder expects; don't special-case it in `pipeline.py`.
 
 ### Targets are fixed
 
-The 6 canonical targets are defined once in `data_pipelines/normalize.py`:
+The 6 canonical targets are defined once in `data_pipelines/targets.py` (`add_targets`):
 - Regression: `target_1d`, `target_5d`, `target_vol_5d`
 - Classification: `target_dir_1d`, `target_large_move`, `target_regime`
 
 Registered/servable targets (`_SAVE_TARGETS` in `registry.py`): `target_1d`,
 `target_5d`, `target_vol_5d`, `target_dir_1d`, `target_regime`. Don't invent a new
-target without updating `normalize.py` (and `tests/test_targets.py`, which mirrors it).
+target without updating `targets.py` and `tests/test_targets.py` (which imports it). Row t may only use data up to t's close; labels may use t+1..t+horizon.
 
 ### Getting into serving: the promotion gate
 

@@ -6,8 +6,8 @@ Usage:
 
 Strategy:
     1. Drop columns with >50% nulls (dead data sources on free tier)
-    2. ffill → bfill for time-series columns (carries last known value forward)
-    3. Median fill as backstop for any remaining nulls
+    2. ffill for time-series columns (carries last known value forward)
+    3. Leave remaining nulls for train-only imputation downstream
     4. Report every decision made
 
 Output:
@@ -42,7 +42,6 @@ print(f"Input : {df.shape[0]} rows × {df.shape[1]} cols\n")
 original_cols = list(df.columns)
 drop_log   = []
 ffill_log  = []
-median_log = []
 
 # 1. Drop columns above null threshold
 NULL_DROP_THRESHOLD = 0.50   # drop if >50% of rows are null
@@ -81,7 +80,6 @@ FFILL_COLS = [
 ]
 
 FFILL_LIMIT  = 20   # max consecutive days to carry forward
-BFILL_LIMIT  = 5    # max days to back-fill at start of series
 
 for col in FFILL_COLS:
     if col not in df.columns:
@@ -89,32 +87,18 @@ for col in FFILL_COLS:
     before = df[col].isnull().sum()
     if before == 0:
         continue
-    df[col] = df[col].ffill(limit=FFILL_LIMIT).bfill(limit=BFILL_LIMIT)
+    df[col] = df[col].ffill(limit=FFILL_LIMIT)
     after = df[col].isnull().sum()
     if before != after:
         ffill_log.append((col, before, after))
 
-print(f"\n[2] ffill→bfill applied to {len(ffill_log)} column(s):")
+print(f"\n[2] ffill applied to {len(ffill_log)} column(s):")
 for col, before, after in ffill_log:
     print(f"      ↑  {col:<30}  {before} → {after} nulls remaining")
 
-# 3. Median fill as backstop for any remaining numeric nulls
-numeric_cols = df.select_dtypes(include="number").columns
-remaining_null = df[numeric_cols].isnull().any()
-cols_needing_median = remaining_null[remaining_null].index.tolist()
-
-for col in cols_needing_median:
-    before = df[col].isnull().sum()
-    med    = df[col].median()
-    df[col] = df[col].fillna(med)
-    median_log.append((col, before, round(med, 6)))
-
-if median_log:
-    print(f"\n[3] Median fill backstop ({len(median_log)} column(s)):")
-    for col, cnt, med in median_log:
-        print(f"      ~  {col:<30}  {cnt} nulls → median={med}")
-else:
-    print(f"\n[3] No remaining nulls after ffill — median fill not needed.")
+# 3. Remaining nulls are left in place. Back-filling or a full-sample median
+# would fill past rows from future data; the unsupervised step and each
+# supervised fold impute from their own training rows instead.
 
 # 4. Final null audit
 remaining = df.isnull().sum()

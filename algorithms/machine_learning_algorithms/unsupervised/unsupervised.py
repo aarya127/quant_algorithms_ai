@@ -5,7 +5,7 @@ Usage:
 
 Pipeline
 --------
-1. Temporal train/test split  (80 / 20 by date)
+1. Temporal train/test split  (fit on rows before the first supervised CV window)
 2. PCA on train → transform all rows  (16 components = 90 % variance)
 3. Elbow + silhouette  (k = 2 … 6) → pick best k
 4. K-Means fit on train-PCA → label all rows
@@ -31,6 +31,7 @@ from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings("ignore")
 
@@ -44,11 +45,13 @@ OUT_DIR.mkdir(exist_ok=True)
 
 SYMBOL = sys.argv[1] if len(sys.argv) > 1 else "NVDA"
 
+sys.path.insert(0, str(ROOT / "supervised"))
+from config import INIT_TRAIN   # noqa: E402
+
 NORM_CSV  = PIPELINES / f"{SYMBOL}_features_normalized.csv"
 FEAT_FILE = FD_OUTPUT  / "recommended_features.txt"
 
 # config
-TRAIN_FRAC      = 0.80
 PCA_COMPONENTS  = 16          # 90 % variance from factor_discovery
 K_RANGE         = range(2, 7)
 IF_CONTAMINATION = 0.05       # expected fraction of anomalies
@@ -77,9 +80,17 @@ print(f"Saving to : {OUT_DIR}\n")
 X_all  = df[features].values.astype(float)
 dates  = df["Date"].values
 
-# 1. temporal train / test split
-n_train = int(len(df) * TRAIN_FRAC)
+# 1. temporal train / test split. Fit only on rows before the first supervised
+# walk-forward validation window, so the cluster/anomaly features don't encode the
+# periods CV scores them on.
+n_train = INIT_TRAIN
 n_test  = len(df) - n_train
+
+# normalize.py leaves features raw: impute and scale from the training rows only
+col_med = np.nanmedian(X_all[:n_train], axis=0)
+col_med = np.where(np.isnan(col_med), 0.0, col_med)   # all-NaN in train
+X_all   = np.where(np.isnan(X_all), col_med, X_all)
+X_all   = StandardScaler().fit(X_all[:n_train]).transform(X_all)
 
 X_train = X_all[:n_train]
 X_test  = X_all[n_train:]
@@ -160,7 +171,7 @@ df["cluster_kmeans"] = km_labels_all
 
 # relabel clusters by mean realized_vol so 0=low-vol, N-1=high-vol (interpretable)
 if "realized_vol_20d" in df.columns:
-    cluster_vol = df.groupby("cluster_kmeans")["realized_vol_20d"].mean().sort_values()
+    cluster_vol = df.iloc[:n_train].groupby("cluster_kmeans")["realized_vol_20d"].mean().sort_values()
     remap = {old: new for new, old in enumerate(cluster_vol.index)}
     df["cluster_kmeans"] = df["cluster_kmeans"].map(remap)
     km_labels_all = df["cluster_kmeans"].values
@@ -192,8 +203,10 @@ df["cluster_gmm"] = gmm_labels_all
 
 # same vol-based relabeling for GMM
 if "realized_vol_20d" in df.columns:
-    cluster_vol_gmm = df.groupby("cluster_gmm")["realized_vol_20d"].mean().sort_values()
-    remap_gmm = {old: new for new, old in enumerate(cluster_vol_gmm.index)}
+    cluster_vol_gmm = df.iloc[:n_train].groupby("cluster_gmm")["realized_vol_20d"].mean().sort_values()
+    # a component with no training rows has no vol to rank; order it last
+    order_gmm = list(cluster_vol_gmm.index) + [c for c in range(k_final) if c not in cluster_vol_gmm.index]
+    remap_gmm = {old: new for new, old in enumerate(order_gmm)}
     df["cluster_gmm"] = df["cluster_gmm"].map(remap_gmm)
 
 # GMM posterior probabilities (uncertainty measure)

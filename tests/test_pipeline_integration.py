@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 from pathlib import Path
 
+from targets import add_targets   # data_pipelines/ is on sys.path (conftest)
+
 
 # Synthetic data fixture
 
@@ -59,43 +61,20 @@ def make_synthetic_features(n: int = N, seed: int = 42) -> pd.DataFrame:
     return df
 
 
-# Pipeline helpers (mirror clean.py / normalize.py)
+# Pipeline helpers (clean mirrors clean.py; normalize uses the real targets)
 
 def run_clean(df: pd.DataFrame, null_threshold: float = 0.50) -> pd.DataFrame:
     df = df.copy()
     null_pct = df.isnull().mean()
     df.drop(columns=null_pct[null_pct > null_threshold].index.tolist(), inplace=True)
-    df = df.ffill(limit=20).bfill(limit=5)
-    for col in df.select_dtypes(include="number").columns:
-        if df[col].isnull().any():
-            df[col] = df[col].fillna(df[col].median())
+    df = df.ffill(limit=20)   # forward only; leading nulls stay for train-only imputation
     zero_var = [c for c in df.select_dtypes(include="number").columns if df[c].std() == 0]
     df.drop(columns=zero_var, inplace=True)
     return df
 
 
-FLAT_THRESHOLD = 0.005
-
-
 def run_normalize(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    log_ret = df["log_return"]
-    df["target_1d"]         = log_ret.shift(-1)
-    df["target_5d"]         = log_ret.shift(-1).rolling(5).sum().shift(-4)
-    df["target_vol_5d"]     = log_ret.shift(-1).rolling(5).std().shift(-4)
-    df["target_dir_1d"]     = np.where(
-        df["target_1d"] > FLAT_THRESHOLD,  1,
-        np.where(df["target_1d"] < -FLAT_THRESHOLD, -1, 0),
-    )
-    rolling_std              = log_ret.rolling(20).std()
-    df["target_large_move"]  = (
-        df["target_1d"].abs() > 2 * rolling_std.shift(-1)
-    ).astype(float)
-    vol_rank                 = df["realized_vol_20d"].rank(pct=True)
-    df["target_regime"]      = pd.cut(
-        vol_rank, bins=[0, 1/3, 2/3, 1.0], labels=[0, 1, 2]
-    ).astype(float)
-    return df
+    return add_targets(df.copy())
 
 
 # Clean step tests
@@ -109,16 +88,19 @@ class TestCleanStep:
         df = run_clean(make_synthetic_features())
         assert "constant_col" not in df.columns, "zero-variance column must be dropped"
 
-    def test_no_nulls_in_output(self):
+    def test_no_nulls_after_first_value(self):
+        """Only leading nulls (no earlier value to carry) may remain."""
         df = run_clean(make_synthetic_features())
-        remaining = df.isnull().sum()
-        assert remaining.sum() == 0, f"Nulls remain:\n{remaining[remaining > 0]}"
+        for col in df.columns:
+            first = df[col].first_valid_index()
+            assert df[col].loc[first:].isnull().sum() == 0, f"gap left in {col}"
 
     def test_sparse_fundamentals_kept_and_filled(self):
-        """fund_eps_ttm is 80% null — below drop threshold, must be kept + filled."""
+        """fund_eps_ttm is 40% null — below drop threshold, kept and forward-filled."""
         df = run_clean(make_synthetic_features())
         assert "fund_eps_ttm" in df.columns
-        assert df["fund_eps_ttm"].isnull().sum() == 0
+        first = df["fund_eps_ttm"].first_valid_index()
+        assert df["fund_eps_ttm"].loc[first:].isnull().sum() == 0
 
     def test_core_features_all_present(self):
         df = run_clean(make_synthetic_features())
@@ -133,8 +115,8 @@ class TestCleanStep:
 
     def test_feature_values_finite(self):
         df = run_clean(make_synthetic_features())
-        numeric = df.select_dtypes(include="number")
-        assert np.isfinite(numeric.values).all(), "Non-finite values after clean"
+        numeric = df.select_dtypes(include="number").values
+        assert np.isfinite(numeric[~np.isnan(numeric)]).all(), "inf values after clean"
 
 
 # Normalize step tests
@@ -164,8 +146,8 @@ class TestNormalizeStep:
         assert regimes.issubset({0, 1, 2}), f"Unexpected regime labels: {regimes}"
 
     def test_all_three_regimes_appear(self):
-        """With 80 rows the vol percentile should produce all three terciles."""
-        df = run_normalize(run_clean(make_synthetic_features()))
+        """Past the expanding-rank warm-up, all three terciles should appear."""
+        df = run_normalize(run_clean(make_synthetic_features(n=200)))
         regimes = df["target_regime"].dropna().astype(int).unique()
         assert len(regimes) == 3, f"Expected 3 regimes, got: {sorted(regimes)}"
 

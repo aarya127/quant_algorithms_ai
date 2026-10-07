@@ -28,7 +28,7 @@ and load automatically when relevant:
   (SQLite, `backend/pipeline_store.py`), so >1 worker is correctness-safe — but keep
   it at 1 on the free tier (each worker can load FinBERT ~512 MB).
 - Pipeline stages hand off via `<SYMBOL>_*.csv` files; the 6 canonical targets are
-  defined once in `data_pipelines/normalize.py`.
+  defined once in `data_pipelines/targets.py`.
 - Trained models live in `supervised/model_registry/`, not top-level `models/`.
 - Tests mirror source logic as pure, network-free functions (`tests/test_*.py`).
 

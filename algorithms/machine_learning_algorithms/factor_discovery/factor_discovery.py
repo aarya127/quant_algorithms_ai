@@ -61,6 +61,9 @@ if not norm_csv.exists():
 
 df_norm = pd.read_csv(norm_csv, index_col=0, parse_dates=True)
 df_norm.index = pd.to_datetime(df_norm.index).tz_localize(None)
+# normalize.py no longer scales; standardize here (offline research, full sample)
+_num = df_norm.select_dtypes("number").columns.difference(df_norm.filter(like="target_").columns)
+df_norm[_num] = (df_norm[_num] - df_norm[_num].mean()) / df_norm[_num].std()
 
 df_tgt = pd.read_csv(targets_csv, index_col=0, parse_dates=True)
 df_tgt.index = pd.to_datetime(df_tgt.index).tz_localize(None)
