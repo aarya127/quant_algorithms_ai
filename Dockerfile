@@ -17,6 +17,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# OpenMP runtime: LightGBM (and XGBoost) models from the registry won't load without it
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy and install Python deps first (layer caching)
 COPY backend/requirements.txt .
 

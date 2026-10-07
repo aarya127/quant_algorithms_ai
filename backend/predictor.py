@@ -142,28 +142,32 @@ def predict_latest(ticker: str) -> dict:
     for target, label in _targets.items():
         if target not in active:
             continue
+        # One model that won't load or predict (e.g. a missing native library)
+        # must not take the other targets' predictions down with it.
         try:
             reg = load_registry(ticker, _REGISTRY, target=target)
+            X     = _preprocess_row(row, reg)
+            if X.shape[1] == 0:
+                continue
+            model = reg["model"]
+            meta  = reg["metadata"]
+            task  = meta.get("task", "regression")
+
+            if task == "regression":
+                out["predictions"][label] = round(float(model.predict(X)[0]), 6)
+            else:
+                le  = reg.get("label_encoder")
+                raw = model.predict(X)[0]
+                cls = int(le.inverse_transform([int(raw)])[0]) if le is not None else int(raw)
+                out["predictions"][label] = cls
+                if hasattr(model, "predict_proba"):
+                    proba = model.predict_proba(X)[0]
+                    out["predictions"][f"{label}_proba"] = [round(float(p), 4) for p in proba]
         except FileNotFoundError:
             continue
-
-        X     = _preprocess_row(row, reg)
-        if X.shape[1] == 0:
+        except Exception as exc:
+            print(f"[PREDICT] {ticker} {target} skipped: {exc}", flush=True)
             continue
-        model = reg["model"]
-        meta  = reg["metadata"]
-        task  = meta.get("task", "regression")
-
-        if task == "regression":
-            out["predictions"][label] = round(float(model.predict(X)[0]), 6)
-        else:
-            le  = reg.get("label_encoder")
-            raw = model.predict(X)[0]
-            cls = int(le.inverse_transform([int(raw)])[0]) if le is not None else int(raw)
-            out["predictions"][label] = cls
-            if hasattr(model, "predict_proba"):
-                proba = model.predict_proba(X)[0]
-                out["predictions"][f"{label}_proba"] = [round(float(p), 4) for p in proba]
 
         if out["model_version"] is None:
             out["model_version"] = f"{meta['model_type']}_{target}_v1"

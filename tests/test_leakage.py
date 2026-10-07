@@ -15,7 +15,7 @@ from sklearn.linear_model import LinearRegression
 
 from extractor import _session_date          # data_pipelines/ (conftest)
 from baselines import naive_signal           # supervised/ (conftest)
-from registry import _rescore_existing
+from registry import FEATURE_SPACE, _rescore_existing
 
 
 # News → trading session
@@ -62,12 +62,13 @@ class TestNaiveSignal:
 
 # Promotion gate re-scoring
 
-def _register(tmp_path, model, features, metric_value):
+def _register(tmp_path, model, features, metric_value, feature_space=FEATURE_SPACE):
     tgt_dir = tmp_path / "TEST" / "target_1d"
     tgt_dir.mkdir(parents=True)
     joblib.dump(model, tgt_dir / "model.pkl")
     (tgt_dir / "features.json").write_text(json.dumps(features))
-    (tgt_dir / "metadata.json").write_text(json.dumps({"metric_value": metric_value}))
+    (tgt_dir / "metadata.json").write_text(json.dumps(
+        {"metric_value": metric_value, "feature_space": feature_space}))
 
 
 class TestRescoreExisting:
@@ -98,3 +99,14 @@ class TestRescoreExisting:
         holdout["target_1d"] = holdout["a"]
         ic = _rescore_existing("TEST", tmp_path, "target_1d", "regression", "ic", holdout)
         assert ic == pytest.approx(1.0)
+
+    def test_model_from_older_feature_space_is_unscorable(self, tmp_path):
+        """IC is rank-based, so a model fed differently-scaled inputs can still
+        score well while predicting nonsense — it must not be compared or kept."""
+        rng = np.random.default_rng(4)
+        x = rng.normal(size=60)
+        model = LinearRegression().fit(x.reshape(-1, 1), x)
+        _register(tmp_path, model, ["f"], metric_value=0.9, feature_space=None)
+        holdout = pd.DataFrame({"f": x[:51], "target_1d": x[:51]})
+        assert _rescore_existing("TEST", tmp_path, "target_1d",
+                                 "regression", "ic", holdout) is None

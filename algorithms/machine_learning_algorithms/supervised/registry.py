@@ -31,6 +31,12 @@ _SAVE_TARGETS = {
     "target_regime":  "classification",
 }
 
+# Bump when the features a model consumes change meaning (e.g. scaling), so older
+# models are treated as unscorable rather than compared or kept. "raw-v2": the
+# pipeline stopped pre-scaling features (models before it expect scaled inputs —
+# IC, being rank-based, can't tell, but their predictions are nonsense).
+FEATURE_SPACE = "raw-v2"
+
 _REG_PRIMARY = "ic"
 _CLF_PRIMARY = "f1_w"
 
@@ -114,6 +120,8 @@ def _rescore_existing(ticker, registry_dir, target, task, primary, holdout_df):
     from metrics import reg_metrics, clf_metrics
     try:
         reg = load_registry(ticker, registry_dir, target=target)
+        if reg["metadata"].get("feature_space") != FEATURE_SPACE:
+            raise ValueError("trained on an older feature space")
         X = holdout_df.reindex(columns=reg["features"]).values.astype(float)
         if reg.get("col_med_sel") is not None:
             X = np.where(np.isnan(X), np.asarray(reg["col_med_sel"], dtype=float), X)
@@ -278,6 +286,7 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
             "task":             task,
             "model_type":       best_name,
             "feature_version":  used_ver,
+            "feature_space":    FEATURE_SPACE,
             "created_at":       created_at,
             "primary_metric":   primary,
             "metric_value":     round(float(best_val), 6),
