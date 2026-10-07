@@ -61,6 +61,17 @@ jobs:
       - name: Install pipeline dependencies
         run: pip install -r requirements-pipeline.txt
 
+      # FinBERT scores the Finnhub headlines; without it that source is unscored
+      - name: Install FinBERT
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers==4.36.2
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: finbert-ProsusAI
+
       - name: Restore registry and MLflow history from the models branch
         run: |
           PUBLISHED="$RUNNER_TEMP/published"

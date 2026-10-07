@@ -1055,8 +1055,9 @@ class DataExtractor:
             elif av_batch is None and not _av_rl_hit:
                 # None with no cache available → live rate-limit, no fallback
                 _av_rl_hit = True
-                logger.warning("AlphaVantage rate-limit reached after %d batches, no cache available — skipping batch",
+                logger.warning("AlphaVantage rate-limit reached after %d batches, no cache available — skipping the rest",
                                _av_batches)
+                break
             _av_cursor = _b_end + datetime.timedelta(days=1)
         if _av_total:
             logger.info("AlphaVantage news sentiment: %d articles for %s (%d batches)",
@@ -1281,6 +1282,11 @@ class DataExtractor:
     # Minimum seconds between Polygon API calls (5 req/min plan)
     _POLYGON_RATE_LIMIT_S: float = 12.0
 
+    # AlphaVantage free tier: 5 calls/minute (and 25/day). A full-year rebuild
+    # makes ~13 monthly calls, which fired back to back trip the minute limit.
+    _AV_MIN_INTERVAL_S: float = 12.5
+    _av_last_call: float = 0.0
+
     def _polygon_news_sentiment(
         self,
         symbol: str,
@@ -1407,6 +1413,11 @@ class DataExtractor:
         if not key:
             return None
 
+        wait = self._AV_MIN_INTERVAL_S - (time.time() - self._av_last_call)
+        if wait > 0:
+            time.sleep(wait)
+        self._av_last_call = time.time()
+
         # AV uses YYYYMMDDTHHMM format
         time_from = start.replace("-", "") + "T0000"
         time_to   = end.replace("-", "")   + "T2359"
@@ -1430,7 +1441,8 @@ class DataExtractor:
 
             if "Information" in data or "Note" in data:
                 # Rate-limit hit — return stale cache if available, else None
-                logger.warning("AlphaVantage rate-limited for %s news sentiment", symbol)
+                logger.warning("AlphaVantage rate-limited for %s news sentiment: %s",
+                               symbol, data.get("Information") or data.get("Note"))
                 if allow_stale and _cache_path.exists():
                     try:
                         stale = pickle.loads(_cache_path.read_bytes())
