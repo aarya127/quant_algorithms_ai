@@ -60,12 +60,28 @@ def get_twitter_client():
             bearer_token=BEARER_TOKEN,
             consumer_key=API_KEY,
             consumer_secret=API_SECRET,
-            wait_on_rate_limit=True
+            # Waiting would sleep a web request thread for up to 15 minutes;
+            # a 429 is handled as "no tweets" instead.
+            wait_on_rate_limit=False
         )
         return client
     except Exception as e:
         logger.error(f"Failed to initialize Twitter client: {str(e)}")
         return None
+
+_MAX_QUERY_LEN = 512   # X recent-search query limit on the Basic/Free tiers
+
+
+def _from_accounts(rest: str) -> str:
+    """'(from:a OR from:b ...) <rest>' with as many accounts as fit the limit."""
+    clause = ''
+    for acc in INFLUENTIAL_ACCOUNTS + FINANCIAL_ACCOUNTS:
+        cand = f"{clause} OR from:{acc}" if clause else f"from:{acc}"
+        if len(f"({cand}) {rest}") > _MAX_QUERY_LEN:
+            break
+        clause = cand
+    return f"({clause}) {rest}"
+
 
 def get_market_tweets(symbol: str = None, count: int = 20) -> List[Dict]:
     """
@@ -85,19 +101,17 @@ def get_market_tweets(symbol: str = None, count: int = 20) -> List[Dict]:
     
     try:
         # Build targeted query focusing on influential accounts only
-        accounts_query = " OR ".join([f"from:{acc}" for acc in INFLUENTIAL_ACCOUNTS + FINANCIAL_ACCOUNTS])
-        
         if symbol:
             # Search for tweets from influential accounts mentioning the stock symbol
-            query = f"({accounts_query}) (${symbol} OR #{symbol}) -is:retweet lang:en"
+            query = _from_accounts(f"(${symbol} OR #{symbol}) -is:retweet lang:en")
         else:
             # Get tweets from influential accounts about markets
-            query = f"({accounts_query}) (stocks OR market OR trading OR Fed OR earnings) -is:retweet lang:en"
+            query = _from_accounts("(stocks OR market OR trading OR Fed OR earnings) -is:retweet lang:en")
         
         # Fetch tweets
         tweets = client.search_recent_tweets(
             query=query,
-            max_results=min(count, 100),
+            max_results=max(10, min(count, 100)),   # API accepts 10-100
             tweet_fields=['created_at', 'public_metrics', 'entities', 'author_id'],
             expansions=['author_id'],
             user_fields=['username', 'name', 'verified', 'profile_image_url']
@@ -144,7 +158,7 @@ def get_market_tweets(symbol: str = None, count: int = 20) -> List[Dict]:
             formatted_tweets.append(formatted_tweet)
         
         logger.info(f"Fetched {len(formatted_tweets)} tweets for query: {query}")
-        return formatted_tweets
+        return formatted_tweets[:count]
         
     except tweepy.errors.TooManyRequests:
         logger.warning("Twitter API rate limit exceeded")

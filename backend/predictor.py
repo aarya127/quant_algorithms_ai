@@ -172,7 +172,7 @@ def predict_latest(ticker: str) -> dict:
         out["confidence"] = "medium"
 
     out["anomaly_flag"] = int(
-        df.iloc[-1].get("anomaly_iso", 0) == -1
+        df.iloc[-1].get("anomaly_iso", 0) == 1   # unsupervised stores 1 = anomaly
         if "anomaly_iso" in df.columns else 0
     )
 
@@ -270,8 +270,9 @@ def model_status() -> dict:
             continue
         active = json.loads(active_path.read_text())
         targets = {}
-        for tgt, info in active.get("targets", {}).items():
-            meta_path = Path(info["path"]) / "metadata.json"
+        for tgt in active.get("targets", {}):
+            # active.json stores absolute paths from the training machine
+            meta_path = ticker_dir / tgt / "metadata.json"
             if meta_path.exists():
                 meta = json.loads(meta_path.read_text())
                 targets[tgt] = {

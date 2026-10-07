@@ -1,311 +1,62 @@
 """
-Alpaca News WebSocket Integration
-Real-time stock market news stream from Alpaca
+Alpaca news — recent market headlines from Alpaca's REST news API.
+
+Fetched on request and cached briefly. (This replaced a WebSocket stream that was
+never started, never reconnected, and only held news that arrived while the
+process was up — so on a sleeping free-tier instance it was always empty.)
 """
 
-import asyncio
-import websockets
-import json
-import logging
 import os
-from datetime import datetime
-from typing import List, Dict, Callable
+import logging
 import threading
-from collections import deque
+from typing import Dict, List
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+import requests
+from cachetools import TTLCache
+
 logger = logging.getLogger(__name__)
 
 # Alpaca API credentials — set via environment variables (never hardcode here)
 ALPACA_API_KEY = os.environ.get("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "")
 
-# WebSocket URLs
-ALPACA_NEWS_URL = "wss://stream.data.alpaca.markets/v1beta1/news"
-ALPACA_NEWS_SANDBOX_URL = "wss://stream.data.sandbox.alpaca.markets/v1beta1/news"
+NEWS_URL = "https://data.alpaca.markets/v1beta1/news"
 
-# Store recent news in memory (thread-safe deque)
-recent_news = deque(maxlen=100)
-news_lock = threading.Lock()
+_cache = TTLCache(maxsize=64, ttl=120)
+_cache_lock = threading.Lock()
 
-class AlpacaNewsStream:
-    """WebSocket client for Alpaca real-time news"""
-    
-    def __init__(self, use_sandbox=False):
-        self.url = ALPACA_NEWS_SANDBOX_URL if use_sandbox else ALPACA_NEWS_URL
-        self.api_key = ALPACA_API_KEY
-        self.secret_key = ALPACA_SECRET_KEY
-        self.websocket = None
-        self.running = False
-        self.subscribed_symbols = set()
-        
-    async def connect(self):
-        """Establish WebSocket connection"""
-        try:
-            # Add authentication headers
-            additional_headers = {
-                "APCA-API-KEY-ID": self.api_key,
-                "APCA-API-SECRET-KEY": self.secret_key
-            }
-            
-            self.websocket = await websockets.connect(
-                self.url,
-                additional_headers=additional_headers
-            )
-            logger.info(f"Connected to Alpaca News WebSocket: {self.url}")
-            
-            # Wait for connection and authentication messages
-            async for message in self.websocket:
-                data = json.loads(message)
-                if isinstance(data, list):
-                    for msg in data:
-                        if msg.get('T') == 'success':
-                            logger.info(f"Alpaca: {msg.get('msg')}")
-                            if msg.get('msg') == 'authenticated':
-                                return True
-                        elif msg.get('T') == 'error':
-                            logger.error(f"Alpaca error: {msg.get('msg')}")
-                            return False
-                            
-        except Exception as e:
-            logger.error(f"Failed to connect to Alpaca News: {str(e)}")
-            return False
-    
-    async def subscribe(self, symbols: List[str] = None):
-        """
-        Subscribe to news for specific symbols or all news
-        
-        Args:
-            symbols: List of symbols to subscribe to, or None for all news (*)
-        """
-        if not self.websocket:
-            logger.error("Not connected to Alpaca")
-            return False
-        
-        try:
-            if symbols:
-                self.subscribed_symbols.update(symbols)
-                subscribe_msg = {"action": "subscribe", "news": symbols}
-            else:
-                # Subscribe to all news
-                subscribe_msg = {"action": "subscribe", "news": ["*"]}
-            
-            await self.websocket.send(json.dumps(subscribe_msg))
-            logger.info(f"Subscribed to news: {symbols if symbols else 'ALL'}")
-            
-            # Wait for subscription confirmation
-            message = await self.websocket.recv()
-            data = json.loads(message)
-            if isinstance(data, list):
-                for msg in data:
-                    if msg.get('T') == 'subscription':
-                        logger.info(f"Subscription confirmed: {msg.get('news')}")
-                        return True
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"Failed to subscribe: {str(e)}")
-            return False
-    
-    async def unsubscribe(self, symbols: List[str]):
-        """Unsubscribe from news for specific symbols"""
-        if not self.websocket:
-            return False
-        
-        try:
-            unsubscribe_msg = {"action": "unsubscribe", "news": symbols}
-            await self.websocket.send(json.dumps(unsubscribe_msg))
-            self.subscribed_symbols.difference_update(symbols)
-            logger.info(f"Unsubscribed from: {symbols}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to unsubscribe: {str(e)}")
-            return False
-    
-    async def listen(self, callback: Callable = None):
-        """
-        Listen for incoming news messages
-        
-        Args:
-            callback: Optional callback function to handle news messages
-        """
-        self.running = True
-        
-        try:
-            async for message in self.websocket:
-                if not self.running:
-                    break
-                
-                data = json.loads(message)
-                
-                if isinstance(data, list):
-                    for msg in data:
-                        if msg.get('T') == 'n':  # News message
-                            news_item = self._format_news(msg)
-                            
-                            # Store in memory
-                            with news_lock:
-                                recent_news.append(news_item)
-                            
-                            # Call callback if provided
-                            if callback:
-                                callback(news_item)
-                            
-                            logger.info(f"News: {news_item['headline'][:60]}...")
-                            
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning("WebSocket connection closed")
-        except Exception as e:
-            logger.error(f"Error in listen loop: {str(e)}")
-        finally:
-            self.running = False
-    
-    def _format_news(self, msg: Dict) -> Dict:
-        """Format Alpaca news message to standard format"""
-        return {
-            'id': msg.get('id'),
-            'headline': msg.get('headline'),
-            'summary': msg.get('summary'),
-            'author': msg.get('author'),
-            'created_at': msg.get('created_at'),
-            'updated_at': msg.get('updated_at'),
-            'url': msg.get('url'),
-            'content': msg.get('content'),
-            'symbols': msg.get('symbols', []),
-            'source': f"Alpaca - {msg.get('source', 'Unknown')}",
-            'type': 'realtime'
-        }
-    
-    async def close(self):
-        """Close the WebSocket connection"""
-        self.running = False
-        if self.websocket:
-            await self.websocket.close()
-            logger.info("Closed Alpaca News WebSocket")
-
-# Global news stream instance
-_news_stream = None
-_stream_thread = None
-
-def start_news_stream(symbols: List[str] = None, use_sandbox=False):
-    """
-    Start the Alpaca news stream in a background thread
-    
-    Args:
-        symbols: List of symbols to subscribe to, or None for all news
-        use_sandbox: Use sandbox URL instead of production
-    """
-    global _news_stream, _stream_thread
-    
-    if _news_stream and _news_stream.running:
-        logger.info("News stream already running")
-        return
-    
-    def run_stream():
-        async def stream_task():
-            global _news_stream
-            _news_stream = AlpacaNewsStream(use_sandbox=use_sandbox)
-            
-            if await _news_stream.connect():
-                if await _news_stream.subscribe(symbols):
-                    await _news_stream.listen()
-        
-        # Create new event loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            loop.run_until_complete(stream_task())
-        except Exception as e:
-            logger.error(f"Stream error: {str(e)}")
-        finally:
-            loop.close()
-    
-    _stream_thread = threading.Thread(target=run_stream, daemon=True)
-    _stream_thread.start()
-    logger.info("Started Alpaca news stream in background")
-
-def stop_news_stream():
-    """Stop the background news stream"""
-    global _news_stream
-    
-    if _news_stream and _news_stream.running:
-        _news_stream.running = False
-        logger.info("Stopped Alpaca news stream")
-    
-    _news_stream = None
 
 def get_recent_news(count: int = 20, symbol: str = None) -> List[Dict]:
-    """
-    Get recent news from memory cache
-    
-    Args:
-        count: Number of news items to return
-        symbol: Optional symbol to filter by
-    
-    Returns:
-        List of recent news items
-    """
-    with news_lock:
-        news_list = list(recent_news)
-    
-    # Filter by symbol if provided
+    """Newest-first Alpaca news, optionally for one symbol; [] when not configured."""
+    if not (ALPACA_API_KEY and ALPACA_SECRET_KEY):
+        return []
+    key = (symbol.upper() if symbol else None, count)
+    with _cache_lock:
+        if key in _cache:
+            return _cache[key]
+
+    params = {"limit": min(max(count, 1), 50), "sort": "desc"}   # API max is 50
     if symbol:
-        news_list = [n for n in news_list if symbol.upper() in n.get('symbols', [])]
-    
-    # Sort by created_at (newest first)
-    news_list.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-    
-    return news_list[:count]
+        params["symbols"] = symbol.upper()
+    resp = requests.get(NEWS_URL, params=params, timeout=10, headers={
+        "APCA-API-KEY-ID": ALPACA_API_KEY,
+        "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY,
+    })
+    resp.raise_for_status()
 
-async def fetch_news_snapshot(symbols: List[str] = None, timeout: int = 5) -> List[Dict]:
-    """
-    Fetch a quick snapshot of news (connect, get messages, disconnect)
-    
-    Args:
-        symbols: Symbols to get news for
-        timeout: How long to listen for messages (seconds)
-    
-    Returns:
-        List of news items received during timeout period
-    """
-    news_items = []
-    
-    def collect_news(item):
-        news_items.append(item)
-    
-    stream = AlpacaNewsStream()
-    
-    try:
-        if await stream.connect():
-            if await stream.subscribe(symbols):
-                # Listen for limited time
-                listen_task = asyncio.create_task(stream.listen(callback=collect_news))
-                await asyncio.sleep(timeout)
-                await stream.close()
-                
-    except Exception as e:
-        logger.error(f"Error fetching news snapshot: {str(e)}")
-    
-    return news_items
+    news = [{
+        'id': n.get('id'),
+        'headline': n.get('headline'),
+        'summary': n.get('summary'),
+        'author': n.get('author'),
+        'created_at': n.get('created_at'),
+        'updated_at': n.get('updated_at'),
+        'url': n.get('url'),
+        'symbols': n.get('symbols', []),
+        'source': f"Alpaca - {n.get('source', 'Unknown')}",
+        'type': 'realtime',
+    } for n in resp.json().get('news', [])]
 
-if __name__ == "__main__":
-    # Test the news stream
-    print("Starting Alpaca news stream...")
-    start_news_stream(symbols=["AAPL", "TSLA", "NVDA"])
-    
-    # Let it run for 30 seconds
-    import time
-    time.sleep(30)
-    
-    # Get recent news
-    print("\n\nRecent news:")
-    news = get_recent_news(count=5)
-    for item in news:
-        print(f"\n{item['headline']}")
-        print(f"Symbols: {', '.join(item['symbols'])}")
-        print(f"Source: {item['source']}")
-    
-    stop_news_stream()
+    with _cache_lock:
+        _cache[key] = news
+    return news

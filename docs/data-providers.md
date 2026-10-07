@@ -82,17 +82,13 @@ Twitter/X API v2 via `tweepy.Client` (`wait_on_rate_limit=True`). Env: `TWITTER_
 
 Tweet dict: `id, text, created_at, author{username,name,verified,profile_image}, metrics{likes,retweets,replies}, url, source`.
 
-## alpaca_news.py — WIRED (real-time, stateful)
+## alpaca_news.py — WIRED
 
-Alpaca news WebSocket (`websockets`, async). **Has real side effects**: module-level `recent_news = deque(maxlen=100)` guarded by `news_lock`, singletons `_news_stream`/`_stream_thread`, and `start_news_stream` spawns a **daemon thread** running its own asyncio loop. `app.py` starts the stream and polls `get_recent_news`.
+Alpaca REST news (`GET data.alpaca.markets/v1beta1/news`), fetched on request and cached for 2 minutes per `(symbol, count)`. Returns `[]` when `ALPACA_API_KEY`/`ALPACA_SECRET_KEY` are unset; raises on HTTP errors (callers catch).
 
-- `start_news_stream(symbols=None, use_sandbox=False)`
-- `stop_news_stream()`
-- `get_recent_news(count=20, symbol=None) -> List[Dict]`
-- `async fetch_news_snapshot(symbols=None, timeout=5) -> List[Dict]`
-- `class AlpacaNewsStream` — `connect()`, `subscribe()`, `unsubscribe()`, `listen(callback)`, `close()`.
+- `get_recent_news(count=20, symbol=None) -> List[Dict]` — newest first, at most 50.
 
-News dict: `id, headline, summary, author, created_at, updated_at, url, content, symbols, source, type`.
+News dict: `id, headline, summary, author, created_at, updated_at, url, symbols, source, type`.
 
 ## prices.py — STANDALONE (not imported by app.py)
 

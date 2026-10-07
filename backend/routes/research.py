@@ -21,21 +21,21 @@ _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 @bp.route('/api/research/<paper_name>')
 def get_research_paper(paper_name):
     """
-    Dynamically compile LaTeX to PDF and serve it.
-    This saves space by not storing PDFs and always serves the latest version.
+    Serve a research paper PDF: prebuilt by the Docker build, or compiled from
+    LaTeX on demand when running locally.
     """
     try:
         # Map paper names to their .tex file paths
         paper_map = {
-            'heston': '../quant_research/stochastic_volatility/heston_model/theory.tex',
-            'sabr': '../quant_research/stochastic_volatility/sabr_model/theory.tex',
-            'state_space': '../quant_research/state_space_models/theory.tex',
-            'market_microstructure': '../quant_research/market_microstructure/theory.tex',
-            'macd': '../quant_research/macd_rsi/macd_theory.tex',
-            'rsi': '../quant_research/macd_rsi/rsi_theory.tex',
-            'greeks': '../quant_research/greeks/theory.tex',
-            'derivatives_volatility': '../quant_research/derivatives_volatility/theory.tex',
-            'advanced_trading': '../quant_research/advanced_trading/theory.tex',
+            'heston': '../algorithms/volatility_forecasting/research/heston_model/theory.tex',
+            'sabr': '../algorithms/volatility_forecasting/research/sabr_model/theory.tex',
+            'state_space': '../algorithms/market_making_algorithms/state_space_models/theory.tex',
+            'market_microstructure': '../algorithms/execution_algorithms/market_microstructure/theory.tex',
+            'macd': '../algorithms/macd_rsi/macd/macd_theory.tex',
+            'rsi': '../algorithms/macd_rsi/rsi/rsi_theory.tex',
+            'greeks': '../algorithms/greeks/theory.tex',
+            'derivatives_volatility': '../algorithms/volatility_forecasting/research/derivatives_volatility/theory.tex',
+            'advanced_trading': '../algorithms/execution_algorithms/advanced_trading/theory.tex',
         }
         
         if paper_name not in paper_map:
@@ -54,7 +54,14 @@ def get_research_paper(paper_name):
                 'success': False,
                 'error': 'LaTeX source file not found'
             }), 404
-        
+
+        # The Docker build compiles every paper next to its .tex (the runtime image
+        # has no LaTeX); compiling below is only for local runs with pdflatex.
+        prebuilt = tex_file[:-len('.tex')] + '.pdf'
+        if os.path.exists(prebuilt):
+            return send_file(prebuilt, mimetype='application/pdf',
+                             download_name=f'{paper_name}_model.pdf')
+
         # Create a temporary directory for compilation
         with tempfile.TemporaryDirectory() as tmpdir:
             # Copy the .tex file to temp directory
@@ -189,45 +196,3 @@ def get_algorithm_source(name):
         return source, 200, {'Content-Type': 'text/plain; charset=utf-8'}
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@bp.route('/api/research/<paper_name>/markdown')
-def get_research_markdown(paper_name):
-    """
-    Serve markdown research papers directly
-    """
-    try:
-        # Map paper names to their markdown file paths
-        markdown_map = {
-            'advanced_trading': '../quant_research/advanced_trading/theory.md',
-        }
-        
-        if paper_name not in markdown_map:
-            return jsonify({
-                'success': False,
-                'error': 'Research paper not found'
-            }), 404
-        
-        # Get the absolute path to the markdown file
-        md_file = os.path.join(_BACKEND, markdown_map[paper_name])
-        
-        if not os.path.exists(md_file):
-            return jsonify({
-                'success': False,
-                'error': 'Markdown file not found'
-            }), 404
-        
-        with open(md_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        return jsonify({
-            'success': True,
-            'content': content
-        })
-    
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-

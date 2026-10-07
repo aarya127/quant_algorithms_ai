@@ -201,7 +201,7 @@ def earnings_calendar():
     try:
         today = datetime.date.today()
         from_date = today
-        to_date = datetime.date(2026, 12, 31)  # Full year 2026
+        to_date = today + datetime.timedelta(days=365)
         
         events = []
         

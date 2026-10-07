@@ -25,7 +25,6 @@ import rate_limit                          # noqa: E402
 rate_limit.init_app(app)
 
 from common import DEFAULT_STOCKS          # noqa: E402
-from services import stop_news_stream      # noqa: E402  (no-op if data layer failed)
 
 from routes.pipeline import bp as _pipeline_bp    # noqa: E402
 from routes.charts import bp as _charts_bp        # noqa: E402
@@ -36,10 +35,11 @@ from routes.stock import bp as _stock_bp          # noqa: E402
 from routes.backtest import bp as _backtest_bp    # noqa: E402
 from routes.research import bp as _research_bp    # noqa: E402
 from routes.chat import bp as _chat_bp            # noqa: E402
+from routes.ml import bp as _ml_bp                # noqa: E402
 
 for _bp in (_pipeline_bp, _charts_bp, _news_bp, _trading_bp,
             _market_bp, _stock_bp, _backtest_bp, _research_bp,
-            _chat_bp):
+            _chat_bp, _ml_bp):
     app.register_blueprint(_bp)
 
 # Finnhub/AlphaVantage keys travel as URL query params, and requests puts the full
@@ -73,10 +73,6 @@ def index():
 
 
 if __name__ == '__main__':
-    try:
-        port = int(os.environ.get('PORT', 5001))
-        debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-        app.run(debug=debug, host='0.0.0.0', port=port)
-    finally:
-        # Clean up: stop the Alpaca news stream when app closes
-        stop_news_stream()
+    port = int(os.environ.get('PORT', 5001))
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(debug=debug, host='0.0.0.0', port=port)

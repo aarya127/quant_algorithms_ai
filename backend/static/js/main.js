@@ -1795,7 +1795,10 @@ async function runPipeline() {
         });
         const d = await resp.json();
         if (!d.success) {
-            alert('Pipeline error: ' + (d.error || 'unknown'));
+            // The hosted app requires the workflow's trigger token (401/503)
+            alert(resp.status === 401 || resp.status === 503
+                ? 'Retraining is restricted on the hosted app; trigger it from the GitHub retrain workflow.'
+                : 'Pipeline error: ' + (d.error || 'unknown'));
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Run Pipeline'; }
             return;
         }
@@ -1814,10 +1817,15 @@ function _pollPipeline() {
     fetch('/api/pipeline/status/' + _pipelineJobId)
         .then(r => r.json())
         .then(d => {
-            if (!d.success) return;
+            if (!d.success) {
+                const btn = document.getElementById('btnRunPipeline');
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Run Pipeline'; }
+                document.getElementById('pipelineLog').textContent = d.error || 'Job status unavailable';
+                return;
+            }
             _renderPipelineStatus(d);
 
-            if (d.status === 'running') {
+            if (d.status === 'running' || d.status === 'queued') {
                 _pipelinePollTimer = setTimeout(_pollPipeline, 1500);
             } else {
                 const btn = document.getElementById('btnRunPipeline');
@@ -1840,6 +1848,7 @@ function _renderPipelineStatus(job) {
 
     if (badgeEl) {
         const map = {
+            queued:     ['bg-secondary',         'Queued'],
             running:    ['bg-warning text-dark', 'Running'],
             done:       ['bg-success',           'Done ✓'],
             up_to_date: ['bg-info text-white',   'Up to date'],
@@ -1851,8 +1860,10 @@ function _renderPipelineStatus(job) {
     }
 
     if (stepsEl) {
-        stepsEl.innerHTML = _ML_STEPS.map(step => {
-            const done   = (job.steps_done || []).includes(step);
+        // Steps run in order, so everything before the current step is done
+        const cur = _ML_STEPS.indexOf(job.current_step);
+        stepsEl.innerHTML = _ML_STEPS.map((step, i) => {
+            const done   = job.status === 'done' || (cur >= 0 && i < cur);
             const active = job.current_step === step && job.status === 'running';
             const cls    = done   ? 'bg-success'
                          : active ? 'bg-warning text-dark'
@@ -1863,107 +1874,24 @@ function _renderPipelineStatus(job) {
     }
 
     if (logEl) {
-        logEl.textContent = (job.log || []).slice(-120).join('\n');
+        logEl.textContent = (job.last_logs || []).join('\n');
         logEl.scrollTop = logEl.scrollHeight;
     }
 }
 
 // View Research Paper
 function viewResearch(type) {
-    // Show loading indicator
-    const loadingModal = document.createElement('div');
-    loadingModal.className = 'modal fade';
-    loadingModal.innerHTML = `
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-body text-center p-5">
-                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <h5>Compiling LaTeX document...</h5>
-                    <p class="text-muted">This may take a few seconds</p>
-                </div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(loadingModal);
-    const bsLoadingModal = new bootstrap.Modal(loadingModal);
-    bsLoadingModal.show();
-    
-    // Handle LaTeX PDFs - dynamically compile and open
-    fetch(`/api/research/${type}`)
-        .then(response => {
-                bsLoadingModal.hide();
-                loadingModal.remove();
-                
-                if (response.ok) {
-                    return response.blob();
-                } else {
-                    throw new Error('Failed to compile PDF');
-                }
-            })
-            .then(blob => {
-                // Create a URL for the blob and open it in a new tab
-                const url = window.URL.createObjectURL(blob);
-                window.open(url, '_blank');
-                // Clean up the URL after a short delay
-                setTimeout(() => window.URL.revokeObjectURL(url), 100);
-            })
-            .catch(error => {
-                console.error('Error compiling LaTeX:', error);
-                alert('Failed to generate PDF. Please try again.');
-            });
+    // A direct open (not fetch-then-open) keeps it inside the click gesture, so
+    // popup blockers allow it; the PDF is prebuilt at image build time.
+    window.open(`/api/research/${encodeURIComponent(type)}`, '_blank');
 }
 
 // Download Research Paper
 function downloadResearch(type) {
-    // Show loading indicator
-    const loadingModal = document.createElement('div');
-    loadingModal.className = 'modal fade';
-    loadingModal.innerHTML = `
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-body text-center p-5">
-                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <h5>Compiling LaTeX document...</h5>
-                    <p class="text-muted">Preparing your download</p>
-                </div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(loadingModal);
-    const bsLoadingModal = new bootstrap.Modal(loadingModal);
-    bsLoadingModal.show();
-    
-    // Generate and download the PDF
-    fetch(`/api/research/${type}`)
-        .then(response => {
-            bsLoadingModal.hide();
-            loadingModal.remove();
-            
-            if (response.ok) {
-                return response.blob();
-            } else {
-                throw new Error('Failed to compile PDF');
-            }
-        })
-        .then(blob => {
-            // Create a download link
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${type}_model.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        })
-        .catch(error => {
-            console.error('Error downloading PDF:', error);
-            alert('Failed to generate PDF for download. Please try again.');
-        });
+    const a = document.createElement('a');
+    a.href = `/api/research/${encodeURIComponent(type)}`;
+    a.download = `${type}_model.pdf`;
+    a.click();
 }
 
 // View Algorithm source code in modal
@@ -1984,6 +1912,7 @@ function viewAlgorithm(name, title) {
             const pre = document.getElementById('codeViewerContent');
             const codeEl = document.getElementById('codeViewerCode');
             codeEl.textContent = source;
+            delete codeEl.dataset.highlighted;  // hljs skips elements it already highlighted
             hljs.highlightElement(codeEl);
             document.getElementById('codeViewerLoading').style.display = 'none';
             pre.style.display = 'block';

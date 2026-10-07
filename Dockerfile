@@ -1,3 +1,18 @@
+# Research papers are compiled in this stage so the runtime image carries only the
+# PDFs, not a LaTeX install. A paper that fails to compile is skipped, not fatal.
+FROM debian:bookworm-slim AS papers
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        texlive-latex-base texlive-latex-recommended texlive-fonts-recommended \
+    && rm -rf /var/lib/apt/lists/*
+COPY algorithms /src/algorithms
+WORKDIR /src
+RUN find algorithms -name '*theory.tex' | while read -r f; do \
+        (cd "$(dirname "$f")" && for _ in 1 2; do \
+            pdflatex -interaction=nonstopmode "$(basename "$f")" > /dev/null; done) || true; \
+    done; \
+    mkdir /out && find algorithms -name '*theory.pdf' -exec cp --parents {} /out \; \
+    && find /out -name '*.pdf'
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -21,6 +36,7 @@ print('FinBERT pre-downloaded')"
 
 # Copy the rest of the project
 COPY . .
+COPY --from=papers /out/ /app/
 
 WORKDIR /app/backend
 

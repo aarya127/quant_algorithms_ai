@@ -43,14 +43,6 @@ get_company_statistics = format_statistics_for_display = _unavailable
 StockAnalyzer = None
 
 
-def start_news_stream(*_a, **_kw):  # overwritten below on successful import
-    pass
-
-
-def stop_news_stream():  # overwritten below on successful import
-    pass
-
-
 try:
     import yfinance as yf
     from data.finnhub import (
@@ -66,7 +58,7 @@ try:
     from data.alphavantage import AlphaVantage
     from ai_platform.nvidia_llm import get_company_overview_llm
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
-    from data.alpaca_news import get_recent_news, start_news_stream, stop_news_stream
+    from data.alpaca_news import get_recent_news
     from data.company_statistics import get_company_statistics, format_statistics_for_display
     from stock_analyzer import StockAnalyzer
     av = AlphaVantage()
