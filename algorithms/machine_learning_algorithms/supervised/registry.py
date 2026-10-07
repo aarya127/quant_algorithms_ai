@@ -196,6 +196,9 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
             if holdout_df is not None and existing_val is not None:
                 existing_val = _rescore_existing(ticker, registry_dir, target,
                                                  task, primary, holdout_df)
+                if existing_val is not None:
+                    print(f"  ↺ {target:20s}  production model on this holdout: "
+                          f"{primary}={existing_val:.4f}")
 
         # Baseline score from model_res (the naive predictor trained alongside)
         baseline_res = model_res.get("baseline", {})
@@ -212,7 +215,12 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
             )
             if not passes:
                 print(gate_msg)
-                if existing_val is not None:
+                if existing_val is not None and existing_val < _MIN_ABSOLUTE[task]:
+                    # Neither model clears the floor: serve nothing for this target
+                    # rather than a model that no longer predicts it.
+                    print(f"  ✗ {target:20s}  production model retired "
+                          f"({primary}={existing_val:.4f} < floor)")
+                elif existing_val is not None:
                     # Keep the existing (better) model in active.json
                     active[target] = {
                         "path":         str(tgt_dir),

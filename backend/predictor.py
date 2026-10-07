@@ -133,7 +133,15 @@ def predict_latest(ticker: str) -> dict:
         "target_dir_1d": "predicted_dir_1d",
     }
 
+    # Serve only targets the registry lists as active; a model the promotion gate
+    # retired stays on disk (for rollback) but must not be served.
+    active_path = _REGISTRY / ticker / "active.json"
+    active = (json.loads(active_path.read_text()).get("targets", {})
+              if active_path.exists() else {})
+
     for target, label in _targets.items():
+        if target not in active:
+            continue
         try:
             reg = load_registry(ticker, _REGISTRY, target=target)
         except FileNotFoundError:
