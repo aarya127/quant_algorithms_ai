@@ -9,6 +9,7 @@ requests==2.31.0
 tweepy==4.16.0
 cachetools>=5.3.0
 mlflow>=2.0.0,<3.0.0
+sqlalchemy<2.1          # mlflow 2.x imports pool classes removed in SQLAlchemy 2.1
 scipy>=1.11.0
 
 # Machine learning (training + serving) — keep in sync with requirements-pipeline.txt
