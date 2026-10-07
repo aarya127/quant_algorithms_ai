@@ -1,140 +1,97 @@
-# Daily ML pipeline trigger
+# Daily ML pipeline
 #
-# Runs every weekday at 02:00 UTC, which is:
-#   9 PM ET (evening before US market open)
-#   10 PM CT / 11 PM PT
+# Retrains in GitHub Actions — the free Render instance can't fit the pipeline in
+# 512 MB — and publishes the results to the `models` branch, which the web app
+# pulls every few hours (backend/model_sync.py). The branch is force-pushed as a
+# single commit each run, so it never accumulates history.
 #
-# What it does:
-#   1. POSTs to /api/pipeline/run on the live Render app
-#   2. Polls /api/pipeline/status every 90 seconds until done or failed
-#   3. Reports success/failure as a GitHub Actions run (green/red badge)
+# Every run is a full rebuild (a fresh checkout has no feature CSVs to append to);
+# only the model registry and MLflow history carry over from the previous run, so
+# the promotion gate compares against the models currently being served.
 #
-# Setup:
-#   In your GitHub repo → Settings → Secrets and variables → Actions, add:
-#     RENDER_APP_URL  →  https://your-app-name.onrender.com  (no trailing slash)
-#
-# The pipeline runs INSIDE the Render web service container (as a subprocess),
-# so it has access to the persistent disk where models and feature CSVs live.
-# This avoids the Render disk-sharing limitation between separate services.
+# Data-provider keys come from repo secrets (Settings → Secrets and variables →
+# Actions); a missing key just skips that source.
 #
 # Manual trigger: Actions tab → "Daily ML Pipeline" → Run workflow → pick ticker.
 
 name: Daily ML Pipeline
 
 on:
-  # PAUSED 2026-07-16: the retrain runs in-process on the Render web service, and
-  # the free 512 MB instance OOMs mid-pipeline (the project is designed for the
-  # 2 GB "standard" plan — see render.yaml / README §9). Re-enable the schedule
-  # after upgrading the instance, or after moving retraining off the web service.
-  # Manual runs still work via the "Run workflow" button below.
-  # schedule:
-  #   - cron: '0 2 * * 1-5'   # 02:00 UTC Monday–Friday
-  workflow_dispatch:          # allow manual trigger from the Actions tab
+  schedule:
+    - cron: '0 2 * * 1-5'   # 02:00 UTC Mon–Fri, after the US close
+  workflow_dispatch:
     inputs:
       ticker:
         description: 'Ticker to retrain (e.g. NVDA)'
         required: true
         default: 'NVDA'
 
+permissions:
+  contents: write           # force-push the models branch
+
+concurrency:
+  group: retrain            # runs share the models branch; never overlap
+  cancel-in-progress: false
+
 jobs:
   retrain:
     name: Retrain ${{ github.event.inputs.ticker || 'NVDA' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 180      # safety net — full retrain rarely exceeds 90 min
+    timeout-minutes: 180
+    env:
+      TICKER: ${{ github.event.inputs.ticker || 'NVDA' }}
+      REG: algorithms/machine_learning_algorithms/supervised/model_registry
+      PIPES: algorithms/machine_learning_algorithms/data_pipelines
+      FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+      ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+      POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
 
     steps:
-      - name: Trigger pipeline on Render
-        id: trigger
-        env:
-          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
-          TICKER: ${{ github.event.inputs.ticker || 'NVDA' }}
-          # Required: the same value must be set as an env var on the Render
-          # service, which refuses retrain triggers without it.
-          PIPELINE_TRIGGER_TOKEN: ${{ secrets.PIPELINE_TRIGGER_TOKEN }}
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-pipeline.txt
+
+      - name: Install pipeline dependencies
+        run: pip install -r requirements-pipeline.txt
+
+      - name: Restore registry and MLflow history from the models branch
         run: |
-          set -uo pipefail
-
-          # 1) Secret must be set.
-          if [ -z "${RENDER_APP_URL:-}" ]; then
-            echo "::error::RENDER_APP_URL secret is not set. Add it under Settings →"
-            echo "::error::Secrets and variables → Actions (e.g. https://your-app.onrender.com, no trailing slash)."
-            exit 1
-          fi
-          echo "Target: $RENDER_APP_URL"
-
-          # 2) Is the service even up? (does not fail the step — just reports)
-          HEALTH=$(curl -s -m 30 -o /dev/null -w "%{http_code}" "$RENDER_APP_URL/health" || echo "000")
-          echo "GET /health → HTTP $HEALTH"
-          if [ "$HEALTH" != "200" ]; then
-            echo "::warning::/health returned $HEALTH — the Render service may be down, still"
-            echo "::warning::spinning up (free tier sleeps), or RENDER_APP_URL points at the wrong host."
+          PUBLISHED="$RUNNER_TEMP/published"
+          mkdir -p "$PUBLISHED"
+          if git fetch --depth 1 origin models; then
+            git archive FETCH_HEAD | tar -x -C "$PUBLISHED"
+            if [ -d "$PUBLISHED/$REG" ]; then cp -R "$PUBLISHED/$REG/." "$REG/"; fi
+            if [ -f "$PUBLISHED/mlflow.db" ]; then cp "$PUBLISHED/mlflow.db" .; fi
+          else
+            echo "No models branch yet — starting from the registry in main."
           fi
 
-          # 3) Trigger — capture BOTH body and status so failures are explainable.
-          echo "Triggering pipeline for $TICKER..."
-          HTTP_CODE=$(curl -s -m 60 -w "%{http_code}" -o /tmp/trigger.json \
-            -X POST "$RENDER_APP_URL/api/pipeline/run" \
-            -H "Content-Type: application/json" \
-            -H "X-Pipeline-Token: ${PIPELINE_TRIGGER_TOKEN:-}" \
-            -d "{\"ticker\": \"$TICKER\"}" || echo "000")
-          echo "POST /api/pipeline/run → HTTP $HTTP_CODE"
-          echo "--- response body ---"; cat /tmp/trigger.json 2>/dev/null || true; echo; echo "---------------------"
+      - name: Run pipeline
+        run: python algorithms/machine_learning_algorithms/orchestrator.py "$TICKER"
 
-          if [ "$HTTP_CODE" = "000" ]; then
-            echo "::error::Could not reach $RENDER_APP_URL (connection/DNS/timeout). Check the URL and that the service is running."
-            exit 1
-          fi
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Trigger failed with HTTP $HTTP_CODE. If 404, the /api/pipeline/* routes aren't in the deployed build (redeploy). See body above."
-            exit 1
-          fi
-
-          JOB_ID=$(python3 -c "import json; print(json.load(open('/tmp/trigger.json'))['job_id'])") || {
-            echo "::error::2xx response but no job_id in body (see above)."; exit 1; }
-          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
-          echo "Started job: $JOB_ID"
-
-      - name: Poll until done
-        env:
-          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+      - name: Publish to the models branch
         run: |
-          set -uo pipefail
-          JOB_ID="${{ steps.trigger.outputs.job_id }}"
-          MAX_POLLS=120      # 120 × 90 s = 3 hours
-          POLL=0
+          PUBLISHED="$RUNNER_TEMP/published"
+          mkdir -p "$PUBLISHED/$REG" "$PUBLISHED/$PIPES"
+          rm -rf "$PUBLISHED/$REG/$TICKER"
+          cp -R "$REG/$TICKER" "$PUBLISHED/$REG/"
+          cp "$PIPES/${TICKER}_features_with_regimes.csv" "$PUBLISHED/$PIPES/"
+          if [ -f mlflow.db ]; then cp mlflow.db "$PUBLISHED/"; fi
 
-          while [ $POLL -lt $MAX_POLLS ]; do
-            POLL=$((POLL + 1))
-            RESP=$(curl -s -m 30 "$RENDER_APP_URL/api/pipeline/status/$JOB_ID" || echo "")
-            STATUS=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "unreachable")
-            STEP=$(echo "$RESP"   | python3 -c "import sys,json; print(json.load(sys.stdin).get('current_step','—'))" 2>/dev/null || echo "—")
-
-            echo "[$POLL/$MAX_POLLS] status=$STATUS  step=$STEP"
-
-            # transient network blip / cold start — don't fail the run, just retry
-            if [ "$STATUS" = "unreachable" ]; then
-              echo "  (status endpoint unreachable — retrying)"
-              sleep 90
-              continue
-            fi
-
-            case "$STATUS" in
-              done)
-                echo "Pipeline completed successfully."
-                exit 0
-                ;;
-              up_to_date)
-                echo "Data already up to date — nothing to retrain."
-                exit 0
-                ;;
-              error)
-                echo "Pipeline failed."
-                exit 1
-                ;;
-            esac
-
-            sleep 90
-          done
-
-          echo "Timed out after 3 hours."
-          exit 1
+          cd "$PUBLISHED"
+          git init -q -b models
+          git add -A
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "models: $TICKER $(date -u +%F)"
+          # Push through the checkout's repo, which holds the workflow's credentials
+          git push -q -f "$GITHUB_WORKSPACE" models:refs/heads/models
+          cd "$GITHUB_WORKSPACE"
+          git push -f origin models

@@ -5,8 +5,8 @@
 #   2. Integration — full clean→normalize pipeline on synthetic data + sklearn fit
 #
 # Heavy deps (torch, transformers, FinBERT) are intentionally excluded from CI.
-# The predictor smoke-test against a live server is reserved for the scheduled
-# daily-retrain workflow where a running Render instance is available.
+# The full pipeline (and the models the app serves) runs in the scheduled
+# daily-retrain workflow.
 
 name: CI
 

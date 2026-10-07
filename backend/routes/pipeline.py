@@ -1,9 +1,10 @@
 """
 routes/pipeline.py — Pipeline Job Management blueprint.
 
-POST /api/pipeline/run and GET /api/pipeline/status/<job_id>, used by the
-scheduled-retraining GitHub Actions workflow (.github/workflows/daily-retrain.yml).
-Extracted from app.py; behavior unchanged.
+POST /api/pipeline/run and GET /api/pipeline/status/<job_id>, used by the ML
+Signals tab's Run Pipeline button on local runs. Production retraining runs in
+GitHub Actions instead (.github/workflows/daily-retrain.yml) — the free Render
+instance can't fit the pipeline in memory.
 """
 import os
 import re
@@ -18,8 +19,7 @@ from flask import Blueprint, jsonify, request
 
 # Retrain-job state lives in a small SQLite store (see pipeline_store.py): durable
 # across worker recycles, consistent across gunicorn workers, with bounded logs and
-# automatic eviction of old jobs. Point PIPELINE_DB_PATH at the persistent disk for
-# true cross-restart durability on paid Render plans.
+# automatic eviction of old jobs. PIPELINE_DB_PATH overrides its location.
 import pipeline_store
 from rate_limit import on_render
 
@@ -31,8 +31,7 @@ pipeline_store.init_db()
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Shared secret protecting the (expensive) retrain trigger. When set, callers must
-# send a matching `X-Pipeline-Token` header; the GitHub Actions workflow sends it
-# from the PIPELINE_TRIGGER_TOKEN repo secret. When unset the endpoint is refused on
+# send a matching `X-Pipeline-Token` header. When unset the endpoint is refused on
 # Render (public) and left open only for local runs.
 _PIPELINE_TOKEN = os.environ.get('PIPELINE_TRIGGER_TOKEN', '').strip()
 

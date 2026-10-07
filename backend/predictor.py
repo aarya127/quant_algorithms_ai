@@ -26,6 +26,7 @@ _MONITORING  = _SUPERVISED / "output" / "monitoring"
 # add supervised/ to path so we can import registry.py
 sys.path.insert(0, str(_SUPERVISED))
 from registry import load_registry   # noqa: E402
+import model_sync                    # noqa: E402
 
 _DRIFT_Z_THRESH = 3.0
 _MODEL_DRIFT_IC_DROP = 0.10   # flag when rolling IC falls this far below registered IC
@@ -111,6 +112,7 @@ def predict_latest(ticker: str) -> dict:
       signal, confidence, anomaly_flag
     }
     """
+    model_sync.ensure_fresh()
     df   = _features_df(ticker)
     row  = df.iloc[[-1]]
     date = str(df.iloc[-1]["Date"])[:10]
@@ -193,6 +195,7 @@ def check_drift(ticker: str) -> dict:
       drift_flags: [{feature, latest_value, training_mean, z_score, status}, ...]
     }
     """
+    model_sync.ensure_fresh()
     df   = _features_df(ticker)
     row  = df.iloc[-1]
     date = str(row.get("Date", ""))[:10]
@@ -258,6 +261,7 @@ def model_status() -> dict:
     """
     Return a summary of all registered models across all tickers.
     """
+    model_sync.ensure_fresh()
     if not _REGISTRY.exists():
         return {"error": "model_registry not found — run the supervised pipeline first"}
 

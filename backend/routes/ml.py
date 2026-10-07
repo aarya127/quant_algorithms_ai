@@ -66,6 +66,8 @@ def mlflow_runs(ticker):
     t = _ticker(ticker)
     if not t:
         return jsonify({'success': False, 'error': 'invalid ticker'}), 400
+    import model_sync
+    model_sync.ensure_fresh()
     # Opening a missing SQLite store would create an empty one; report instead.
     if not (_PROJECT_ROOT / 'mlflow.db').exists():
         return jsonify({'success': True, 'runs': [],

@@ -1,6 +1,6 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 #
-# Defines the Invest.ai web service and its persistent disk.
+# Defines the Invest.ai web service.
 #
 # Deploy steps:
 #   1. Push this repo to GitHub.
@@ -12,16 +12,11 @@
 # Recommended plan: standard ($25/month, 1 CPU / 2 GB RAM)
 # FinBERT alone needs ~512 MB; standard gives comfortable headroom.
 #
-# Persistent disk (5 GB, $1.25/month):
-#   Mounted at /app/mnt — entrypoint.sh symlinks the three runtime dirs there.
-#   Survives redeploys and pod restarts. Model artefacts are seeded from the
-#   image on first deploy so predictions work immediately.
-#
-# Scheduled retraining:
-#   NOT a separate Render Cron Job — Render disks can only attach to one
-#   service, so the cron job can't share models with the web service.
-#   Instead, use the GitHub Actions workflow in .github/workflows/daily-retrain.yml,
-#   which calls POST /api/pipeline/run on the live service on a schedule.
+# Retraining and models:
+#   The pipeline runs in GitHub Actions (.github/workflows/daily-retrain.yml) and
+#   publishes models + feature CSVs to the `models` branch; the web service pulls
+#   that branch every few hours (backend/model_sync.py). Nothing the app needs
+#   lives on the disk below — it is unused and can be dropped.
 
 services:
   - type: web
@@ -70,8 +65,4 @@ services:
       - key: NVIDIA_API_KEY
         sync: false
       - key: CHART_IMG_KEY
-        sync: false
-      # Required: /api/pipeline/run refuses all requests on Render without it.
-      # Must match the PIPELINE_TRIGGER_TOKEN GitHub repo secret.
-      - key: PIPELINE_TRIGGER_TOKEN
         sync: false
