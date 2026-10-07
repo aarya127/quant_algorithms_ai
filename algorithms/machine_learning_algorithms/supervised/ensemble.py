@@ -182,9 +182,20 @@ def run_ensemble(all_holdout, df, holdout_idx, ticker, out_dir):
         if not probas:
             continue
         avg_p = np.nanmean(np.stack(probas, axis=0), axis=0)
-        rows[f"pred_ensemble_{suffix}"] = np.nanargmax(avg_p, axis=1).astype(float)
-        if avg_p.shape[1] >= 2:
-            rows[f"proba_ensemble_{suffix}"] = avg_p[:, 1]
+        # Models train on encoded labels, so argmax is a class index; map it back
+        # through the label encoder (dir_1d: 0/1/2 → -1/0/1).
+        le = next((res["label_encoder"]
+                   for v in (version, "A")
+                   for res in all_holdout.get((target, v), {}).values()
+                   if isinstance(res, dict) and "label_encoder" in res), None)
+        if le is None or len(le.classes_) != avg_p.shape[1]:
+            continue
+        has_p = ~np.isnan(avg_p).all(axis=1)    # no probabilities where the label is unknown
+        pred  = np.full(len(avg_p), np.nan)
+        pred[has_p] = le.classes_[np.nanargmax(avg_p[has_p], axis=1)]
+        rows[f"pred_ensemble_{suffix}"] = pred
+        # probability of the highest class: up move / large move
+        rows[f"proba_ensemble_{suffix}"] = avg_p[:, -1]
 
     # Step 4: summary comparison table
     print(f"\n{'═'*66}")
