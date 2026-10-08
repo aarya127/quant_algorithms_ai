@@ -5,7 +5,7 @@ Usage:
     python run_pipeline.py [SYMBOL] [PERIOD]
 
     SYMBOL : ticker symbol (default: NVDA)
-    PERIOD : yfinance period string — 3mo, 6mo, 1y, 2y (default: 3mo)
+    PERIOD : yfinance period string — 3mo, 6mo, 1y, 2y, 5y (default: 5y)
              Pass 'full' to force a complete rebuild regardless of existing CSV.
 
 Incremental mode:
@@ -38,7 +38,8 @@ sys.path.insert(0, str(ROOT))
 from algorithms.machine_learning_algorithms.data_pipelines import DataTransformer  # noqa: E402
 
 SYMBOL = sys.argv[1].upper() if len(sys.argv) > 1 else "NVDA"
-PERIOD = sys.argv[2]         if len(sys.argv) > 2 else "1y"
+# 5 years: ~1,250 rows, so the holdout and every CV fold see more than one regime
+PERIOD = sys.argv[2]         if len(sys.argv) > 2 else "5y"
 
 out = Path(__file__).parent / f"{SYMBOL}_features.csv"
 
@@ -70,7 +71,7 @@ if out.exists() and not _force_full:
 
 if _existing is None:
     # Full rebuild using the requested period
-    actual_period = "1y" if _force_full else PERIOD
+    actual_period = "5y" if _force_full else PERIOD
     print(f"=== pipeline [FULL]: {SYMBOL}  period={actual_period} ===\n")
     df_new = dt.build_feature_matrix(SYMBOL, period=actual_period)
 

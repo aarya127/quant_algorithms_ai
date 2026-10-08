@@ -79,6 +79,11 @@ _COL_DESC: dict = {
     "volume_zscore":   "Volume z-score over rolling 20-day window (spikes = unusual activity)",
     "high_low_range":  "Intraday range = (High − Low) / Close",
     "overnight_gap":   "Overnight gap = Open_t / Close_{t-1} − 1",
+    "atr_pct":         "ATR_14 / Close (volatility as a fraction of price)",
+    "macd_pct":        "MACD / Close",
+    "macd_signal_pct": "MACD_signal / Close",
+    "macd_hist_pct":   "MACD_hist / Close",
+    "obv_slope_20d":   "20-day OBV change / 20-day volume (net buying pressure, −1..1)",
     # Volatility & risk
     "realized_vol_20d":   "Annualised 20-day realised volatility (rolling std of log_return × √252)",
     "realized_vol_60d":   "Annualised 60-day realised volatility",
@@ -331,7 +336,8 @@ class DataTransformer:
                "RSI_14","MACD","MACD_signal","MACD_hist","BB_upper","BB_mid","BB_lower",
                "ATR_14","OBV","daily_return","log_return")]
             + [c for c in spine.columns if c.startswith("price_to_") or c in
-               ("bb_pct","volume_zscore","high_low_range","overnight_gap")]
+               ("bb_pct","volume_zscore","high_low_range","overnight_gap","atr_pct",
+                "macd_pct","macd_signal_pct","macd_hist_pct","obv_slope_20d")]
             # Risk / volatility
             + [c for c in spine.columns if c in (
                "realized_vol_20d","realized_vol_60d","vol_of_vol",
@@ -423,6 +429,20 @@ class DataTransformer:
         df["overnight_gap"] = (df["Open"] / c.shift(1).replace(0, np.nan) - 1).replace(
             [np.inf, -np.inf], np.nan
         )
+
+        # Scale-free versions of price/volume-level indicators. Levels trend with
+        # the price, so a model fit on them learns the calendar, and a short
+        # holdout can reward that by chance.
+        c_nz = c.replace(0, np.nan)
+        if "ATR_14" in df.columns:
+            df["atr_pct"] = df["ATR_14"] / c_nz
+        for col, name in (("MACD", "macd_pct"), ("MACD_signal", "macd_signal_pct"),
+                          ("MACD_hist", "macd_hist_pct")):
+            if col in df.columns:
+                df[name] = df[col] / c_nz
+        if "OBV" in df.columns and "Volume" in df.columns:
+            vol20 = df["Volume"].astype(float).rolling(20).sum().replace(0, np.nan)
+            df["obv_slope_20d"] = df["OBV"].diff(20) / vol20
         return df
 
     def _merge_fundamentals(self, df: pd.DataFrame, sym: str) -> pd.DataFrame:

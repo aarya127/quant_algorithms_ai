@@ -16,10 +16,12 @@ SYMBOL      = sys.argv[1] if len(sys.argv) > 1 else "NVDA"
 REGIMES_CSV = PIPELINES / f"{SYMBOL}_features_with_regimes.csv"
 FEAT_FILE   = FD_OUT / "recommended_features.txt"
 
-# walk-forward config
-INIT_TRAIN   = 120
-STEP         = 21
-HOLDOUT_ROWS = 51
+# walk-forward config (sized for the ~1,250-row 5-year history): 2 years of initial
+# training, quarterly folds, and a 1-year holdout. The old 51-row holdout put the
+# standard error of IC near 0.14, so the gate's 0.02 floor and 0.005 delta were noise.
+INIT_TRAIN   = 504
+STEP         = 63
+HOLDOUT_ROWS = 252
 
 # Purge/embargo gap (rows) between train and validation/holdout, per target.
 # Targets are forward-looking, so the last `horizon` training rows carry labels

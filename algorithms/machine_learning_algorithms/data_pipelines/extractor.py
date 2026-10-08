@@ -1548,11 +1548,19 @@ class DataExtractor:
         }
 
         try:
+            throttled = 0
             while True:
                 resp = requests.get(url, headers=headers, params=params, timeout=15)
                 if resp.status_code in (401, 403):
                     logger.warning("Alpaca news sentiment: unauthorised (key issue) for %s", symbol)
                     break
+                # ~200 req/min: a multi-year fetch (~600 pages) hits it. Wait it out
+                # instead of raising, which discarded every page fetched so far.
+                if resp.status_code == 429 and throttled < 5:
+                    throttled += 1
+                    time.sleep(float(resp.headers.get("Retry-After", 60)))
+                    continue
+                throttled = 0
                 resp.raise_for_status()
                 data = resp.json()
 
