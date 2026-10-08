@@ -34,7 +34,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setupNavigationListeners();
     startNotificationPolling();
     updateMarketStatus();
-    loadWatchlistPrices(); // Load prices for all watchlist stocks
 });
 
 // Setup navigation listeners
@@ -130,6 +129,7 @@ function showDashboardDefault() {
     const dashDefault = document.getElementById('dashboardDefault');
     if (dashDefault) dashDefault.style.display = '';
     currentStock = null;
+    window.currentSymbol = null;
 }
 
 // Setup event listeners
@@ -155,15 +155,14 @@ function setupEventListeners() {
         }
     });
     
-    // Watchlist items
-    document.querySelectorAll('.stock-item').forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            const symbol = this.dataset.symbol;
-            showSection('dashboard'); // Always show in dashboard
-            setActiveNav(document.getElementById('navDashboard'));
-            loadStockDetails(symbol);
-        });
+    // Volume-leader rows are partly server-rendered (addWatchlistItem skips
+    // those), so delegate rather than bind each row.
+    document.getElementById('volumeLeadersBody').addEventListener('click', function(e) {
+        const row = e.target.closest('.stock-item');
+        if (!row) return;
+        showSection('dashboard');
+        setActiveNav(document.getElementById('navDashboard'));
+        loadStockDetails(row.dataset.symbol);
     });
     
     // Notifications button
@@ -434,6 +433,10 @@ async function loadStockDetails(symbol) {
     document.getElementById('stockPrice').textContent = 'Loading...';
     document.getElementById('priceChange').textContent = '...';
 
+    // The other tabs only load on shown.bs.tab, so leaving one open would keep
+    // the previous symbol's data under this header.
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('#stockTabs [data-bs-target="#overview"]')).show();
+
     // Scroll to top of research section
     document.querySelector('.page-content')?.scrollTo({ top: 0, behavior: 'smooth' });
     
@@ -459,6 +462,7 @@ async function loadStockOverview(symbol) {
         const response = await fetch(`/api/stock/${symbol}`);
         const data = await response.json();
         const endTime = Date.now();
+        if (symbol !== currentStock) return;  // superseded by a newer selection
         
         console.log(`✓ ${symbol} overview loaded in ${endTime - startTime}ms`);
         
@@ -480,17 +484,15 @@ async function loadStockOverview(symbol) {
             changeEl.className = `badge ${change >= 0 ? 'bg-success' : 'bg-danger'}`;
             changeEl.style.color = change >= 0 ? '' : '#000';
             changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent.toFixed(2)}%)`;
+        } else {
+            document.getElementById('stockPrice').textContent = '—';
+            document.getElementById('priceChange').textContent = '';
         }
-        
+
         // Update company info
         const companyInfo = document.getElementById('companyInfo');
         if (data.company) {
             let companyHTML = `<div class="company-details">`;
-            
-            // AI overview container starts hidden — it only appears if the
-            // backend actually returns an overview (feature may be disabled).
-            // No premature "Generating…" spinner for something that may never come.
-            companyHTML += `<div id="aiOverviewContainer" style="display:none"></div>`;
             
             // Business Description
             if (data.company.longBusinessSummary) {
@@ -552,9 +554,6 @@ async function loadStockOverview(symbol) {
             companyHTML += `</div>`;
             
             companyInfo.innerHTML = companyHTML;
-            
-            // Load AI overview in background (non-blocking)
-            loadAIOverview(symbol);
         } else {
             companyInfo.innerHTML = '<p class="text-muted">Company information not available</p>';
         }
@@ -634,43 +633,12 @@ async function loadStockOverview(symbol) {
         
     } catch (error) {
         console.error(`✗ Error loading overview for ${symbol}:`, error);
+        if (symbol !== currentStock) return;
+        document.getElementById('stockPrice').textContent = '—';
+        document.getElementById('priceChange').textContent = '';
         document.getElementById('companyInfo').innerHTML = 
             '<div class="alert alert-danger">Failed to load stock data. Please try again.</div>';
-    }
-}
-
-// Load AI overview separately (non-blocking)
-async function loadAIOverview(symbol) {
-    console.log(`🤖 Loading AI overview for ${symbol}...`);
-    
-    try {
-        const response = await fetch(`/api/ai-overview/${symbol}`);
-        const data = await response.json();
-        
-        const container = document.getElementById('aiOverviewContainer');
-        if (!container) return; // User might have navigated away
-        
-        if (data.success && data.ai_overview) {
-            container.className = 'alert alert-info mb-3 fade-in';
-            container.innerHTML = `
-                <h6><i class="fas fa-robot"></i> AI-Generated Overview</h6>
-                <p class="mb-0" style="white-space: pre-wrap;">${esc(data.ai_overview)}</p>
-                <small class="text-muted">Powered by NVIDIA Llama 3.1 70B</small>
-            `;
-            container.style.display = '';
-            console.log(`✓ AI overview loaded for ${symbol}`);
-        } else {
-            // AI overview is disabled - keep the section hidden
-            container.style.display = 'none';
-            console.log(`ℹ️ AI overview disabled for faster loading`);
-        }
-    } catch (error) {
-        console.error(`✗ Error loading AI overview for ${symbol}:`, error);
-        const container = document.getElementById('aiOverviewContainer');
-        if (container) {
-            // Hide on error instead of showing error message
-            container.style.display = 'none';
-        }
+        document.getElementById('recentNews').innerHTML = '<p class="text-muted">News unavailable</p>';
     }
 }
 
@@ -687,7 +655,7 @@ function handleTabChange(target, symbol) {
             break;
         case '#sentiment':
             // Don't auto-load sentiment - user must click button
-            setupSentimentButton(symbol);
+            setupSentimentButton();
             break;
         case '#scenarios':
             loadScenarios(symbol, '1M');
@@ -702,7 +670,7 @@ function handleTabChange(target, symbol) {
 }
 
 // Setup sentiment button to load on demand
-function setupSentimentButton(symbol) {
+function setupSentimentButton() {
     const button = document.getElementById('analyzeSentimentBtn');
     const container = document.getElementById('sentimentAnalysis');
 
@@ -714,7 +682,7 @@ function setupSentimentButton(symbol) {
             newButton.disabled = true;
             newButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
             const days = document.getElementById('sentimentWindowSelect')?.value || 30;
-            await loadSentiment(symbol, days);
+            await loadSentiment(currentStock, days);
             newButton.disabled = false;
             newButton.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
         });
@@ -1344,6 +1312,7 @@ async function loadMarketNews() {
         
         if (data.success && data.news && data.news.length > 0) {
             allNewsItems = data.news;  // Store for filtering
+            displayNews(allNewsItems);
             
             // Show warning if Twitter API failed
             if (data.warning) {
@@ -1355,11 +1324,8 @@ async function loadMarketNews() {
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 `;
-                container.innerHTML = '';
-                container.appendChild(warningDiv);
+                container.prepend(warningDiv);
             }
-            
-            displayNews(allNewsItems);
         } else {
             container.innerHTML = '<div class="col-12"><div class="alert alert-warning">No market news available at the moment</div></div>';
         }
@@ -2145,42 +2111,6 @@ function exploreModel(modelType) {
     alert(message);
 }
 
-// Search functionality
-async function performSearch() {
-    const query = document.getElementById('searchInput').value.trim();
-    if (!query) return;
-    
-    try {
-        const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
-        const data = await response.json();
-        
-        if (data.results && data.results.length > 0) {
-            // If exact match, load that stock
-            const exactMatch = data.results.find(r => 
-                r.symbol.toUpperCase() === query.toUpperCase()
-            );
-            
-            if (exactMatch) {
-                loadStockDetails(exactMatch.symbol);
-            } else {
-                // Show search results
-                showSearchResults(data.results);
-            }
-        } else {
-            alert('No stocks found matching your query');
-        }
-    } catch (error) {
-        console.error('Error searching:', error);
-        alert('Search failed. Please try again.');
-    }
-}
-
-// Show search results
-function showSearchResults(results) {
-    // TODO: Implement search results modal
-    console.log('Search results:', results);
-}
-
 // Notifications
 function startNotificationPolling() {
     // Simulate notifications (in production, this would poll a backend endpoint)
@@ -2201,15 +2131,17 @@ function showNotifications() {
 
 // Update market status
 function updateMarketStatus() {
-    const now = new Date();
-    const hours = now.getHours();
-    const day = now.getDay();
+    // Market hours are 9:30 AM - 4:00 PM New York time, Mon-Fri, whatever the viewer's timezone
+    const et = {};
+    new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23'
+    }).formatToParts(new Date()).forEach(p => { et[p.type] = p.value; });
+    const minutes = Number(et.hour) * 60 + Number(et.minute);
     
     const marketStatusEl = document.getElementById('marketStatus');
     const marketBadge = document.getElementById('marketStatusBadge');
     
-    // Simple market hours check (9:30 AM - 4:00 PM ET, Mon-Fri)
-    const isOpen = day >= 1 && day <= 5 && hours >= 9 && hours < 16;
+    const isOpen = et.weekday !== 'Sat' && et.weekday !== 'Sun' && minutes >= 570 && minutes < 960;
     if (marketStatusEl) marketStatusEl.textContent = isOpen ? 'MARKET OPEN' : 'MARKET CLOSED';
     if (marketBadge) {
         marketBadge.classList.toggle('closed', !isOpen);
@@ -2290,50 +2222,44 @@ function setupChartEventListeners() {
     });
 }
 
+let _chartSeq = 0;  // lets responses for a superseded symbol/timeframe be dropped
+
 function loadCharts(symbol, period = '1d', interval = '5m') {
     console.log(`📊 Loading charts for ${symbol} (${period}, ${interval})...`);
+    const seq = ++_chartSeq;
+    const getJSON = url => fetch(url).then(response => response.json())
+        .catch(() => ({ success: false, error: 'Failed to load chart data' }));
     
-    // Load basic price chart
-    fetch(`/api/charts/${symbol}?period=${period}&interval=${interval}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                renderPriceChart(data);
-                renderVolumeChart(data);
-                updateChartStats(data);
-                console.log(`✓ Charts loaded: ${data.data_points} data points`);
-            } else {
-                console.error('Failed to load chart data:', data.error);
-                showChartError(data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading charts:', error);
-            showChartError('Failed to load chart data');
-        });
-    
-    // Load technical indicators
-    fetch(`/api/charts/${symbol}/indicators?period=${period}&interval=${interval}`)
-        .then(response => response.json())
-        .then(data => {
-            console.log('📊 Technical indicators response:', data);
-            if (data.success && data.indicators) {
-                console.log('✓ RSI data points:', data.indicators.rsi ? data.indicators.rsi.length : 0);
-                console.log('✓ MACD data points:', data.indicators.macd ? data.indicators.macd.macd.length : 0);
-                setIndicatorPanelMessage(null);  // clear any earlier notice
-                renderRSIChart(data);
-                renderMACDChart(data);
-                renderPriceChartWithIndicators(data);
-                console.log(`✓ Technical indicators loaded`);
-            } else {
-                console.warn('⚠️ No technical indicators data:', data);
-                // Tell the user why instead of leaving the panels silently blank
-                setIndicatorPanelMessage(data.error || 'Indicator data unavailable for this timeframe.');
-            }
-        })
-        .catch(error => {
-            console.error('Error loading technical indicators:', error);
-        });
+    Promise.all([
+        getJSON(`/api/charts/${symbol}?period=${period}&interval=${interval}`),
+        getJSON(`/api/charts/${symbol}/indicators?period=${period}&interval=${interval}`)
+    ]).then(([data, ind]) => {
+        if (seq !== _chartSeq) return;
+        
+        if (data.success) {
+            setChartMessage(null, ['priceChart', 'volumeChart']);
+            renderVolumeChart(data);
+            updateChartStats(data);
+            console.log(`✓ Charts loaded: ${data.data_points} data points`);
+        } else {
+            console.error('Failed to load chart data:', data.error);
+            setChartMessage(data.error || 'Failed to load chart data', ['priceChart', 'volumeChart']);
+        }
+        
+        // The price chart is drawn from one response only, so the plain version
+        // can't race the one with moving averages / Bollinger Bands.
+        if (ind.success && ind.indicators) {
+            setChartMessage(null);  // clear any earlier notice
+            renderRSIChart(ind);
+            renderMACDChart(ind);
+            renderPriceChartWithIndicators(ind);
+        } else {
+            console.warn('⚠️ No technical indicators data:', ind);
+            // Tell the user why instead of leaving the panels silently blank
+            setChartMessage(ind.error || 'Indicator data unavailable for this timeframe.');
+            if (data.success) renderPriceChart(data);
+        }
+    });
 }
 
 function renderPriceChart(data) {
@@ -2573,23 +2499,6 @@ function formatVolume(volume) {
     return volume.toFixed(0);
 }
 
-function showChartError(message) {
-    const priceCanvas = document.getElementById('priceChart');
-    const volumeCanvas = document.getElementById('volumeChart');
-    
-    if (priceCanvas && priceCanvas.parentElement) {
-        priceCanvas.parentElement.innerHTML = `
-            <div class="alert alert-warning" role="alert">
-                <i class="fas fa-exclamation-triangle"></i> ${esc(message)}
-            </div>
-        `;
-    }
-    
-    if (volumeCanvas && volumeCanvas.parentElement) {
-        volumeCanvas.style.display = 'none';
-    }
-}
-
 // Initialize chart event listeners when page loads
 document.addEventListener('DOMContentLoaded', function() {
     setupChartEventListeners();
@@ -2611,12 +2520,16 @@ function debounce(func, wait) {
 }
 
 // Perform stock search
+let _searchSeq = 0;  // lets a slow response for an older query be dropped
+
 async function performSearch(query) {
     if (!query || query.length < 1) return;
+    const seq = ++_searchSeq;
     
     try {
         const response = await fetch(`/api/search/${encodeURIComponent(query)}`);
         const data = await response.json();
+        if (seq !== _searchSeq) return;
         
         if (data.success && data.results.length > 0) {
             displaySearchResults(data.results);
@@ -2625,7 +2538,7 @@ async function performSearch(query) {
         }
     } catch (error) {
         console.error('Search error:', error);
-        displaySearchResults([]);
+        if (seq === _searchSeq) displaySearchResults([]);
     }
 }
 
@@ -2701,6 +2614,7 @@ function displaySearchResults(results) {
 
 // Hide search results
 function hideSearchResults() {
+    _searchSeq++;  // a response still in flight must not reopen the dropdown
     const resultsContainer = document.getElementById('searchResults');
     if (resultsContainer) {
         resultsContainer.style.display = 'none';
@@ -2770,9 +2684,6 @@ function addToWatchlist(symbol, name) {
     
     // Show success message
     showNotification(`Added ${symbol} to watchlist`, 'success');
-    
-    // Load price for new stock
-    loadWatchlistPrices();
 }
 
 // Remove stock from watchlist
@@ -2840,7 +2751,6 @@ function addWatchlistItem(container, symbol, name) {
             <td class="leader-vol" id="vlVol_${esc(symbol)}">\u2014</td>
             <td><div class="depth-bar"><div class="depth-fill depth-green" id="vlDepth_${esc(symbol)}" style="width:50%"></div></div></td>
         `;
-        tr.addEventListener('click', () => { showSection('dashboard'); setActiveNav(document.getElementById('navDashboard')); loadStockDetails(symbol); });
         tbody.appendChild(tr);
     }
 }
@@ -3103,15 +3013,16 @@ function formatStatRow(label, value) {
     return `<tr><td>${label}</td><td class="text-end"><strong>${esc(value)}</strong></td></tr>`;
 }
 
-// Render RSI Chart
-// Show (or clear, when msg is null) an explanatory note in the RSI/MACD panels.
-// Keeps the canvases in place so later successful loads can still render.
-function setIndicatorPanelMessage(msg) {
-    ['rsiChart', 'macdChart'].forEach(function(id) {
+// Show (or clear, when msg is null) an explanatory note in chart panels,
+// clearing the chart under it. Keeps the canvases in place so later
+// successful loads can still render.
+function setChartMessage(msg, ids = ['rsiChart', 'macdChart']) {
+    ids.forEach(function(id) {
         const canvas = document.getElementById(id);
         if (!canvas || !canvas.parentElement) return;
         let note = canvas.parentElement.querySelector('.indicator-msg');
         if (msg) {
+            Chart.getChart(canvas)?.destroy();
             if (!note) {
                 note = document.createElement('p');
                 note.className = 'indicator-msg text-muted small mb-0';
@@ -3124,6 +3035,7 @@ function setIndicatorPanelMessage(msg) {
     });
 }
 
+// Render RSI Chart
 function renderRSIChart(data) {
     console.log('🎨 renderRSIChart called with data:', data);
     const ctx = document.getElementById('rsiChart');
@@ -3152,9 +3064,7 @@ function renderRSIChart(data) {
     // Skip rendering if too many NaN values
     if (validCount < 5) {
         console.warn('⚠️ Insufficient RSI data points for rendering');
-        if (ctx.parentElement) {
-            ctx.parentElement.innerHTML = '<p class="text-muted small">Insufficient data for RSI calculation. Try a longer time period.</p>';
-        }
+        setChartMessage('Insufficient data for RSI calculation. Try a longer time period.', ['rsiChart']);
         return;
     }
     
@@ -3279,10 +3189,7 @@ function renderMACDChart(data) {
     // Skip rendering if too many NaN values
     if (validCount < 10) {
         console.warn('⚠️ Insufficient MACD data points for rendering');
-        const parent = ctx.closest('.card-body');
-        if (parent) {
-            parent.innerHTML = '<p class="text-muted small text-center py-3">Insufficient data for MACD calculation. Try a longer time period (1M, 3M, or 1Y).</p>';
-        }
+        setChartMessage('Insufficient data for MACD calculation. Try a longer time period (1M, 3M, or 1Y).', ['macdChart']);
         return;
     }
     
