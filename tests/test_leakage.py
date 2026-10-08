@@ -62,13 +62,20 @@ class TestNaiveSignal:
 
 # Promotion gate re-scoring
 
-def _register(tmp_path, model, features, metric_value, feature_space=FEATURE_SPACE):
+def _holdout(**cols):
+    n = len(next(iter(cols.values())))
+    return pd.DataFrame({"Date": pd.bdate_range("2026-01-05", periods=n), **cols})
+
+
+def _register(tmp_path, model, features, metric_value, feature_space=FEATURE_SPACE,
+              trained_before="2025-12-31"):
     tgt_dir = tmp_path / "TEST" / "target_1d"
     tgt_dir.mkdir(parents=True)
     joblib.dump(model, tgt_dir / "model.pkl")
     (tgt_dir / "features.json").write_text(json.dumps(features))
     (tgt_dir / "metadata.json").write_text(json.dumps(
-        {"metric_value": metric_value, "feature_space": feature_space}))
+        {"metric_value": metric_value, "feature_space": feature_space,
+         "trained_before": trained_before}))
 
 
 class TestRescoreExisting:
@@ -80,13 +87,13 @@ class TestRescoreExisting:
         _register(tmp_path, model, ["f"], metric_value=0.99)   # stale, inflated
 
         # On the new holdout the relationship is gone → IC near zero
-        holdout = pd.DataFrame({"f": rng.normal(size=51), "target_1d": rng.normal(size=51)})
+        holdout = _holdout(f=rng.normal(size=51), target_1d=rng.normal(size=51))
         ic = _rescore_existing("TEST", tmp_path, "target_1d", "regression", "ic", holdout)
         assert ic is not None and abs(ic) < 0.5
 
     def test_unscorable_model_returns_none(self, tmp_path):
         _register(tmp_path, "not a model", ["f"], metric_value=0.99)
-        holdout = pd.DataFrame({"f": [1.0, 2.0], "target_1d": [0.1, 0.2]})
+        holdout = _holdout(f=[1.0, 2.0], target_1d=[0.1, 0.2])
         assert _rescore_existing("TEST", tmp_path, "target_1d",
                                  "regression", "ic", holdout) is None
 
@@ -95,8 +102,8 @@ class TestRescoreExisting:
         X = pd.DataFrame({"a": rng.normal(size=60), "b": rng.normal(size=60)})
         model = LinearRegression().fit(X, X["a"])
         _register(tmp_path, model, ["a", "b"], metric_value=0.5)
-        holdout = pd.DataFrame({"a": rng.normal(size=51)})
-        holdout["target_1d"] = holdout["a"]
+        a = rng.normal(size=51)
+        holdout = _holdout(a=a, target_1d=a)
         ic = _rescore_existing("TEST", tmp_path, "target_1d", "regression", "ic", holdout)
         assert ic == pytest.approx(1.0)
 
@@ -107,6 +114,17 @@ class TestRescoreExisting:
         x = rng.normal(size=60)
         model = LinearRegression().fit(x.reshape(-1, 1), x)
         _register(tmp_path, model, ["f"], metric_value=0.9, feature_space=None)
-        holdout = pd.DataFrame({"f": x[:51], "target_1d": x[:51]})
+        holdout = _holdout(f=x[:51], target_1d=x[:51])
+        assert _rescore_existing("TEST", tmp_path, "target_1d",
+                                 "regression", "ic", holdout) is None
+
+    def test_model_trained_on_holdout_rows_is_unscorable(self, tmp_path):
+        """Graded on rows it was trained on, a model looks far better than it is
+        (it happened when the holdout grew from 51 to 252 rows)."""
+        rng = np.random.default_rng(6)
+        x = rng.normal(size=60)
+        model = LinearRegression().fit(x.reshape(-1, 1), x)
+        _register(tmp_path, model, ["f"], metric_value=0.5, trained_before="2026-06-01")
+        holdout = _holdout(f=x[:51], target_1d=x[:51])   # starts 2026-01-05
         assert _rescore_existing("TEST", tmp_path, "target_1d",
                                  "regression", "ic", holdout) is None

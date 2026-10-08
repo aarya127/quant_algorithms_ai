@@ -19,6 +19,7 @@ import json
 import shutil
 import datetime
 import numpy as np
+import pandas as pd
 import joblib
 from pathlib import Path
 
@@ -122,6 +123,11 @@ def _rescore_existing(ticker, registry_dir, target, task, primary, holdout_df):
         reg = load_registry(ticker, registry_dir, target=target)
         if reg["metadata"].get("feature_space") != FEATURE_SPACE:
             raise ValueError("trained on an older feature space")
+        # A model trained on rows that are now in the holdout would be graded on
+        # data it has seen (e.g. after the holdout window grows).
+        trained_before = reg["metadata"].get("trained_before")
+        if trained_before is None or pd.Timestamp(trained_before) > holdout_df["Date"].min():
+            raise ValueError("its training data overlaps this holdout")
         X = holdout_df.reindex(columns=reg["features"]).values.astype(float)
         if reg.get("col_med_sel") is not None:
             X = np.where(np.isnan(X), np.asarray(reg["col_med_sel"], dtype=float), X)
@@ -287,6 +293,9 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
             "model_type":       best_name,
             "feature_version":  used_ver,
             "feature_space":    FEATURE_SPACE,
+            # trained only on rows before this date (the holdout's first row)
+            "trained_before":   (str(holdout_df["Date"].min().date())
+                                 if holdout_df is not None else None),
             "created_at":       created_at,
             "primary_metric":   primary,
             "metric_value":     round(float(best_val), 6),
