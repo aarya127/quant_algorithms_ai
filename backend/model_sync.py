@@ -2,7 +2,8 @@
 model_sync.py — keep the served models current with the `models` branch.
 
 Retraining runs in GitHub Actions (.github/workflows/daily-retrain.yml), which
-force-pushes the registry, feature CSVs and MLflow store to the `models` branch.
+force-pushes the registry, feature CSVs, MLflow store and the model's paper-trading
+ledger (paper/) to the `models` branch.
 On Render, ensure_fresh() downloads that branch's tarball at most every _TTL
 seconds and unpacks it over the copies baked into the image. Local runs never
 sync, so a local pipeline run isn't overwritten.
@@ -16,8 +17,6 @@ from pathlib import Path
 
 import requests
 
-from rate_limit import on_render
-
 _ROOT = Path(__file__).resolve().parent.parent
 _URL = os.environ.get(
     'MODELS_ARCHIVE_URL',
@@ -26,15 +25,23 @@ _TTL = 6 * 3600
 # Only these paths may be written from the archive
 _ALLOWED = ('algorithms/machine_learning_algorithms/supervised/model_registry/',
             'algorithms/machine_learning_algorithms/data_pipelines/',
-            'mlflow.db')
+            'mlflow.db',
+            'paper/')
 
 _lock = threading.Lock()
 _last_attempt = 0.0
 
 
+def _on_render():
+    # Same check as rate_limit.on_render, without its Flask import, so the
+    # predictor also loads in the pipeline environment (paper model account).
+    return bool(os.environ.get('RENDER') or os.environ.get('RENDER_EXTERNAL_URL')
+                or os.environ.get('RENDER_SERVICE_ID'))
+
+
 def ensure_fresh():
     global _last_attempt
-    if not on_render() or time.time() - _last_attempt < _TTL:
+    if not _on_render() or time.time() - _last_attempt < _TTL:
         return
     with _lock:
         if time.time() - _last_attempt < _TTL:

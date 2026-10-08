@@ -6,8 +6,9 @@
 # single commit each run, so it never accumulates history.
 #
 # Every run is a full rebuild (a fresh checkout has no feature CSVs to append to);
-# only the model registry and MLflow history carry over from the previous run, so
-# the promotion gate compares against the models currently being served.
+# only the model registry, MLflow history and the model's paper-trading ledger carry
+# over from the previous run, so the promotion gate compares against the models
+# currently being served.
 #
 # Data-provider keys come from repo secrets (Settings → Secrets and variables →
 # Actions); a missing key just skips that source.
@@ -84,12 +85,17 @@ jobs:
             git archive FETCH_HEAD | tar -x -C "$PUBLISHED"
             if [ -d "$PUBLISHED/$REG" ]; then cp -R "$PUBLISHED/$REG/." "$REG/"; fi
             if [ -f "$PUBLISHED/mlflow.db" ]; then cp "$PUBLISHED/mlflow.db" .; fi
+            if [ -d "$PUBLISHED/paper" ]; then cp -R "$PUBLISHED/paper" .; fi
           else
             echo "No models branch yet — starting from the registry in main."
           fi
 
       - name: Run pipeline
         run: python algorithms/machine_learning_algorithms/orchestrator.py "$TICKER"
+
+      # Fills yesterday's order, marks to market, places the next one from today's signal
+      - name: Trade the model's paper account
+        run: python scripts/paper_model_account.py "$TICKER"
 
       - name: Publish to the models branch
         if: github.event_name == 'schedule' || inputs.publish
@@ -100,6 +106,7 @@ jobs:
           cp -R "$REG/$TICKER" "$PUBLISHED/$REG/"
           cp "$PIPES/${TICKER}_features_with_regimes.csv" "$PUBLISHED/$PIPES/"
           if [ -f mlflow.db ]; then cp mlflow.db "$PUBLISHED/"; fi
+          mkdir -p "$PUBLISHED/paper" && cp paper/*.json "$PUBLISHED/paper/"
 
           cd "$PUBLISHED"
           git init -q -b models

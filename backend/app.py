@@ -36,10 +36,11 @@ from routes.backtest import bp as _backtest_bp    # noqa: E402
 from routes.research import bp as _research_bp    # noqa: E402
 from routes.chat import bp as _chat_bp            # noqa: E402
 from routes.ml import bp as _ml_bp                # noqa: E402
+from routes.paper import bp as _paper_bp          # noqa: E402
 
 for _bp in (_pipeline_bp, _charts_bp, _news_bp, _trading_bp,
             _market_bp, _stock_bp, _backtest_bp, _research_bp,
-            _chat_bp, _ml_bp):
+            _chat_bp, _ml_bp, _paper_bp):
     app.register_blueprint(_bp)
 
 # Finnhub/AlphaVantage keys travel as URL query params, and requests puts the full

@@ -3513,6 +3513,7 @@ let _lwRSIChart = null;
 let _lwMACDChart = null;
 let _lwStochChart = null;
 let _tradingChartData = null;  // last /api/trading/ohlcv payload drawn on _lwChart
+let _lwPriceSeries = null;     // main price series — paper.js puts fill markers on it
 
 // Snapshot of the trading chart for the AI chat: the window the user has
 // scrolled/zoomed to, plus the last visible bar with its indicator values.
@@ -3553,7 +3554,7 @@ function _destroyLWCharts() {
      ['_lwStochChart', _lwStochChart]].forEach(function(pair) {
         if (pair[1]) { try { pair[1].remove(); } catch(e){} }
     });
-    _lwChart = _lwVolChart = _lwRSIChart = _lwMACDChart = _lwStochChart = null;
+    _lwChart = _lwVolChart = _lwRSIChart = _lwMACDChart = _lwStochChart = _lwPriceSeries = null;
     // Hide sub-panes
     ['tradingRSIChart','tradingMACDChart','tradingStochChart'].forEach(function(id) {
         var el = document.getElementById(id);
@@ -3605,6 +3606,7 @@ function loadTradingChart() {
         show('tradingChartResult');
         _renderLWChart(data, ticker, symbol, interval, style);
         _tradingChartData = data;
+        paperOnChartLoaded(ticker);
         document.getElementById('tradingChartLabel').textContent =
             ticker + ' \u00b7 ' + interval + '  [' + data.bars.length + ' bars]';
         var src = document.getElementById('tradingChartSource');
@@ -3696,6 +3698,7 @@ function _renderLWChart(data, ticker, symbol, interval, style) {
     if (useLine) {
         var ls = _lwChart.addLineSeries({ color: '#00c9a7', lineWidth: 2, priceLineVisible: true });
         ls.setData(bars.map(function(b){ return { time: b.time, value: b.close }; }));
+        _lwPriceSeries = ls;
     } else {
         var cs = _lwChart.addCandlestickSeries({
             upColor: '#26c281', downColor: '#f87171',
@@ -3705,6 +3708,7 @@ function _renderLWChart(data, ticker, symbol, interval, style) {
         cs.setData(bars.map(function(b){
             return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close };
         }));
+        _lwPriceSeries = cs;
     }
 
     // EMA overlays

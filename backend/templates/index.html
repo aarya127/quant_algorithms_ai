@@ -11,6 +11,25 @@
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        #tradingBody { flex:1; min-height:0; display:flex; }
+        #paperPanel { width:300px; flex-shrink:0; overflow-y:auto; background:#0a0a0a;
+                      border-left:1px solid #1e1e1e; color:#cbd5e1; font-size:.78rem; }
+        #paperPanel .paper-head, #paperPanel .paper-block { padding:10px 12px; border-bottom:1px solid #1a1a1a; }
+        #paperPanel .paper-label { color:#64748b; text-transform:uppercase; letter-spacing:.04em; font-size:.68rem; margin-bottom:4px; }
+        #paperPanel .paper-table { width:100%; }
+        #paperPanel .paper-table th { color:#64748b; font-weight:normal; }
+        #paperPanel .paper-row { cursor:pointer; }
+        #paperPanel .paper-row:hover { background:#141414; }
+        #paperPanel .paper-order { padding:3px 0; }
+        #paperPanel a { color:#818cf8; }
+        @media (max-width: 900px) {
+            #sectionTrading { overflow-y:auto !important; }
+            #tradingBody { flex-direction:column; }
+            #tradingChartArea { min-height:55vh; }
+            #paperPanel { width:auto; border-left:0; border-top:1px solid #1e1e1e; }
+        }
+    </style>
 </head>
 <body>
 <div class="app-shell">
@@ -1683,8 +1702,9 @@
                     </div>
                 </div>
 
-                <!-- ── Chart area (fills remaining height) ──────────────────── -->
-                <div id="tradingChartArea" style="flex:1; min-height:0; position:relative; overflow:hidden;">
+                <!-- ── Chart + paper-trading panel (fills remaining height) ─── -->
+                <div id="tradingBody">
+                <div id="tradingChartArea" style="flex:1; min-width:0; min-height:0; position:relative; overflow:hidden;">
 
                     <!-- Placeholder -->
                     <div id="tradingChartPlaceholder" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#050505;">
@@ -1720,6 +1740,64 @@
                         </div>
                     </div>
 
+                </div>
+
+                <!-- Paper trading (static/js/paper.js) -->
+                <aside id="paperPanel">
+                    <div class="paper-head">
+                        <div class="d-flex justify-content-between align-items-baseline">
+                            <strong class="text-white">Paper trading</strong>
+                            <a href="#" class="text-secondary" onclick="paperReset(); return false;">reset</a>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-baseline mt-1">
+                            <span id="paperEquity" class="text-white" style="font-size:1.15rem;">$100,000.00</span>
+                            <span id="paperReturn">+0.00%</span>
+                        </div>
+                        <div class="text-secondary">Cash <span id="paperCash">$100,000.00</span></div>
+                    </div>
+
+                    <div class="paper-block">
+                        <div class="d-flex gap-1">
+                            <input id="paperSymbol" class="form-control form-control-sm tv-ctrl" placeholder="Symbol" style="width:80px;">
+                            <input id="paperQty" type="number" min="1" step="1" value="10" class="form-control form-control-sm tv-ctrl" style="width:70px;" aria-label="Quantity">
+                            <select id="paperType" class="form-select form-select-sm tv-ctrl" aria-label="Order type">
+                                <option value="market">Market</option>
+                                <option value="limit">Limit</option>
+                            </select>
+                        </div>
+                        <input id="paperLimit" type="number" min="0" step="0.01" placeholder="Limit price" class="form-control form-control-sm tv-ctrl mt-1" style="display:none;">
+                        <div class="d-flex gap-1 mt-1">
+                            <button class="btn btn-success btn-sm flex-fill" onclick="paperSubmit('buy')">Buy</button>
+                            <button class="btn btn-danger btn-sm flex-fill" onclick="paperSubmit('sell')">Sell</button>
+                        </div>
+                        <div id="paperEstimate" class="text-secondary mt-1"></div>
+                        <div id="paperTicketMsg" class="mt-1"></div>
+                    </div>
+
+                    <div class="paper-block">
+                        <div class="paper-label">Positions</div>
+                        <table class="paper-table">
+                            <thead><tr><th>Sym</th><th class="text-end">Qty</th><th class="text-end">Avg</th><th class="text-end">Last</th><th class="text-end">P&amp;L</th></tr></thead>
+                            <tbody id="paperPositions"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="paper-block">
+                        <div class="paper-label">Orders</div>
+                        <div id="paperOrders"></div>
+                    </div>
+
+                    <div class="paper-block">
+                        <div class="paper-label">ML model's paper account</div>
+                        <div id="paperModel" class="text-secondary">Loading…</div>
+                    </div>
+
+                    <div class="paper-block text-secondary" style="font-size:.7rem;">
+                        Simulated trading saved in this browser. Fills use the first price after
+                        you order (quotes may be ~15 min delayed), 5 bps slippage on market
+                        orders, no commission. USD-listed symbols, long only.
+                    </div>
+                </aside>
                 </div>
 
             </section>
@@ -1775,6 +1853,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}?v={{ range(10000,99999) | random }}"></script>
+    <script src="{{ url_for('static', filename='js/paper.js') }}?v={{ range(10000,99999) | random }}"></script>
 
     <!-- ================================================================
          AI Chat Widget
@@ -1868,7 +1947,38 @@
             ui.trading_chart = tradingChartState();
         }
         if (_chatSelection) ui.selected_text = _chatSelection;
+        ui.paper_portfolio = paperSummary();
         return ui;
+    }
+
+    // The bot proposes trades as "ORDER: BUY 10 NVDA MARKET" / "ORDER: SELL 5 AAPL LIMIT 180"
+    // lines (see routes/chat.py); they're shown as buttons, never executed on their own.
+    const _ORDER_RE = /^ORDER:\s*(BUY|SELL)\s+(\d+)\s+([A-Z0-9.\-]{1,10})\s+(MARKET|LIMIT)(?:\s+\$?(\d+(?:\.\d+)?))?\s*$/gim;
+
+    function _chatVisibleText(text) {
+        return text.replace(/^ORDER:.*$/gim, '').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    function _chatOrderButtons(div, text) {
+        const seen = new Set();
+        for (const m of text.matchAll(_ORDER_RE)) {
+            const o = { side: m[1].toLowerCase(), qty: Number(m[2]), symbol: m[3].toUpperCase(),
+                        type: m[4].toLowerCase(), limit: m[5] ? Number(m[5]) : null, source: 'chat' };
+            const label = `${o.side === 'buy' ? 'Buy' : 'Sell'} ${o.qty} ${o.symbol} @ ` +
+                          (o.type === 'limit' ? `${o.limit} limit` : 'market');
+            if (seen.has(label) || seen.size >= 3) continue;
+            seen.add(label);
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-sm mt-2 d-block';
+            btn.style.cssText = 'background:#1e293b;color:#e2e8f0;border:1px solid #475569;font-size:.75rem;';
+            btn.textContent = `Place paper order: ${label}`;
+            btn.onclick = () => {
+                const err = paperPlaceOrder(o);
+                btn.disabled = true;
+                btn.textContent = err ? `⚠ ${err}` : `✓ Placed: ${label} — fills from the next price (Trading tab)`;
+            };
+            div.appendChild(btn);
+        }
     }
 
     function toggleChat() {
@@ -1940,11 +2050,14 @@
             const reader = resp.body.getReader();
             const dec    = new TextDecoder();
             assistantDiv.textContent = '';
+            let buf = '';   // an SSE line can arrive split across reads
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                const lines = dec.decode(value).split('\n');
+                buf += dec.decode(value, { stream: true });
+                const lines = buf.split('\n');
+                buf = lines.pop();
                 for (const line of lines) {
                     if (!line.startsWith('data: ')) continue;
                     const raw = line.slice(6).trim();
@@ -1953,7 +2066,7 @@
                         const obj = JSON.parse(raw);
                         if (obj.delta) {
                             fullText += obj.delta;
-                            assistantDiv.textContent = fullText;
+                            assistantDiv.textContent = _chatVisibleText(fullText);
                             document.getElementById('chatMessages').scrollTop = 9999;
                         }
                         if (obj.error) {
@@ -1968,6 +2081,7 @@
             _chatStreaming = false;
             if (fullText) {
                 _chatHistory.push({ role: 'assistant', content: fullText });
+                _chatOrderButtons(assistantDiv, fullText);
             }
         }
     }
