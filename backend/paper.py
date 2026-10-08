@@ -2,6 +2,9 @@
 paper.py — paper-trading fill rules, shared by the web routes (routes/paper.py)
 and the ML model's account (scripts/paper_model_account.py).
 
+Prices are in the symbol's listing currency; quotes carry `fx_usd` so accounts
+(kept in USD) can convert, e.g. TSX listings in CAD.
+
 An order fills only from bars that START at or after the moment it was placed, so
 its price never comes from data the trader could already see:
   market — the first such bar's open, with SLIPPAGE against the trader
@@ -67,8 +70,17 @@ def bars_since(symbol: str, since: pd.Timestamp) -> pd.DataFrame:
         start=start, interval="1d", auto_adjust=False))
 
 
+def fx_usd(currency: str) -> float:
+    """USD value of one unit of `currency` (yfinance FX; raises if unknown)."""
+    if currency == "USD":
+        return 1.0
+    import yfinance as yf
+    return _cached((currency, "fx"), lambda: float(
+        yf.Ticker(f"{currency}USD=X").fast_info["last_price"]))
+
+
 def quote(symbol: str) -> dict:
-    """Latest price and listing currency (yfinance; may be ~15 min delayed)."""
+    """Latest price, listing currency and its USD rate (yfinance; may be ~15 min delayed)."""
     import yfinance as yf
 
     def fetch():
@@ -76,5 +88,6 @@ def quote(symbol: str) -> dict:
         return {"price": float(fi["last_price"]),
                 "prev_close": float(fi["previous_close"]),
                 "currency": fi["currency"],
+                "fx_usd": fx_usd(fi["currency"]),
                 "as_of": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     return _cached((symbol, "quote"), fetch)

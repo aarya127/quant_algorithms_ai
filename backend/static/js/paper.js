@@ -1,12 +1,15 @@
 // ─── Paper trading ──────────────────────────────────────────────────────────
 // The account lives in this browser (localStorage); the server only prices
 // quotes and decides fills (/api/paper/*), from bars that start after the order
-// was placed. Long-only, USD-listed symbols, no commission, 5 bps market slippage.
-// Depends on esc() from main.js.
+// was placed. No commission, 5 bps market slippage. The account is in USD:
+// other listings (e.g. TSX in CAD) convert at the server's live FX rate.
+// Shorting is allowed; gross exposure is capped at 2× equity, like a margin
+// account. Depends on esc() from main.js.
 
 var PAPER_KEY = 'investai.paper.v1';
 var PAPER_START_CASH = 100000;
 var PAPER_POLL_MS = 20000;
+var PAPER_LEVERAGE = 2;     // max gross exposure / equity
 
 var _paper = null;          // account state, see _paperNew()
 var _paperQuotes = {};      // symbol → {price, prev_close, ...}
@@ -20,6 +23,11 @@ function _paperNew() {
 function _paperLoad() {
     try { _paper = JSON.parse(localStorage.getItem(PAPER_KEY)) || _paperNew(); }
     catch (e) { _paper = _paperNew(); }
+    // v1 positions were long-only USD {qty, cost}
+    Object.keys(_paper.positions).forEach(function (s) {
+        var p = _paper.positions[s];
+        if (p.cost != null) _paper.positions[s] = { qty: p.qty, avg_usd: p.cost / p.qty, currency: 'USD' };
+    });
 }
 
 function _paperSave() {
@@ -32,22 +40,30 @@ function _paperFmt(n, d) {
                                               maximumFractionDigits: d == null ? 2 : d });
 }
 
-function _paperEquity() {
-    var eq = _paper.cash;
-    Object.keys(_paper.positions).forEach(function (s) {
-        var p = _paper.positions[s], q = _paperQuotes[s];
-        eq += p.qty * (q && q.price ? q.price : p.cost / p.qty);
-    });
-    return eq;
+// Last price in USD (falls back to the entry price until a quote arrives)
+function _paperLastUSD(sym) {
+    var q = _paperQuotes[sym];
+    return q && q.price ? q.price * q.fx_usd : _paper.positions[sym].avg_usd;
 }
 
-// Shares already committed to open sell orders can't be sold twice
-function _paperFreeShares(sym) {
-    var held = _paper.positions[sym] ? _paper.positions[sym].qty : 0;
-    _paper.orders.forEach(function (o) {
-        if (o.status === 'open' && o.side === 'sell' && o.symbol === sym) held -= o.qty;
+// Equity and gross exposure, optionally as if `sym` held `qty` at `pxUsd`
+function _paperBook(sym, qty, pxUsd, cash) {
+    var eq = cash == null ? _paper.cash : cash, gross = 0, seen = false;
+    Object.keys(_paper.positions).forEach(function (s) {
+        var q = _paper.positions[s].qty, px = _paperLastUSD(s);
+        if (s === sym) { q = qty; px = pxUsd; seen = true; }
+        eq += q * px;
+        gross += Math.abs(q * px);
     });
-    return held;
+    if (sym && !seen) { eq += qty * pxUsd; gross += Math.abs(qty * pxUsd); }
+    return { equity: eq, gross: gross };
+}
+
+function _paperEquity() { return _paperBook().equity; }
+
+function _paperBuyingPower() {
+    var b = _paperBook();
+    return PAPER_LEVERAGE * b.equity - b.gross;
 }
 
 // ── Orders ─────────────────────────────────────────────────────────────────
@@ -60,7 +76,13 @@ function paperPlaceOrder(o) {
     if (!/^[A-Z0-9][A-Z0-9.\-]{0,9}$/.test(sym)) return 'Enter a valid symbol.';
     if (!(qty > 0) || Math.floor(qty) !== qty) return 'Quantity must be a whole number above 0.';
     if (o.type === 'limit' && !(limit > 0)) return 'Enter a limit price.';
-    if (o.side === 'sell' && qty > _paperFreeShares(sym)) return 'You can only sell shares you hold (no shorting).';
+    var q = _paperQuotes[sym];
+    if (q) {   // estimate now; the fill re-checks at its actual price
+        var px = (limit || q.price) * q.fx_usd, held = _paper.positions[sym] ? _paper.positions[sym].qty : 0;
+        var dq = o.side === 'buy' ? qty : -qty;
+        var after = _paperBook(sym, held + dq, px, _paper.cash - dq * px);
+        if (after.gross > PAPER_LEVERAGE * after.equity) return 'Not enough buying power (gross exposure is capped at 2× equity).';
+    }
     _paper.orders.unshift({
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         symbol: sym, side: o.side, qty: qty, type: o.type, limit: limit,
@@ -85,28 +107,32 @@ function paperReset() {
     paperRender();
 }
 
-// Apply a server fill to the account. Cash/shares are re-checked at fill time.
+// Apply a server fill. Positions are signed (short < 0) with a USD average entry
+// price; reducing a position realizes P&L against that average, and an order
+// that crosses zero opens the remainder at the fill price.
 function _paperApplyFill(o, r) {
-    var cost = o.qty * r.price;
-    var pos = _paper.positions[o.symbol];
-    if (o.side === 'buy') {
-        if (cost > _paper.cash + 1e-6) { o.status = 'rejected'; o.reason = 'Not enough cash at fill'; return; }
-        _paper.cash -= cost;
-        pos = _paper.positions[o.symbol] = pos || { qty: 0, cost: 0 };
-        pos.qty += o.qty;
-        pos.cost += cost;
-    } else {
-        if (!pos || o.qty > pos.qty) { o.status = 'rejected'; o.reason = 'Not enough shares at fill'; return; }
-        var basis = pos.cost * o.qty / pos.qty;
-        o.realized = cost - basis;
-        _paper.realized += o.realized;
-        _paper.cash += cost;
-        pos.qty -= o.qty;
-        pos.cost -= basis;
-        if (pos.qty === 0) delete _paper.positions[o.symbol];
+    var px = r.price * r.fx_usd;
+    var pos = _paper.positions[o.symbol] || { qty: 0, avg_usd: 0, currency: r.currency };
+    var dq = o.side === 'buy' ? o.qty : -o.qty;
+    var after = _paperBook(o.symbol, pos.qty + dq, px, _paper.cash - dq * px);
+    if (after.gross > PAPER_LEVERAGE * after.equity + 1e-6) {
+        o.status = 'rejected'; o.reason = 'Not enough buying power at fill'; return;
     }
+    if (pos.qty === 0 || (pos.qty > 0) === (dq > 0)) {          // open or add
+        pos.avg_usd = (Math.abs(pos.qty) * pos.avg_usd + Math.abs(dq) * px) / (Math.abs(pos.qty) + Math.abs(dq));
+    } else {                                                      // reduce, close or flip
+        var closing = Math.min(Math.abs(dq), Math.abs(pos.qty));
+        o.realized = closing * (px - pos.avg_usd) * (pos.qty > 0 ? 1 : -1);
+        _paper.realized += o.realized;
+        if (Math.abs(dq) > Math.abs(pos.qty)) pos.avg_usd = px;
+    }
+    pos.qty += dq;
+    _paper.cash -= dq * px;
+    if (pos.qty === 0) delete _paper.positions[o.symbol];
+    else _paper.positions[o.symbol] = pos;
     o.status = 'filled';
     o.price = r.price;
+    o.currency = r.currency;
     o.filled_at = r.filled_at;
 }
 
@@ -165,15 +191,18 @@ function paperRender() {
     retEl.textContent = (ret >= 0 ? '+' : '') + _paperFmt(ret) + '%';
     retEl.style.color = ret >= 0 ? '#26c281' : '#f87171';
     document.getElementById('paperCash').textContent = '$' + _paperFmt(_paper.cash);
+    document.getElementById('paperBP').textContent = '$' + _paperFmt(Math.max(0, _paperBuyingPower()));
 
     // Positions
     var rows = Object.keys(_paper.positions).sort().map(function (s) {
         var p = _paper.positions[s], q = _paperQuotes[s];
-        var last = q ? q.price : null, avg = p.cost / p.qty;
+        var last = q ? q.price * q.fx_usd : null, avg = p.avg_usd;
         var pnl = last != null ? (last - avg) * p.qty : null;
         var col = pnl == null ? '#94a3b8' : (pnl >= 0 ? '#26c281' : '#f87171');
         return '<tr class="paper-row" data-symbol="' + esc(s) + '">' +
-            '<td>' + esc(s) + '</td><td class="text-end">' + _paperFmt(p.qty, 0) + '</td>' +
+            '<td>' + esc(s) + (p.currency && p.currency !== 'USD' ? ' <span class="text-secondary">' + esc(p.currency) + '</span>' : '') +
+            (p.qty < 0 ? ' <span style="color:#f87171">short</span>' : '') + '</td>' +
+            '<td class="text-end">' + _paperFmt(p.qty, 0) + '</td>' +
             '<td class="text-end">' + _paperFmt(avg) + '</td>' +
             '<td class="text-end">' + _paperFmt(last) + '</td>' +
             '<td class="text-end" style="color:' + col + '">' + (pnl == null ? '—' : (pnl >= 0 ? '+' : '') + _paperFmt(pnl)) + '</td></tr>';
@@ -189,6 +218,7 @@ function paperRender() {
         var what = (o.side === 'buy' ? 'Buy ' : 'Sell ') + _paperFmt(o.qty, 0) + ' ' + esc(o.symbol) +
                    (o.type === 'limit' ? ' @ ' + _paperFmt(o.limit) + ' lmt' : ' @ mkt');
         var detail = o.status === 'filled' ? 'filled ' + _paperFmt(o.price) +
+                         (o.currency && o.currency !== 'USD' ? ' ' + esc(o.currency) : '') +
                          (o.realized != null ? ' · P&amp;L ' + (o.realized >= 0 ? '+' : '') + _paperFmt(o.realized) : '')
                    : o.status === 'rejected' ? esc(o.reason || 'rejected')
                    : o.status === 'open' ? 'waiting for the next price after ' + esc(new Date(o.placed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
@@ -208,10 +238,13 @@ function _paperRenderEstimate() {
     var sym = document.getElementById('paperSymbol').value.trim().toUpperCase();
     var qty = Number(document.getElementById('paperQty').value);
     var type = document.getElementById('paperType').value;
-    var px = type === 'limit' ? Number(document.getElementById('paperLimit').value)
-                              : (_paperQuotes[sym] ? _paperQuotes[sym].price : null);
-    document.getElementById('paperEstimate').textContent =
-        px && qty > 0 ? '≈ $' + _paperFmt(px * qty) + (type === 'market' ? ' at last price' : '') : '';
+    var q = _paperQuotes[sym];
+    var px = type === 'limit' ? Number(document.getElementById('paperLimit').value) : (q ? q.price : null);
+    var cur = q ? q.currency : 'USD';
+    document.getElementById('paperEstimate').textContent = !(px && qty > 0) ? '' :
+        '≈ ' + (cur === 'USD' ? '$' + _paperFmt(px * qty)
+                              : _paperFmt(px * qty) + ' ' + cur + ' (≈ $' + _paperFmt(px * qty * q.fx_usd) + ')') +
+        (type === 'market' ? ' at last price' : '');
 }
 
 // Buy/sell arrows on the trading chart for this symbol's fills
@@ -300,13 +333,16 @@ function paperLoadModelAccount() {
 function paperSummary() {
     if (!_paper) _paperLoad();
     return {
+        currency: 'USD',
         cash: Math.round(_paper.cash * 100) / 100,
         equity: Math.round(_paperEquity() * 100) / 100,
+        buying_power: Math.round(_paperBuyingPower() * 100) / 100,
         start_cash: _paper.start_cash,
         positions: Object.keys(_paper.positions).map(function (s) {
             var p = _paper.positions[s], q = _paperQuotes[s];
-            return { symbol: s, qty: p.qty, avg_cost: Math.round(p.cost / p.qty * 100) / 100,
-                     last: q ? q.price : null };
+            return { symbol: s, qty: p.qty, avg_cost_usd: Math.round(p.avg_usd * 100) / 100,
+                     last_usd: q ? Math.round(q.price * q.fx_usd * 100) / 100 : null,
+                     listing_currency: p.currency };
         }),
         open_orders: _paper.orders.filter(function (o) { return o.status === 'open'; }).map(function (o) {
             return { side: o.side, qty: o.qty, symbol: o.symbol, type: o.type, limit: o.limit };

@@ -3568,6 +3568,9 @@ function loadTradingChart() {
     if (!ticker) { alert('Please enter a ticker symbol.'); return; }
 
     var symbol   = exchange + ':' + ticker;
+    // yfinance needs the exchange suffix for Canadian listings (TD on TSX = TD.TO)
+    var yfTicker = ticker.indexOf('.') < 0 && exchange === 'TSX'  ? ticker + '.TO'
+                 : ticker.indexOf('.') < 0 && exchange === 'TSXV' ? ticker + '.V' : ticker;
     // Read interval from radio pills
     var ivChecked = document.querySelector('input[name="tvInterval"]:checked');
     var interval  = ivChecked ? ivChecked.value : '1D';
@@ -3596,7 +3599,7 @@ function loadTradingChart() {
     fetch('/api/trading/ohlcv', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ ticker: ticker, interval: interval, period: 'auto' })
+        body:    JSON.stringify({ ticker: yfTicker, interval: interval, period: 'auto' })
     })
     .then(function(resp) { return resp.json(); })
     .then(function(data) {
@@ -3606,7 +3609,7 @@ function loadTradingChart() {
         show('tradingChartResult');
         _renderLWChart(data, ticker, symbol, interval, style);
         _tradingChartData = data;
-        paperOnChartLoaded(ticker);
+        paperOnChartLoaded(yfTicker);
         document.getElementById('tradingChartLabel').textContent =
             ticker + ' \u00b7 ' + interval + '  [' + data.bars.length + ' bars]';
         var src = document.getElementById('tradingChartSource');

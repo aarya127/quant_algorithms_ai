@@ -31,7 +31,7 @@ committed AND deployed to Render.
 | Flask backend | `backend/app.py` (entrypoint) + `backend/routes/` | 38 routes, ALL in blueprints (one module per domain); `services.py` = guarded data layer + TTL caches; `common.py` = shared config/helpers |
 | Prediction serving + drift | `backend/predictor.py` | served by `backend/routes/ml.py` (`/api/predict`, `/api/drift`, `/api/model/status`, `/api/mlflow/runs`) |
 | Model sync | `backend/model_sync.py` | pulls the `models` branch on Render (≤ every 6 h); no-op locally |
-| Paper trading | `backend/paper.py` (fill rules) + `routes/paper.py` + `static/js/paper.js` | portfolios live in the browser (localStorage); the server only quotes and fills, from bars starting after the order. The chat proposes `ORDER:` lines rendered as confirm buttons |
+| Paper trading | `backend/paper.py` (fill rules) + `routes/paper.py` + `static/js/paper.js` | portfolios live in the browser (localStorage); the server only quotes and fills, from bars starting after the order. USD account, other listings converted at live FX; shorting up to 2× equity gross. Bookkeeping test: `node tests/js/test_paper_accounting.js`. The chat proposes `ORDER:` lines rendered as confirm buttons |
 | Model paper account | `scripts/paper_model_account.py` | run by the daily retrain; ledger `paper/<T>_model_account.json` is published on the `models` branch |
 | Retraining driver | `algorithms/machine_learning_algorithms/orchestrator.py` | 5-step pipeline |
 | Pipeline stages | `.../data_pipelines/` | `run_pipeline.py`, `clean.py`, `normalize.py` |

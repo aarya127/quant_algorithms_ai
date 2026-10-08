@@ -1753,7 +1753,10 @@
                             <span id="paperEquity" class="text-white" style="font-size:1.15rem;">$100,000.00</span>
                             <span id="paperReturn">+0.00%</span>
                         </div>
-                        <div class="text-secondary">Cash <span id="paperCash">$100,000.00</span></div>
+                        <div class="text-secondary d-flex justify-content-between">
+                            <span>Cash <span id="paperCash">$100,000.00</span></span>
+                            <span title="Gross exposure is capped at 2× equity">Buying power <span id="paperBP">$200,000.00</span></span>
+                        </div>
                     </div>
 
                     <div class="paper-block">
@@ -1768,7 +1771,7 @@
                         <input id="paperLimit" type="number" min="0" step="0.01" placeholder="Limit price" class="form-control form-control-sm tv-ctrl mt-1" style="display:none;">
                         <div class="d-flex gap-1 mt-1">
                             <button class="btn btn-success btn-sm flex-fill" onclick="paperSubmit('buy')">Buy</button>
-                            <button class="btn btn-danger btn-sm flex-fill" onclick="paperSubmit('sell')">Sell</button>
+                            <button class="btn btn-danger btn-sm flex-fill" onclick="paperSubmit('sell')">Sell / Short</button>
                         </div>
                         <div id="paperEstimate" class="text-secondary mt-1"></div>
                         <div id="paperTicketMsg" class="mt-1"></div>
@@ -1795,7 +1798,8 @@
                     <div class="paper-block text-secondary" style="font-size:.7rem;">
                         Simulated trading saved in this browser. Fills use the first price after
                         you order (quotes may be ~15 min delayed), 5 bps slippage on market
-                        orders, no commission. USD-listed symbols, long only.
+                        orders, no commission. The account is in USD; other listings (e.g. TSX:
+                        TD.TO) convert at the live FX rate. Shorting allowed up to 2× equity.
                     </div>
                 </aside>
                 </div>

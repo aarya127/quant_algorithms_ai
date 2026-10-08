@@ -6,7 +6,10 @@ disk); the server only prices quotes and decides fills, using paper.py's rules.
 
 GET  /api/paper/quote?symbols=NVDA,AAPL  → latest prices
 POST /api/paper/fill  {orders: [{id, symbol, side, qty, type, limit?, placed_at}]}
-                      → {results: [{id, status: filled|open|rejected, price?, filled_at?, reason?}]}
+                      → {results: [{id, status: filled|open|rejected, price?, currency?,
+                                    fx_usd?, filled_at?, reason?}]}
+Prices are in the listing currency; fx_usd converts them to the account's USD, at
+the time the fill is checked (live orders are checked every ~20 s, so ≈ fill time).
 GET  /api/paper/model?ticker=NVDA → the ML model's paper account (traded by the daily retrain)
 """
 import json
@@ -79,10 +82,6 @@ def fill():
             continue
         try:
             q = paper.quote(o['symbol'])
-            if q['currency'] != 'USD':
-                results.append({'id': oid, 'status': 'rejected',
-                                'reason': 'paper trading supports USD-listed symbols only'})
-                continue
             got = paper.fill_order(o, paper.bars_since(o['symbol'], o['placed_at']))
         except Exception as e:
             # Unknown ticker or a data hiccup: leave the order open, it's retried next poll
@@ -93,6 +92,7 @@ def fill():
         else:
             px, ts = got
             results.append({'id': oid, 'status': 'filled', 'price': round(px, 4),
+                            'currency': q['currency'], 'fx_usd': q['fx_usd'],
                             'filled_at': ts.isoformat()})
     return jsonify({'success': True, 'results': results})
 

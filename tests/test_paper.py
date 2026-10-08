@@ -65,9 +65,10 @@ class TestFillRules:
 @pytest.fixture()
 def client(monkeypatch):
     import app as app_module
-    monkeypatch.setattr(paper, "quote", lambda s: {"price": 100.0, "prev_close": 99.0,
-                                                   "currency": "CAD" if s.endswith(".TO") else "USD",
-                                                   "as_of": "x"})
+    monkeypatch.setattr(paper, "quote", lambda s: {
+        "price": 100.0, "prev_close": 99.0, "as_of": "x",
+        **({"currency": "CAD", "fx_usd": 0.73} if s.endswith(".TO") else
+           {"currency": "USD", "fx_usd": 1.0})})
     monkeypatch.setattr(paper, "bars_since", lambda s, since: TestFillRules.BARS)
     app_module.app.config["TESTING"] = True
     return app_module.app.test_client()
@@ -90,11 +91,15 @@ class TestFillEndpoint:
         ({"qty": 0}, "qty or limit out of range"),
         ({"type": "limit", "limit": -5}, "qty or limit out of range"),
         ({"placed_at": "2099-01-01T00:00:00Z"}, "placed_at is in the future"),
-        ({"symbol": "TD.TO"}, "paper trading supports USD-listed symbols only"),
     ])
     def test_rejections(self, client, bad, reason):
         res = self._post(client, **bad)
         assert res["status"] == "rejected" and res["reason"] == reason
+
+    def test_foreign_listing_fills_with_its_usd_rate(self, client):
+        res = self._post(client, symbol="TD.TO")
+        assert res["status"] == "filled"
+        assert (res["currency"], res["fx_usd"]) == ("CAD", 0.73)
 
     def test_too_many_orders(self, client):
         r = client.post("/api/paper/fill", json={"orders": [{}] * 51})
