@@ -310,12 +310,14 @@ function paperLoadModelAccount() {
             '<div class="d-flex justify-content-between text-secondary"><span>buy &amp; hold</span>' +
             '<span style="color:' + col(bret) + '">' + (bret >= 0 ? '+' : '') + _paperFmt(bret) + '%</span></div>' +
             '<div class="text-secondary mt-1">Signal ' + esc(sig.signal || '—') + ' (' + esc(sig.date || '') + ') · ' +
-            (d.shares > 0 ? 'holding ' + _paperFmt(d.shares, 0) + ' sh' : 'in cash') +
-            (d.pending ? ' · ' + esc(d.pending.side) + ' at next open' : '') + '</div>' +
+            (d.shares > 0 ? 'long ' + _paperFmt(d.shares, 0) + ' sh'
+             : d.shares < 0 ? 'short ' + _paperFmt(-d.shares, 0) + ' sh' : 'in cash') +
+            (d.pending ? ' · → ' + esc(d.pending.target === 'flat' ? 'cash' : d.pending.target || d.pending.side) +
+                         ' at next open' : '') + '</div>' +
             '<div id="paperModelChart" style="height:110px; margin-top:6px;"></div>' +
             '<div class="text-secondary" style="font-size:.7rem">Since ' + esc(d.equity[0].date) + ' · ' +
             d.trades.length + ' trade' + (d.trades.length === 1 ? '' : 's') +
-            ' · decides at the close, fills at the next open</div>';
+            ' · long, short or cash from the signal; decides at the close, fills at the next open</div>';
         if (_paperModelChart) { try { _paperModelChart.remove(); } catch (e) {} }
         _paperModelChart = LightweightCharts.createChart(document.getElementById('paperModelChart'), {
             autoSize: true, layout: { background: { type: 'solid', color: '#0a0a0a' }, textColor: '#64748b' },

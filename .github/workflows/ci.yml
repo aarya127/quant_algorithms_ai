@@ -68,6 +68,11 @@ jobs:
           pytest tests/test_paper.py \
             -v --tb=short
 
+      - name: Run unit tests — model paper account
+        run: |
+          pytest tests/test_paper_model_account.py \
+            -v --tb=short
+
       - name: Run unit tests — paper account bookkeeping (JS)
         run: node tests/js/test_paper_accounting.js
 

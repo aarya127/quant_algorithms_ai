@@ -8,6 +8,12 @@ function safeUrl(u) {
     return /^https?:\/\//i.test(u || '') ? esc(u) : '#';
 }
 
+// Each stock-detail panel only renders its latest request: a response for an
+// earlier symbol or timeframe that arrives late must not overwrite a newer one.
+const _panelSeq = {};
+function _panelTurn(panel) { return (_panelSeq[panel] = (_panelSeq[panel] || 0) + 1); }
+function _panelStale(panel, turn) { return _panelSeq[panel] !== turn; }
+
 // Global state
 let currentStock = null;
 let notifications = [];
@@ -34,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupNavigationListeners();
     startNotificationPolling();
     updateMarketStatus();
+    setInterval(updateMarketStatus, 60000);   // the badge flips at the open/close
 });
 
 // Setup navigation listeners
@@ -692,6 +699,7 @@ function setupSentimentButton() {
 // Load sentiment analysis with dedicated API call
 async function loadSentiment(symbol, days = 30) {
     console.log(`🧠 API CALL: /api/sentiment/news/${symbol}?days=${days}`);
+    const turn = _panelTurn('sentiment');
 
     const container = document.getElementById('sentimentAnalysis');
     const banner    = document.getElementById('sentimentBanner');
@@ -709,6 +717,7 @@ async function loadSentiment(symbol, days = 30) {
     try {
         const resp = await fetch(`/api/sentiment/news/${symbol}?days=${days}`);
         const data = await resp.json();
+        if (_panelStale('sentiment', turn)) return;
 
         if (!data.success) {
             container.innerHTML = `<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> ${esc(data.error || 'Failed to load sentiment')}</div>`;
@@ -857,6 +866,7 @@ async function loadSentiment(symbol, days = 30) {
             </div>`;
 
     } catch (err) {
+        if (_panelStale('sentiment', turn)) return;
         console.error(`✗ Sentiment error for ${symbol}:`, err);
         container.innerHTML = '<div class="alert alert-danger">Failed to load sentiment. Please try again.</div>';
     }
@@ -865,6 +875,7 @@ async function loadSentiment(symbol, days = 30) {
 // Load scenarios with dedicated API call
 async function loadScenarios(symbol, timeframe) {
     console.log(`🎯 API CALL: /api/scenarios/${symbol}?timeframe=${timeframe}`);
+    const turn = _panelTurn('scenarios');
     
     const container = document.getElementById('scenarioAnalysis');
     container.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Generating scenarios using multi-source data...</p>';
@@ -874,6 +885,7 @@ async function loadScenarios(symbol, timeframe) {
         const startTime = Date.now();
         const response = await fetch(`/api/scenarios/${symbol}?timeframe=${timeframe}`);
         const data = await response.json();
+        if (_panelStale('scenarios', turn)) return;
         const endTime = Date.now();
         
         console.log(`✓ ${symbol} scenarios loaded in ${endTime - startTime}ms`);
@@ -902,6 +914,7 @@ async function loadScenarios(symbol, timeframe) {
         `;
         
     } catch (error) {
+        if (_panelStale('scenarios', turn)) return;
         console.error(`✗ Error loading scenarios for ${symbol}:`, error);
         container.innerHTML = '<div class="alert alert-danger">Failed to load scenarios. Please try again.</div>';
     }
@@ -948,6 +961,7 @@ function createScenarioCard(type, scenario) {
 // Load metrics and grading with dedicated API call
 async function loadMetrics(symbol) {
     console.log(`⭐ API CALL: /api/metrics/${symbol}`);
+    const turn = _panelTurn('metrics');
     
     const container = document.getElementById('metricsGrading');
     container.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Calculating comprehensive metrics...</p>';
@@ -957,6 +971,7 @@ async function loadMetrics(symbol) {
         const startTime = Date.now();
         const response = await fetch(`/api/metrics/${symbol}`);
         const data = await response.json();
+        if (_panelStale('metrics', turn)) return;
         const endTime = Date.now();
         
         console.log(`✓ ${symbol} metrics loaded in ${endTime - startTime}ms`);
@@ -997,6 +1012,7 @@ async function loadMetrics(symbol) {
         `;
         
     } catch (error) {
+        if (_panelStale('metrics', turn)) return;
         console.error(`✗ Error loading metrics for ${symbol}:`, error);
         container.innerHTML = '<div class="alert alert-danger">Failed to load metrics. Please try again.</div>';
     }
@@ -1026,6 +1042,7 @@ function createMetricCard(title, metric) {
 // Load recommendations with dedicated API call
 async function loadRecommendations(symbol) {
     console.log(`💡 API CALL: /api/recommendations/${symbol}`);
+    const turn = _panelTurn('recommendations');
     
     const container = document.getElementById('timeRecommendations');
     container.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Generating time-based recommendations...</p>';
@@ -1035,6 +1052,7 @@ async function loadRecommendations(symbol) {
         const startTime = Date.now();
         const response = await fetch(`/api/recommendations/${symbol}`);
         const data = await response.json();
+        if (_panelStale('recommendations', turn)) return;
         const endTime = Date.now();
         
         console.log(`✓ ${symbol} recommendations loaded in ${(endTime - startTime)/1000}s`);
@@ -1060,6 +1078,7 @@ async function loadRecommendations(symbol) {
         `;
         
     } catch (error) {
+        if (_panelStale('recommendations', turn)) return;
         console.error(`✗ Error loading recommendations for ${symbol}:`, error);
         container.innerHTML = '<div class="alert alert-danger">Failed to load recommendations. Please try again.</div>';
     }
@@ -2130,18 +2149,65 @@ function showNotifications() {
 }
 
 // Update market status
+// NYSE full-day holidays and 1 pm early closes for `year`, as 'YYYY-MM-DD' dates.
+function _nyseCalendar(year) {
+    const day = (m, d) => new Date(Date.UTC(year, m, d));
+    const iso = d => d.toISOString().slice(0, 10);
+    const nth = (m, wd, n) => {               // n-th weekday `wd` of month `m`
+        const d = day(m, 1);
+        d.setUTCDate(1 + (wd - d.getUTCDay() + 7) % 7 + 7 * (n - 1));
+        return d;
+    };
+    const last = (m, wd) => {                 // last weekday `wd` of month `m`
+        const d = day(m + 1, 0);
+        d.setUTCDate(d.getUTCDate() - (d.getUTCDay() - wd + 7) % 7);
+        return d;
+    };
+    const observed = d => {                   // Saturday → Friday, Sunday → Monday
+        if (d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+        if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
+        return d;
+    };
+    // Easter Sunday (anonymous Gregorian algorithm) → Good Friday
+    const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+    const h = (19 * a + b - Math.floor(b / 4) - Math.floor((b - Math.floor((b + 8) / 25) + 1) / 3) + 15) % 30;
+    const l = (32 + 2 * (b % 4) + 2 * Math.floor(c / 4) - h - c % 4) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const n = h + l - 7 * m + 114;
+    const goodFriday = day(Math.floor(n / 31) - 1, n % 31 + 1 - 2);
+    const thanksgiving = nth(10, 4, 4);
+
+    const holidays = [
+        // A Saturday New Year's Day isn't observed on the Friday before (NYSE rule)
+        ...(day(0, 1).getUTCDay() === 6 ? [] : [observed(day(0, 1))]),
+        nth(0, 1, 3), nth(1, 1, 3), goodFriday, last(4, 1), observed(day(5, 19)),
+        observed(day(6, 4)), nth(8, 1, 1), thanksgiving, observed(day(11, 25)),
+    ].map(iso);
+    const early = [day(6, 3), day(10, thanksgiving.getUTCDate() + 1), day(11, 24)]
+        .filter(d => d.getUTCDay() >= 1 && d.getUTCDay() <= 5)
+        .map(iso)
+        .filter(d => !holidays.includes(d));
+    return { holidays, early };
+}
+
 function updateMarketStatus() {
-    // Market hours are 9:30 AM - 4:00 PM New York time, Mon-Fri, whatever the viewer's timezone
+    // NYSE hours in New York time, whatever the viewer's timezone: 9:30–16:00
+    // on weekdays, closed on exchange holidays, 13:00 close on early-close days
     const et = {};
     new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23'
+        timeZone: 'America/New_York', weekday: 'short', year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: 'numeric', minute: 'numeric', hourCycle: 'h23'
     }).formatToParts(new Date()).forEach(p => { et[p.type] = p.value; });
     const minutes = Number(et.hour) * 60 + Number(et.minute);
-    
+    const date = `${et.year}-${et.month}-${et.day}`;
+    const cal = _nyseCalendar(Number(et.year));
+    const close = cal.early.includes(date) ? 780 : 960;
+
     const marketStatusEl = document.getElementById('marketStatus');
     const marketBadge = document.getElementById('marketStatusBadge');
-    
-    const isOpen = et.weekday !== 'Sat' && et.weekday !== 'Sun' && minutes >= 570 && minutes < 960;
+
+    const isOpen = et.weekday !== 'Sat' && et.weekday !== 'Sun' && !cal.holidays.includes(date)
+                   && minutes >= 570 && minutes < close;
     if (marketStatusEl) marketStatusEl.textContent = isOpen ? 'MARKET OPEN' : 'MARKET CLOSED';
     if (marketBadge) {
         marketBadge.classList.toggle('closed', !isOpen);
@@ -2776,11 +2842,13 @@ function showNotification(message, type = 'info') {
 // Load and display company statistics
 async function loadCompanyStatistics(symbol) {
     console.log(`📊 API CALL: /api/statistics/${symbol}`);
+    const turn = _panelTurn('statistics');
     
     try {
         const startTime = Date.now();
         const response = await fetch(`/api/statistics/${symbol}`);
         const data = await response.json();
+        if (_panelStale('statistics', turn)) return;
         const endTime = Date.now();
         
         console.log(`✓ ${symbol} statistics loaded in ${endTime - startTime}ms`);
@@ -2995,6 +3063,7 @@ async function loadCompanyStatistics(symbol) {
         container.innerHTML = html;
         
     } catch (error) {
+        if (_panelStale('statistics', turn)) return;
         console.error('Error loading statistics:', error);
         document.getElementById('companyStatistics').innerHTML = `
             <div class="alert alert-danger">

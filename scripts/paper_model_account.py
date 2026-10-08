@@ -6,9 +6,9 @@ Run by the daily retrain right after the pipeline (.github/workflows/daily-retra
   1. fill the order placed last run, at the next session's open (backend/paper.py rules)
   2. mark the account to the latest close, next to a buy-and-hold benchmark
   3. turn today's prediction into a target for the next open:
-     signal "long" → fully invested in the ticker; "short"/"neutral" → all cash
+     "long" → fully invested, "short" → short the same size, "neutral" → all cash
 
-Long-only and all-in/all-out so the track record reads plainly. The ledger,
+All-in so the track record reads plainly. The ledger,
 paper/<TICKER>_model_account.json, is published with the models and served by
 GET /api/paper/model.
 
@@ -29,6 +29,7 @@ import predictor  # noqa: E402
 TICKER = (sys.argv[1] if len(sys.argv) > 1 else "NVDA").upper()
 LEDGER = ROOT / "paper" / f"{TICKER}_model_account.json"
 START_CASH = 100_000.0
+_TARGET_SIGN = {"long": 1, "short": -1, "flat": 0}
 
 
 def main():
@@ -42,25 +43,29 @@ def main():
 
     # 1. Fill last run's order at the first session after it was placed
     p = acct["pending"]
+    if p and "target" not in p:                        # ledgers from the long-only version
+        p["target"] = "long" if p["side"] == "buy" else "flat"
     if p:
-        got = paper.fill_order({"side": p["side"], "type": "market",
+        held_sign = (acct["shares"] > 0) - (acct["shares"] < 0)
+        side = "buy" if _TARGET_SIGN[p["target"]] > held_sign else "sell"   # for the slippage side
+        got = paper.fill_order({"side": side, "type": "market",
                                 "placed_at": pd.Timestamp(p["placed_at"])}, bars)
         if got:
             px, ts = got
-            if p["side"] == "buy":
-                qty = math.floor(acct["cash"] / px)
-                acct["cash"] -= qty * px
-                acct["shares"] += qty
-            else:
-                qty = acct["shares"]
-                acct["cash"] += qty * px
-                acct["shares"] = 0
-            acct["trades"].append({"date": ts.date().isoformat(), "side": p["side"],
-                                   "qty": qty, "price": round(px, 4),
+            # size the whole position from equity at this price (long → short is one trade)
+            equity = acct["cash"] + acct["shares"] * px
+            target = _TARGET_SIGN[p["target"]] * math.floor(equity / px)
+            dq = target - acct["shares"]
+            acct["cash"] -= dq * px
+            acct["shares"] = target
+            acct["trades"].append({"date": ts.date().isoformat(),
+                                   "side": "buy" if dq > 0 else "sell", "qty": abs(dq),
+                                   "price": round(px, 4), "target": p["target"],
                                    "signal": p["signal"],
                                    "predicted_5d_return": p.get("predicted_5d_return")})
             acct["pending"] = None
-            print(f"filled {p['side']} {qty} {TICKER} @ {px:.2f} on {ts.date()}")
+            print(f"filled {'buy' if dq > 0 else 'sell'} {abs(dq)} {TICKER} @ {px:.2f} "
+                  f"on {ts.date()} → {p['target']} {target}")
 
     # 2. Mark to the latest close
     last_date, close = bars.index[-1].date().isoformat(), float(bars["Close"].iloc[-1])
@@ -73,16 +78,16 @@ def main():
 
     # 3. Today's prediction → target position for the next open
     pred = predictor.predict_latest(TICKER)
-    want_long = pred.get("signal") == "long"
-    holding = acct["shares"] > 0
+    want = {"long": "long", "short": "short"}.get(pred.get("signal"), "flat")
+    have = "long" if acct["shares"] > 0 else "short" if acct["shares"] < 0 else "flat"
     acct["last_signal"] = {"date": pred["date"], "signal": pred.get("signal"),
                            "confidence": pred.get("confidence"),
                            "predicted_5d_return": pred["predictions"].get("predicted_5d_return")}
-    if want_long == holding:
+    if want == have:
         acct["pending"] = None          # a not-yet-filled order the signal no longer wants
-    elif acct["pending"] is None:
+    elif acct["pending"] is None or acct["pending"].get("target") != want:
         acct["pending"] = {
-            "side": "buy" if want_long else "sell",
+            "target": want,
             # decided on the prediction date's close; fills at the next open
             "placed_at": pd.Timestamp(f"{pred['date']} 16:00", tz="America/New_York").isoformat(),
             "signal": pred.get("signal"),
