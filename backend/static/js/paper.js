@@ -158,7 +158,9 @@ function paperSync() {
             _paperSave();
         }).catch(function () {});
     }
+    // quotes for open orders too, so a position opened by this sync has a price
     var syms = Object.keys(_paper.positions);
+    open.forEach(function (o) { if (syms.indexOf(o.symbol) < 0) syms.push(o.symbol); });
     var tick = (document.getElementById('paperSymbol') || {}).value;
     if (tick && syms.indexOf(tick.toUpperCase()) < 0) syms.push(tick.toUpperCase());
     var quotes = syms.length ? fetch('/api/paper/quote?symbols=' + encodeURIComponent(syms.join(',')))
