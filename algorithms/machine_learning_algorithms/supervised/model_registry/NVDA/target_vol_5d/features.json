@@ -1,0 +1,12 @@
+[
+  "atr_pct",
+  "kurtosis_20d",
+  "vol_of_vol",
+  "high_low_range",
+  "macd_signal_pct",
+  "macd_hist_pct",
+  "momentum_6m",
+  "cluster_kmeans",
+  "anomaly_iso",
+  "anomaly_score"
+]

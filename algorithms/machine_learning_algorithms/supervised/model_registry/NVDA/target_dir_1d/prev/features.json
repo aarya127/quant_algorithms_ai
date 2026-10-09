@@ -1,0 +1,23 @@
+[
+  "overnight_gap",
+  "price_to_sma50",
+  "low_52w_pct",
+  "high_52w_pct",
+  "reversal_1w",
+  "volume_zscore",
+  "downside_deviation",
+  "spy_beta_60d",
+  "yield_curve_slope",
+  "yield_10y",
+  "vix_level",
+  "obv_slope_20d",
+  "momentum_3m",
+  "max_drawdown_20d",
+  "kurtosis_20d",
+  "vol_of_vol",
+  "realized_vol_20d",
+  "high_low_range",
+  "macd_signal_pct",
+  "macd_hist_pct",
+  "cluster_kmeans"
+]

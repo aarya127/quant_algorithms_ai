@@ -1,0 +1,19 @@
+{
+  "ticker": "NVDA",
+  "target": "target_5d",
+  "task": "regression",
+  "model_type": "elasticnet",
+  "feature_version": "B",
+  "feature_space": "raw-v2",
+  "created_at": "2026-10-07T21:38:36.825235Z",
+  "primary_metric": "ic",
+  "metric_value": 0.660808,
+  "n_features": 9,
+  "metrics": {
+    "mae": 0.04965096430134405,
+    "rmse": 0.05780861024073083,
+    "r2": -0.41983708077107473,
+    "dir_acc": 0.34782608695652173,
+    "ic": 0.6608078939253776
+  }
+}

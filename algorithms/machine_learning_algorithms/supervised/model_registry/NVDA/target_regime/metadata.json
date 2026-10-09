@@ -1,0 +1,19 @@
+{
+  "ticker": "NVDA",
+  "target": "target_regime",
+  "task": "classification",
+  "model_type": "logistic",
+  "feature_version": "B",
+  "feature_space": "raw-v2",
+  "trained_before": "2025-10-07",
+  "created_at": "2026-10-08T14:56:42.441743Z",
+  "primary_metric": "f1_w",
+  "metric_value": 0.416866,
+  "n_features": 32,
+  "metrics": {
+    "acc": 0.44534412955465585,
+    "bal_acc": 0.334312525499796,
+    "f1_w": 0.416866147268624,
+    "f1_macro": 0.3251914098972923
+  }
+}

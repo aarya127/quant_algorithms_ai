@@ -1,0 +1,33 @@
+{
+  "ticker": "NVDA",
+  "start_cash": 100000.0,
+  "cash": 109.08027858735295,
+  "shares": 425,
+  "pending": null,
+  "last_signal": {
+    "date": "2026-10-08",
+    "signal": "long",
+    "confidence": "high",
+    "predicted_5d_return": 0.031054
+  },
+  "trades": [
+    {
+      "date": "2026-10-08",
+      "side": "buy",
+      "qty": 425,
+      "price": 235.0375,
+      "target": "long",
+      "signal": "long",
+      "predicted_5d_return": 0.028761
+    }
+  ],
+  "equity": [
+    {
+      "date": "2026-10-08",
+      "close": 230.48,
+      "equity": 98063.08,
+      "benchmark": 99926.3
+    }
+  ],
+  "benchmark_start_close": 230.64999389648438
+}

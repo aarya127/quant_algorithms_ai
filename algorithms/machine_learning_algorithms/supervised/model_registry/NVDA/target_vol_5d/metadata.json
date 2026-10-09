@@ -1,0 +1,20 @@
+{
+  "ticker": "NVDA",
+  "target": "target_vol_5d",
+  "task": "regression",
+  "model_type": "huber",
+  "feature_version": "B",
+  "feature_space": "raw-v2",
+  "trained_before": "2025-10-07",
+  "created_at": "2026-10-08T17:23:47.255208Z",
+  "primary_metric": "ic",
+  "metric_value": 0.176586,
+  "n_features": 10,
+  "metrics": {
+    "mae": 0.008193175889465842,
+    "rmse": 0.010262483251368738,
+    "r2": -0.05017595248455797,
+    "dir_acc": 1.0,
+    "ic": 0.17658638516645056
+  }
+}

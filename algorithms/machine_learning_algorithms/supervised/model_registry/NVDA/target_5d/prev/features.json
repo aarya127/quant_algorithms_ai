@@ -1,0 +1,11 @@
+[
+  "Open",
+  "reversal_1w",
+  "bb_pct",
+  "price_to_sma200",
+  "spy_beta_60d",
+  "price_accel",
+  "Volume",
+  "cluster_kmeans",
+  "anomaly_score"
+]
