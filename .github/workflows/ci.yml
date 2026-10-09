@@ -63,6 +63,11 @@ jobs:
           pytest tests/test_leakage.py \
             -v --tb=short
 
+      - name: Run unit tests — scenarios and grading
+        run: |
+          pytest tests/test_analysis_tabs.py \
+            -v --tb=short
+
       - name: Run unit tests — paper trading fills
         run: |
           pytest tests/test_paper.py \

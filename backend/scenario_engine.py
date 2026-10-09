@@ -5,15 +5,19 @@ Recommendations tabs. Numbers come from math; words come from llm_analyst.py.
 Two tiers, selected automatically per ticker:
 
   Tier 1 — statistical (any ticker):
-    targets from historical drift, band width from realized volatility scaled
-    by sqrt(horizon), probabilities from the ticker's own empirical h-day
-    return distribution (not fixed 25/50/25).
+    base target from historical drift (shrunk 50%), bull/bear at ±1σ√h of
+    realized volatility around it.
 
   Tier 2 — model-backed (tickers with a trained registry, currently NVDA):
-    drift and volatility are overridden by the registry models' predicted
-    5-day return / 5-day vol (backend/predictor.py); probabilities still come
-    from the empirical distribution recentered on the model drift. Falls back
-    to Tier 1 on any error.
+    the registry's predicted 5-day return / vol (backend/predictor.py) replace
+    drift and vol for the first 5 days, shrunk like the statistical drift.
+    Falls back to Tier 1 on any error.
+
+Probabilities refer to the displayed targets: P(price ≥ bull), P(≤ bear), and
+the rest. When ≥10 non-overlapping h-day windows exist (1W, 1M on 2 years) they
+use the ticker's own return shape, standardised and placed on the engine's
+drift/band; longer horizons have too few independent windows (overlapping ones
+gave 0%/100% at 1Y), so they use the normal approximation.
 
 All outputs are cached for 15 minutes per (symbol, timeframe).
 """
@@ -29,6 +33,7 @@ from cachetools import TTLCache
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from services import yf  # guarded import; None if the data layer failed
+from common import get_ticker_for_charts
 
 _REGISTRY_DIR = (Path(__file__).resolve().parents[1]
                  / 'algorithms' / 'machine_learning_algorithms'
@@ -38,6 +43,9 @@ _REGISTRY_DIR = (Path(__file__).resolve().parents[1]
 HORIZON_DAYS = {'1W': 5, '1M': 21, '3M': 63, '6M': 126, '1Y': 252}
 
 _cache = TTLCache(maxsize=256, ttl=900)
+
+DRIFT_SHRINK = 0.5        # daily drift estimates are noisy; halve them toward zero
+MIN_INDEPENDENT = 10      # non-overlapping windows needed for empirical probabilities
 _cache_lock = threading.Lock()
 
 
@@ -47,11 +55,17 @@ def has_model(symbol: str) -> bool:
 
 
 def _history(symbol: str):
-    """~2y of daily closes as a numpy array (oldest→newest)."""
-    hist = yf.Ticker(symbol).history(period='2y', interval='1d')
+    """(~2y of daily closes oldest→newest, listing currency). App symbols for
+    Canadian listings map to the TSX ticker, matching the Overview tab."""
+    tk = yf.Ticker(get_ticker_for_charts(symbol))
+    hist = tk.history(period='2y', interval='1d')
     if hist is None or hist.empty or len(hist) < 60:
         raise ValueError(f'insufficient history for {symbol}')
-    return hist['Close'].to_numpy(dtype=float)
+    return hist['Close'].to_numpy(dtype=float), (tk.history_metadata or {}).get('currency', 'USD')
+
+
+def _norm_cdf(x):
+    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
 
 
 def _model_overlay(symbol: str):
@@ -73,7 +87,9 @@ def _model_overlay(symbol: str):
             'model_signal': result.get('signal'),
             'prediction_date': result.get('date'),
         }
-        return float(r5) / 5.0, float(v5) / math.sqrt(5.0), meta
+        # target_vol_5d is the std of DAILY returns over the next 5 days, so it
+        # is already a daily vol (dividing by √5 made the bands ~2.2× too narrow)
+        return float(r5) / 5.0 * DRIFT_SHRINK, float(v5), meta
     except Exception as exc:
         print(f'[SCENARIOS] model overlay unavailable for {symbol}: {exc}', flush=True)
         return None
@@ -88,13 +104,13 @@ def compute_scenarios(symbol: str, timeframe: str = '1M') -> dict:
         if key in _cache:
             return _cache[key]
 
-    closes = _history(symbol)
+    closes, currency = _history(symbol)
     last = float(closes[-1])
     log_ret = np.diff(np.log(closes))
 
-    # Tier 1: historical drift (shrunk 50% toward zero — daily drift estimates
+    # Tier 1: historical drift (shrunk toward zero — daily drift estimates
     # are noisy and momentum-chasing at full weight) and realized vol.
-    stat_drift = float(np.mean(log_ret)) * 0.5
+    stat_drift = float(np.mean(log_ret)) * DRIFT_SHRINK
     stat_vol = float(np.std(log_ret, ddof=1))
     drift, vol = stat_drift, stat_vol
     total_drift = drift * h
@@ -113,7 +129,6 @@ def compute_scenarios(symbol: str, timeframe: str = '1M') -> dict:
             rest = h - model_days
             total_drift = m_drift * model_days + stat_drift * rest
             total_var = m_vol ** 2 * model_days + stat_vol ** 2 * rest
-            drift = total_drift / h
             if rest:
                 meta['engine'] = 'ML registry (5d) + statistical beyond'
 
@@ -123,26 +138,30 @@ def compute_scenarios(symbol: str, timeframe: str = '1M') -> dict:
     bull = last * math.exp(total_drift + band)
     bear = last * math.exp(total_drift - band)
 
-    # Probabilities from the ticker's own h-day return distribution,
-    # recentered on the engine drift: P(beyond ±1σ band) and the middle.
-    if len(log_ret) > h + 20:
-        h_rets = np.array([log_ret[i:i + h].sum() for i in range(len(log_ret) - h)])
-        centered = h_rets - float(np.mean(h_rets)) + drift * h
-        p_bull = float(np.mean(centered >= band))
-        p_bear = float(np.mean(centered <= -band))
-        p_up = float(np.mean(centered > 0))
-    else:  # thin history — normal-approximation fallback
-        p_bull = p_bear = 0.16
-        p_up = 0.5 + drift * h / (band * 2.5) if band else 0.5
-    p_base = max(0.0, 1.0 - p_bull - p_bear)
+    # Probabilities of reaching the displayed targets (see module docstring)
+    independent = len(log_ret) // h
+    if independent >= MIN_INDEPENDENT and band > 0:
+        h_rets = np.array([log_ret[i:i + h].sum() for i in range(len(log_ret) - h + 1)])
+        z = (h_rets - h_rets.mean()) / h_rets.std(ddof=1)      # the ticker's own shape
+        p_bull = float(np.mean(z >= 1))
+        p_bear = float(np.mean(z <= -1))
+        p_up = float(np.mean(total_drift + z * band > 0))
+        method = f'empirical ({independent} non-overlapping {h}-day windows)'
+    else:
+        p_bull = p_bear = 1 - _norm_cdf(1)                      # ±1σ under a normal
+        p_up = _norm_cdf(total_drift / band) if band > 0 else 0.5
+        method = 'normal approximation (too few independent windows)'
+    p_base = 1.0 - p_bull - p_bear
 
     result = {
         'symbol': symbol,
         'timeframe': timeframe,
         'horizon_days': h,
         'current_price': round(last, 2),
-        'annualized_vol': round(vol * math.sqrt(252), 4),
+        'currency': currency,
+        'annualized_vol': round(band / math.sqrt(h) * math.sqrt(252), 4),
         'p_up': round(p_up, 3),
+        'probability_method': method,
         'scenarios': {
             'bull_case': {'price_target': round(bull, 2), 'probability': round(p_bull * 100, 1)},
             'base_case': {'price_target': round(base, 2), 'probability': round(p_base * 100, 1)},
@@ -160,7 +179,7 @@ def compute_scenarios(symbol: str, timeframe: str = '1M') -> dict:
 
 def market_snapshot(symbol: str) -> dict:
     """Compact technical/price context for the LLM payload (all computed)."""
-    closes = _history(symbol.upper())
+    closes, _ = _history(symbol.upper())
     last = float(closes[-1])
 
     def chg(n):

@@ -667,7 +667,7 @@ function handleTabChange(target, symbol) {
             setupSentimentButton();
             break;
         case '#scenarios':
-            loadScenarios(symbol, '1M');
+            loadScenarios(symbol, document.getElementById('timeframeSelect')?.value || '1M');
             break;
         case '#metrics':
             loadMetrics(symbol);
@@ -899,19 +899,21 @@ async function loadScenarios(symbol, timeframe) {
         
         const engineBadge = data.model_backed
             ? '<span class="badge bg-success" title="Targets use the trained ML registry (predicted return + volatility)">⚡ model-backed</span>'
-            : '<span class="badge bg-secondary" title="Targets use realized volatility and this ticker\'s own return distribution">statistical</span>';
+            : '<span class="badge bg-secondary" title="Targets use realized volatility">statistical</span>';
+        const cur = data.currency === 'USD' ? '$' : `${esc(data.currency)} `;
         container.innerHTML = `
             <div class="alert alert-info mb-3">
-                <strong>Current Price:</strong> $${data.current_price.toFixed(2)} |
-                <strong>P(up):</strong> ${(data.p_up * 100).toFixed(0)}% |
+                <strong>Current Price:</strong> ${cur}${data.current_price.toFixed(2)} |
+                <strong>Chance of a rise:</strong> ${(data.p_up * 100).toFixed(0)}% |
                 <strong>Ann. Vol:</strong> ${(data.annualized_vol * 100).toFixed(0)}%
                 ${engineBadge}
-                <br><small>Engine: ${esc(data.engine)} — probabilities from this ticker's own return history</small>
+                <br><small>Engine: ${esc(data.engine)}${data.prediction_date ? ` (model prediction from ${esc(data.prediction_date)})` : ''}
+                    · Probabilities: ${esc(data.probability_method)} · Bull/bear are ±1σ around the base case</small>
             </div>
             <div class="scenario-container">
-                ${createScenarioCard('bull', data.bull_case)}
-                ${createScenarioCard('base', data.base_case)}
-                ${createScenarioCard('bear', data.bear_case)}
+                ${createScenarioCard('bull', data.bull_case, cur)}
+                ${createScenarioCard('base', data.base_case, cur)}
+                ${createScenarioCard('bear', data.bear_case, cur)}
             </div>
         `;
         
@@ -923,7 +925,7 @@ async function loadScenarios(symbol, timeframe) {
 }
 
 // Create scenario card
-function createScenarioCard(type, scenario) {
+function createScenarioCard(type, scenario, cur) {
     const icons = {
         bull: 'fa-arrow-trend-up',
         base: 'fa-minus',
@@ -944,14 +946,14 @@ function createScenarioCard(type, scenario) {
                 <span class="ms-auto badge bg-${colors[type]}">${esc(scenario.probability)}%</span>
             </div>
             <div class="price-target">
-                Target: $${scenario.price_target.toFixed(2)}
+                Target: ${cur}${scenario.price_target.toFixed(2)}
                 <small class="text-muted">(${scenario.return > 0 ? '+' : ''}${scenario.return.toFixed(2)}%)</small>
             </div>
             <hr>
-            <h6>Key Factors:</h6>
+            ${scenario.factors.length ? `<h6>Key Factors:</h6>
             <ul class="scenario-factors">
                 ${scenario.factors.map(factor => `<li><i class="fas fa-check-circle text-${colors[type]}"></i> ${esc(factor)}</li>`).join('')}
-            </ul>
+            </ul>` : ''}
             <div class="mt-3">
                 <strong>Rationale:</strong>
                 <p>${esc(scenario.rationale)}</p>
@@ -1001,6 +1003,8 @@ async function loadMetrics(symbol) {
                         <h5>Overall Grade: ${esc(data.overall_grade)}</h5>
                         <p>${getGradeDescription(data.overall_grade)}</p>
                         <strong>Average Score: ${data.average_score.toFixed(1)}/100</strong>
+                        <span class="text-muted ms-2">graded on ${data.graded_categories} of 4 categories ·
+                            market-wide thresholds, not sector-adjusted</span>
                     </div>
                 </div>
             </div>
@@ -1022,21 +1026,25 @@ async function loadMetrics(symbol) {
 
 // Create metric card
 function createMetricCard(title, metric) {
+    // grade/score are null when the inputs are missing or not meaningful (N/A)
+    const inputs = Object.entries(metric.inputs || {})
+        .map(([k, v]) => `${esc(k)}: ${Number(v).toLocaleString('en-US', {maximumFractionDigits: 2})}`)
+        .join(' · ');
     return `
         <div class="metric-card">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="metric-title mb-0">${title}</h5>
-                <div class="grade-badge grade-${esc(metric.grade)}">
-                    ${esc(metric.grade)}
+                <div class="grade-badge grade-${esc(metric.grade || 'NA')}">
+                    ${esc(metric.grade || 'N/A')}
                 </div>
             </div>
-            <div class="metric-value">${metric.score}/100</div>
+            <div class="metric-value">${metric.score == null ? '—' : metric.score + '/100'}</div>
             <div class="progress mb-2">
                 <div class="progress-bar ${getProgressBarClass(metric.grade)}" 
-                     style="width: ${metric.score}%"></div>
+                     style="width: ${metric.score || 0}%"></div>
             </div>
             <p class="metric-description">${esc(metric.description)}</p>
-            <small class="text-muted">Based on ${metric.factors.length} factors</small>
+            <small class="text-muted">${inputs || 'No inputs available'}</small>
         </div>
     `;
 }
@@ -1107,11 +1115,11 @@ function createRecommendationCard(timeframe, rec) {
             </div>
             <p>${esc(rec.reasoning)}</p>
             <div>
-                <small>Confidence Level</small>
+                <small>Chance of a rise</small>
                 <div class="confidence-bar">
-                    <div class="confidence-fill" style="width: ${rec.confidence * 100}%"></div>
+                    <div class="confidence-fill" style="width: ${rec.p_up * 100}%"></div>
                 </div>
-                <small class="mt-1 d-block">${(rec.confidence * 100).toFixed(1)}%</small>
+                <small class="mt-1 d-block">${(rec.p_up * 100).toFixed(0)}%</small>
             </div>
         </div>
     `;

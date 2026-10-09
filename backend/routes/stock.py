@@ -447,32 +447,43 @@ def scenario_analysis(symbol):
         except Exception:
             pass
 
-        def case(name, up_factors):
+        if not isinstance(rationale, dict):
+            rationale = {}
+        default_txt = {
+            'bull': f"Price 1σ above the base case after {sc['horizon_days']} trading days",
+            'base': f"Expected path: half the historical drift over {sc['horizon_days']} trading days",
+            'bear': f"Price 1σ below the base case after {sc['horizon_days']} trading days",
+        }
+
+        def case(name, factor_key):
             c = sc['scenarios'][f'{name}_case']
-            default_txt = (f"{name.title()} case: ±1σ over {sc['horizon_days']} trading days "
-                           f"at {sc['annualized_vol']:.0%} annualized vol "
-                           f"({sc['engine']}); probability from this ticker's own "
-                           f"return distribution.")
+            text = rationale.get(name)
+            listed = factors.get(factor_key) if factor_key and isinstance(factors, dict) else None
             return {
                 'price_target': c['price_target'],
                 'probability': c['probability'],
                 'return': c['return'],
-                'factors': (factors.get(up_factors) if isinstance(factors, dict) else None) or [],
-                'rationale': (rationale.get(name) or default_txt),
+                'factors': [f for f in listed if isinstance(f, str)] if isinstance(listed, list) else [],
+                'rationale': text if isinstance(text, str) and text else (
+                    f"{default_txt[name]} ({sc['annualized_vol']:.0%} annualized vol, "
+                    f"{sc['engine']}). Probability: {sc['probability_method']}."),
             }
 
         return jsonify({
             'success': True,
             'symbol': sc['symbol'],
             'current_price': sc['current_price'],
+            'currency': sc['currency'],
             'timeframe': timeframe,
             'engine': sc['engine'],
+            'probability_method': sc['probability_method'],
+            'prediction_date': sc.get('prediction_date'),
             'model_backed': sc['model_backed'],
             'annualized_vol': sc['annualized_vol'],
             'p_up': sc['p_up'],
             'data_sources': ['yfinance history', sc['engine']],
             'bull_case': case('bull', 'bull'),
-            'base_case': case('base', 'bull'),
+            'base_case': case('base', None),
             'bear_case': case('bear', 'bear'),
         })
         
@@ -489,7 +500,11 @@ def stock_metrics(symbol):
         except Exception:
             fins = None  # get_detailed_metrics falls back to its own fetch
         metrics_data = analyzer.get_detailed_metrics(financials=fins)
-        
+        if not metrics_data['graded_categories']:
+            return jsonify({'success': False, 'error':
+                            f'Not enough fundamental data to grade {symbol.upper()} '
+                            '(ETFs and funds are not graded).'})
+
         return jsonify({
             'success': True,
             **metrics_data
@@ -531,8 +546,7 @@ def recommendations(symbol):
             base_return = sc['scenarios']['base_case']['return']
             p_up = sc['p_up']
 
-            # Action from the empirical odds; confidence = distance from a coin
-            # flip (calibrated to the ticker's own return history, not vibes).
+            # A rule over the scenario numbers, not a backtested signal
             if p_up >= 0.62 and base_return > 2:
                 action = 'Strong Buy'
             elif p_up >= 0.55 and base_return > 0:
@@ -541,17 +555,14 @@ def recommendations(symbol):
                 action = 'Strong Sell' if p_up <= 0.33 else 'Sell'
             else:
                 action = 'Hold'
-            confidence = round(0.5 + abs(p_up - 0.5), 2)
-
-            reasoning = (f"{description}: {p_up:.0%} of comparable {sc['horizon_days']}-day "
-                         f"periods finished positive ({sc['engine']}); base case "
-                         f"{base_return:+.1f}%.")
-            if brief and brief.get('narrative'):
-                reasoning += f" Analyst view: {brief['narrative']}"
+            reasoning = (f"{description}: estimated {p_up:.0%} chance the price is higher "
+                         f"in {sc['horizon_days']} trading days; base case {base_return:+.1f}% "
+                         f"({sc['engine']}; {sc['probability_method']}).")
+            if brief and isinstance(brief.get('narrative'), str):
+                reasoning += f" AI analyst (1-month view): {brief['narrative']}"
 
             recommendations_data[tf] = {
                 'action': action,
-                'confidence': confidence,
                 'reasoning': reasoning,
                 'timeframe': description,
                 'expected_return': base_return,
@@ -578,8 +589,10 @@ def recommendations(symbol):
             'symbol': symbol_u,
             'recommendations': recommendations_data,
             'signal': (brief or {}).get('signal'),
-            'engine_note': 'probabilities from empirical return distribution; '
-                           'ML-registry drift/vol where a trained model exists',
+            'engine_note': 'a rule over the Scenarios numbers (chance of a rise and base-case '
+                           'return), not a backtested signal; ML-registry drift/vol where a '
+                           'trained model exists',
+            'currency': sc['currency'],
         })
 
     except Exception as e:

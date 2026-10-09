@@ -187,16 +187,13 @@ def generate_brief(symbol, timeframe='1M'):
 
     from ai_platform.llm_router import chat_completion, active_provider
     provider = 'nvidia' if os.environ.get('NVIDIA_API_KEY') or _keys_has_nvidia() else None
+    # One round: the router already falls back across models. (A second round
+    # on the same provider doubled a failure to ~150 s.)
     raw = chat_completion(
         [{'role': 'user', 'content': 'DATA:\n' + json.dumps(payload, default=str)}],
         system=_SYSTEM_PROMPT, provider=provider,
-        temperature=0.2, max_tokens=900, timeout=45,
+        temperature=0.2, max_tokens=900, timeout=30,
     )
-    if raw is None and provider:  # NVIDIA down → router default order
-        raw = chat_completion(
-            [{'role': 'user', 'content': 'DATA:\n' + json.dumps(payload, default=str)}],
-            system=_SYSTEM_PROMPT, temperature=0.2, max_tokens=900, timeout=30,
-        )
     if raw is None:
         return None
 
@@ -207,6 +204,13 @@ def generate_brief(symbol, timeframe='1M'):
         brief = json.loads(text)
         assert brief.get('signal') in ('long', 'neutral', 'short')
         assert isinstance(brief.get('narrative'), str)
+        # Cached for an hour and read by the Scenarios/Recommendations routes:
+        # drop malformed optional fields rather than serve them
+        if not isinstance(brief.get('scenario_rationale'), dict):
+            brief['scenario_rationale'] = {}
+        for key in ('bull_factors', 'bear_factors', 'risk_flags'):
+            val = brief.get(key)
+            brief[key] = [x for x in val if isinstance(x, str)] if isinstance(val, list) else []
     except Exception as exc:
         print(f'[ANALYST] unparseable brief for {symbol}: {exc}', flush=True)
         _log(symbol, payload, raw, ok=False)
