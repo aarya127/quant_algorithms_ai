@@ -13,6 +13,15 @@ RUN find algorithms -name '*theory.tex' | while read -r f; do \
     mkdir /out && find algorithms -name '*theory.pdf' -exec cp --parents {} /out \; \
     && find /out -name '*.pdf'
 
+# The diagnostics notebook, rendered to HTML (code hidden) the same way, so the
+# runtime image needs no Jupyter.
+FROM python:3.11-slim AS notebook
+RUN pip install --no-cache-dir nbconvert
+COPY algorithms/volatility_forecasting/research/diagnostics.ipynb /src/
+RUN mkdir -p /out/algorithms/volatility_forecasting/research \
+    && jupyter nbconvert --to html --no-input /src/diagnostics.ipynb \
+       --output-dir /out/algorithms/volatility_forecasting/research
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -41,6 +50,7 @@ print('FinBERT pre-downloaded')"
 # Copy the rest of the project
 COPY . .
 COPY --from=papers /out/ /app/
+COPY --from=notebook /out/ /app/
 
 WORKDIR /app/backend
 

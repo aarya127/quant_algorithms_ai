@@ -112,7 +112,8 @@ def get_research_paper(paper_name):
 @bp.route('/api/research/diagnostics/notebook')
 def get_diagnostics_notebook():
     """
-    Convert and serve diagnostics notebook as HTML on-demand
+    Serve the diagnostics notebook as HTML: prebuilt by the Docker build, or
+    converted with jupyter on demand when running locally.
     """
     try:
         # Path to the notebook
@@ -120,7 +121,10 @@ def get_diagnostics_notebook():
             _BACKEND, 
             '../algorithms/volatility_forecasting/research/diagnostics.ipynb'
         )
-        
+        prebuilt = notebook_path[:-len('.ipynb')] + '.html'
+        if os.path.exists(prebuilt):
+            return send_file(prebuilt, mimetype='text/html')
+
         if not os.path.exists(notebook_path):
             return jsonify({
                 'success': False,

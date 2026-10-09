@@ -119,6 +119,10 @@ def stock_details(symbol):
 
             # Merge yfinance supplemental fields into Finnhub profile
             try:
+                # Finnhub's profile gives market cap in millions; the page (and the
+                # Canadian branch's yfinance figure) use dollars
+                company['marketCapitalization'] = (info.get('marketCap')
+                                                   or (company.get('marketCapitalization') or 0) * 1e6)
                 company['longBusinessSummary'] = info.get('longBusinessSummary', '')
                 company['sector'] = info.get('sector', company.get('finnhubIndustry', ''))
                 company['fullTimeEmployees'] = info.get('fullTimeEmployees', 0)

@@ -26,6 +26,7 @@ tests/results/
 # Notebooks
 **/.ipynb_checkpoints/
 **/*.ipynb
+!algorithms/volatility_forecasting/research/diagnostics.ipynb
 
 # OS artifacts
 .DS_Store

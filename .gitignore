@@ -78,6 +78,8 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
+# Served on the Research page (rendered to HTML at image build)
+!algorithms/volatility_forecasting/research/diagnostics.ipynb
 
 # IPython
 profile_default/

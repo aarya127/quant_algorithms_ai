@@ -489,7 +489,6 @@ async function loadStockOverview(symbol) {
             const changePercent = data.quote.dp;
             const changeEl = document.getElementById('priceChange');
             changeEl.className = `badge ${change >= 0 ? 'bg-success' : 'bg-danger'}`;
-            changeEl.style.color = change >= 0 ? '' : '#000';
             changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent.toFixed(2)}%)`;
         } else {
             document.getElementById('stockPrice').textContent = '—';
@@ -531,7 +530,10 @@ async function loadStockOverview(symbol) {
             
             // Right column
             companyHTML += `<div class="col-md-6">`;
-            companyHTML += `<p class="mb-2"><strong>Market Cap:</strong> ${currencySymbol}${((data.company.marketCapitalization || 0) / 1e9).toFixed(2)}B</p>`;
+            const cap = data.company.marketCapitalization;
+            companyHTML += `<p class="mb-2"><strong>Market Cap:</strong> ${!cap ? 'N/A'
+                : cap >= 1e12 ? `${currencySymbol}${(cap / 1e12).toFixed(2)}T`
+                : `${currencySymbol}${(cap / 1e9).toFixed(2)}B`}</p>`;
             if (data.company.fiftyTwoWeekHigh && data.company.fiftyTwoWeekLow) {
                 companyHTML += `<p class="mb-2"><strong>52-Week Range:</strong> ${currencySymbol}${data.company.fiftyTwoWeekLow.toFixed(2)} - ${currencySymbol}${data.company.fiftyTwoWeekHigh.toFixed(2)}</p>`;
             }
