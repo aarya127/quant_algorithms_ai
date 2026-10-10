@@ -538,10 +538,25 @@ Signal: LONG_STRADDLE  |  Edge: 300 bps raw → 54 bps net after costs
 
 ## 13. Backtesting & Portfolio Engine
 
-`backtesting/` — top-level entry points (delegate to `algorithms/volatility_forecasting/backtest_engine/`)
+`backtesting/` — walk-forward backtest of the supervised models' trading signal:
 
-- `/api/backtest` (POST) — accepts strategy name, symbol, date range, parameters
-- `/api/backtest/strategies` (GET) — lists available strategies
+```bash
+python backtesting/backtest.py NVDA --model all     # or --model lgb,ridge; default = the served target_5d model
+```
+
+- Retrains every `--retrain-every` rows (default 21) from `INIT_TRAIN`, only on rows
+  whose `target_5d` label was already known, with the pipeline's own fold
+  preprocessing and model ladder
+- Trades the live rule (long / short / cash at ±1% predicted 5d return) with the
+  model paper account's fills: decide at the close, fill at the next open, 5 bps slippage
+- Compares against buy-and-hold and a naive 5-day momentum rule: return, CAGR,
+  Sharpe, max drawdown, trades, long/short time, out-of-sample forecast IC
+- Writes `backtesting/output/<TICKER>_backtest_{daily.csv,summary.json}` (gitignored)
+- The feature allow-list was chosen on the full history, so model results are
+  slightly optimistic; `simulator.py` is dependency-light and unit-tested (`tests/test_backtest.py`)
+
+Options-volatility backtests are separate: `/api/backtest` (POST) and
+`/api/backtest/strategies` (GET) run `backend/backtest_runner.py` on the engine below.
 
 `algorithms/volatility_forecasting/backtest_engine/`:
 - `engine.py` — core P&L loop
@@ -731,7 +746,7 @@ quant_algorithms_ai/
 │   ├── cpp_execution/                    C++ order engine (pybind11)
 │   └── go_services/                      Go risk engine (gRPC)
 │
-├── backtesting/                          Top-level backtest entry points
+├── backtesting/                          Walk-forward backtest of the ML signal
 ├── tests/                                pytest unit/integration + API smoke tests
 ├── .github/workflows/                    ci.yml, daily-retrain.yml
 ├── .claude/skills/                       coding-agent playbooks
@@ -772,7 +787,7 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 
 **📦 Placeholder / empty (present in the tree, no implementation)**
 - All of top-level `models/` (interest-rate, execution, allocation, credit, options)
-- `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/*.py` (empty files)
+- `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/stress_testing/` (empty files)
 - Several `prototype.py` stubs under `execution_algorithms/`, `market_making_algorithms/`,
   and `volatility_forecasting/research/` (theory `.tex` only)
 
@@ -783,10 +798,10 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 ### In Progress
 - [ ] Deep learning (LSTM, Transformer) in `deep_learning/`
 - [ ] Factor strategies — momentum, mean reversion, quality
-- [ ] Full backtesting harness wired to `DataTransformer` feature matrix
 - [ ] Point-in-time fundamental database for rigorous backtest training
 
 ### Completed ✅
+- [x] **Walk-forward backtesting harness** — `backtesting/backtest.py` trades the model signal on the feature matrix vs buy-and-hold
 - [x] **Scheduled daily retraining** — orchestrator in GitHub Actions, published to the `models` branch
 - [x] **Prediction & drift endpoints** — `predictor.py` served via `backend/routes/ml.py`
 - [x] **MLflow experiment tracking** — per-ticker experiments, per-step spans

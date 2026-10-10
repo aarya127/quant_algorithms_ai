@@ -8,3 +8,4 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "algorithms/machine_learning_algorithms/supervised"))
 sys.path.insert(0, str(ROOT / "algorithms/machine_learning_algorithms/data_pipelines"))
+sys.path.insert(0, str(ROOT / "backtesting"))

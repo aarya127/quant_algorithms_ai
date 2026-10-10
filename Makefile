@@ -1,6 +1,6 @@
 # Makefile for Quant Algorithms AI
 
-.PHONY: all cpp go python clean test help
+.PHONY: all cpp go python clean test help backtest
 
 # Default target
 all: cpp go python
@@ -14,6 +14,7 @@ help:
 	@echo "  go         - Build Go risk engine and services"
 	@echo "  python     - Install Python dependencies"
 	@echo "  test       - Run all tests"
+	@echo "  backtest   - Walk-forward ML signal backtest (TICKER=NVDA MODEL=all)"
 	@echo "  clean      - Remove build artifacts"
 	@echo "  run-risk   - Start Go risk engine"
 	@echo "  run-backend- Start Flask backend"
@@ -44,7 +45,8 @@ test:
 		tests/test_targets.py \
 		tests/test_evaluation_gate.py \
 		tests/test_pipeline_integration.py \
-		tests/test_api_endpoints.py
+		tests/test_api_endpoints.py \
+		tests/test_backtest.py
 	@echo "  ℹ️  Live-API smoke suite is separate: 'cd tests && python3 run_all_tests.py' (needs API keys)"
 
 clean:
@@ -54,6 +56,12 @@ clean:
 	@rm -f cpp_bindings*.so
 	@rm -rf **/__pycache__
 	@rm -rf **/*.pyc
+
+# Walk-forward ML signal backtest (reads data_pipelines/<TICKER>_features_with_regimes.csv)
+TICKER ?= NVDA
+MODEL  ?= all
+backtest:
+	@python3 backtesting/backtest.py $(TICKER) --model $(MODEL)
 
 # Service runners
 run-risk:

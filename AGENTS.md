@@ -32,6 +32,7 @@ committed AND deployed to Render.
 | Prediction serving + drift | `backend/predictor.py` | served by `backend/routes/ml.py` (`/api/predict`, `/api/drift`, `/api/model/status`, `/api/mlflow/runs`) |
 | Model sync | `backend/model_sync.py` | pulls the `models` branch on Render (≤ every 6 h); no-op locally |
 | Paper trading | `backend/paper.py` (fill rules) + `routes/paper.py` + `static/js/paper.js` | portfolios live in the browser (localStorage); the server only quotes and fills, from bars starting after the order. USD account, other listings converted at live FX; shorting up to 2× equity gross. Bookkeeping test: `node tests/js/test_paper_accounting.js`. The chat proposes `ORDER:` lines rendered as confirm buttons |
+| ML signal backtest | `backtesting/backtest.py` (+ `simulator.py`) | walk-forward refits, live signal rule, paper-account fills; `python backtesting/backtest.py NVDA --model all`. Output in `backtesting/output/` (gitignored) |
 | Model paper account | `scripts/paper_model_account.py` | run by the daily retrain; ledger `paper/<T>_model_account.json` is published on the `models` branch |
 | Retraining driver | `algorithms/machine_learning_algorithms/orchestrator.py` | 5-step pipeline |
 | Pipeline stages | `.../data_pipelines/` | `run_pipeline.py`, `clean.py`, `normalize.py` |
@@ -138,7 +139,7 @@ The repo mixes shipped code, standalone research, and empty scaffolding. Before
   overstate the dir layout).
 - **Not yet wired**: `ai_platform/signal_narrator.py` (no caller).
 - **Empty placeholders** (imply features that don't exist): all of top-level
-  `models/`, `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/*.py`,
+  `models/`, `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/stress_testing/`,
   and several 0-byte `prototype.py` stubs. Don't document these as working.
 
 ---
