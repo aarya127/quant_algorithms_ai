@@ -253,3 +253,26 @@ class TestRegistryUsesStability:
         save_registry(_holdout(None, lgb=0.23), "TST", tmp_path)
         active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
         assert active["target_5d"]["model_type"] == "lgb"
+
+    def test_unstable_incumbent_is_not_protected(self, tmp_path):
+        """Production lgb (holdout IC 0.23) can't hold off a stable ridge (0.06)
+        once this run's CV says lgb is unstable."""
+        save_registry(_holdout(None, lgb=0.23), "TST", tmp_path)            # incumbent
+        save_registry(_holdout({"lgb": _stable(False), "ridge": _stable(True)},
+                               lgb=0.23, ridge=0.06), "TST", tmp_path)
+        active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
+        assert active["target_5d"]["model_type"] == "ridge"
+
+    def test_unstable_incumbent_and_no_challenger_serves_nothing(self, tmp_path):
+        save_registry(_holdout(None, lgb=0.23), "TST", tmp_path)
+        save_registry(_holdout({"lgb": _stable(False), "ridge": _stable(True)},
+                               lgb=0.23, ridge=0.01), "TST", tmp_path)       # ridge < floor
+        active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
+        assert "target_5d" not in active
+
+    def test_stable_incumbent_still_needs_beating(self, tmp_path):
+        save_registry(_holdout(None, ridge=0.20), "TST", tmp_path)
+        save_registry(_holdout({"ridge": _stable(True), "huber": _stable(True)},
+                               ridge=0.05, huber=0.06), "TST", tmp_path)
+        active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
+        assert active["target_5d"]["model_type"] == "ridge"                 # kept

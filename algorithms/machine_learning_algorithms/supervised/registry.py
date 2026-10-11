@@ -254,6 +254,14 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
                 if existing_val is not None:
                     print(f"  ↺ {target:20s}  production model on this holdout: "
                           f"{primary}={existing_val:.4f}")
+            # The incumbent gets no protection if its model type's CV record in
+            # this run is unstable: its one good holdout would otherwise keep it
+            # serving over a stable challenger, or keep it serving at all.
+            inc_type = existing_meta.get("model_type")
+            if allowed is not None and existing_val is not None and inc_type not in allowed:
+                print(f"  ✗ {target:20s}  production {inc_type} failed the CV "
+                      f"stability check this run — not kept")
+                existing_val = None
 
         # Baseline score from model_res (the naive predictor trained alongside)
         baseline_res = model_res.get("baseline", {})
