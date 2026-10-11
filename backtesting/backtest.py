@@ -12,6 +12,7 @@ after slippage — against buy-and-hold and a naive momentum rule?
   2. Each row's forecast → target via the live rule (backend/predictor.py:
      long if predicted 5d return > +1%, short if < −1%, else cash).
   3. Fill at the next open with backend/paper.py's slippage (simulator.py).
+  4. Run the rule-based factor strategies (strategies.py) over the same window.
 
 Caveats printed with every run: the feature allow-list
 (factor_discovery/output/recommended_features.txt) was picked on the full
@@ -46,6 +47,7 @@ from models import reg_model_set                                       # noqa: E
 from paper import SLIPPAGE                                             # noqa: E402
 from simulator import (simulate, summarize, retrain_blocks,            # noqa: E402
                        signal_from_forecast)
+from strategies import FACTOR_STRATEGIES                               # noqa: E402
 
 TARGET     = "target_5d"     # the live signal is driven by predicted_5d_return
 THRESHOLD  = 0.01            # backend/predictor.py: ±1% on the 5d forecast
@@ -143,6 +145,12 @@ def main():
     naive = signal_from_forecast(past_5d, args.threshold)
     naive[:INIT_TRAIN] = np.nan
     strategies["naive_momentum_5d"] = naive
+
+    # rule-based factor strategies (strategies.py), same trading window
+    for name, rule in FACTOR_STRATEGIES.items():
+        tgt = rule(df)
+        tgt[:INIT_TRAIN] = np.nan
+        strategies[name] = tgt
     ic["naive_momentum_5d"] = forecast_ic(np.where(np.isnan(naive), np.nan, past_5d),
                                           df[TARGET].to_numpy())
 

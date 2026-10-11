@@ -549,6 +549,8 @@ python backtesting/backtest.py NVDA --model all     # or --model lgb,ridge; defa
   preprocessing and model ladder
 - Trades the live rule (long / short / cash at ±1% predicted 5d return) with the
   model paper account's fills: decide at the close, fill at the next open, 5 bps slippage
+- Also runs rule-based factor strategies (`strategies.py`, textbook parameters fixed in
+  advance): 200-day trend, 12-month time-series momentum, RSI(14) mean reversion
 - Compares against buy-and-hold and a naive 5-day momentum rule: return, CAGR,
   Sharpe, max drawdown, trades, long/short time, out-of-sample forecast IC
 - Writes `backtesting/output/<TICKER>_backtest_{daily.csv,summary.json}` (gitignored); the daily
@@ -799,7 +801,7 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 
 ### In Progress
 - [ ] Deep learning (LSTM, Transformer) in `deep_learning/`
-- [ ] Factor strategies — momentum, mean reversion, quality
+- [ ] Factor strategies — time-series trend / momentum / mean reversion done (`backtesting/strategies.py`); cross-sectional and quality factors need a multi-ticker universe and point-in-time fundamentals
 - [ ] Point-in-time fundamental database for rigorous backtest training
 
 ### Completed ✅

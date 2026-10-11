@@ -347,6 +347,8 @@ function paperLoadBacktest() {
         };
         var label = function (n) {
             return n === 'buy_and_hold' ? 'buy &amp; hold' : n === 'naive_momentum_5d' ? 'naive momentum'
+                 : n === 'trend_sma200' ? '200-day trend' : n === 'tsmom_12m' ? '12-month momentum'
+                 : n === 'rsi_mean_reversion' ? 'RSI mean reversion'
                  : esc(n.replace(/^model_/, ''));
         };
         var rows = names.map(function (n) {

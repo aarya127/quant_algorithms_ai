@@ -142,3 +142,32 @@ class TestBacktestRoute:
 
     def test_rejects_path_like_ticker(self, client):
         assert client[0].get("/api/ml/backtest/..%2Fetc").status_code in (400, 404)
+
+
+class TestFactorStrategies:
+    """Rule-based factor targets (backtesting/strategies.py)."""
+
+    def _df(self, **cols):
+        return pd.DataFrame(cols)
+
+    def test_trend_long_above_sma200_cash_below(self):
+        from strategies import trend_sma200
+        out = trend_sma200(self._df(price_to_sma200=[1.1, 0.9, 1.0, np.nan]))
+        assert out[:3].tolist() == [1, 0, 0] and np.isnan(out[3])
+
+    def test_tsmom_follows_sign_of_12m_return(self):
+        from strategies import tsmom_12m
+        out = tsmom_12m(self._df(momentum_12m=[0.4, -0.2, np.nan]))
+        assert out[:2].tolist() == [1, -1] and np.isnan(out[2])
+
+    def test_rsi_enters_oversold_holds_then_exits(self):
+        from strategies import rsi_mean_reversion
+        out = rsi_mean_reversion(self._df(RSI_14=[25, 40, 55, 45]))
+        assert out[0] == 1 and np.isnan(out[1]) and out[2] == 0 and np.isnan(out[3])
+        daily, trades = simulate(_bars((10, 10), (10, 11), (11, 12), (12, 12)), out, 1000, 0.0)
+        assert [t["side"] for t in trades] == ["buy", "sell"]
+        assert daily["shares"][2] > 0 and daily["shares"][3] == 0   # held through RSI 40
+
+    def test_registry_lists_every_rule(self):
+        from strategies import FACTOR_STRATEGIES
+        assert set(FACTOR_STRATEGIES) == {"trend_sma200", "tsmom_12m", "rsi_mean_reversion"}
