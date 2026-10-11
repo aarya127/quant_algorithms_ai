@@ -432,7 +432,7 @@ SQLite backend at the repo root, one experiment per ticker, runs named `<target>
 
 Per ticker: an `active.json` index plus one directory per target holding `model.pkl`, scalers, `features.json`, `train_stats.json` (drift baselines), `metadata.json`, and a `prev/` snapshot for rollback.
 
-**Promotion gate** (`registry.py`) — a new model replaces production only if it clears **all three** (unless forced):
+**Promotion gate** (`registry.py`) — candidates are first limited to models whose edge held up across the walk-forward CV folds (`cv_stability`: mean CV metric ≥ the floor below *and* beat that fold's naive baseline in ≥ 50% of folds). If none qualifies the target isn't served — one good holdout year isn't enough. The best qualifying model then replaces production only if it clears **all three** (unless forced):
 1. Absolute floor — regression `ic > 0.02`, classification `f1_w > 0.30`
 2. Beats the naive baseline by ≥ 5%
 3. Improves over the current production model by ≥ 0.005

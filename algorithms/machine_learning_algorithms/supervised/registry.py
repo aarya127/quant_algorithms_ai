@@ -18,6 +18,7 @@ Directory layout:
 import json
 import shutil
 import datetime
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 import joblib
@@ -42,7 +43,9 @@ _REG_PRIMARY = "ic"
 _CLF_PRIMARY = "f1_w"
 
 # Evaluation gate thresholds
-# A new model must:
+# A new model must first have held up across the walk-forward CV folds (see
+# cv_stability): one good holdout year let a model whose 5d IC was negative in
+# most earlier quarters into production. Then it must:
 #   1. Clear an absolute floor (prevents deploying near-random models)
 #   2. Beat the naive baseline by at least BASELINE_BEAT_RATIO
 #   3. Improve over the current production model by at least MIN_DELTA
@@ -56,6 +59,32 @@ _MIN_DELTA = {
     "classification": 0.005,  # F1_w must improve by ≥0.005 over production
 }
 _BASELINE_BEAT_RATIO = 1.05   # must be ≥5% better than naive baseline
+_CV_MIN_BEAT_FRAC   = 0.5    # must beat each fold's naive baseline in ≥ half the folds
+
+
+def cv_stability(fold_records, task: str) -> dict:
+    """Each model's walk-forward CV record, from run_folds' fold_records.
+
+    {model: {cv_mean, cv_beat_frac, n_folds, stable}} — cv_mean is the primary
+    metric averaged over folds, cv_beat_frac the share of folds where it beat that
+    fold's naive baseline. Stable = cv_mean clears the absolute floor AND
+    cv_beat_frac ≥ _CV_MIN_BEAT_FRAC, i.e. the edge isn't one lucky window.
+    """
+    primary = _REG_PRIMARY if task == "regression" else _CLF_PRIMARY
+    baseline = {r["fold"]: r[primary] for r in fold_records
+                if r["model"] == "baseline" and primary in r}
+    scores = defaultdict(list)
+    for r in fold_records:
+        if r["model"] != "baseline" and primary in r:
+            scores[r["model"]].append((r[primary], baseline.get(r["fold"])))
+    out = {}
+    for model, pairs in scores.items():
+        mean = float(np.mean([s for s, _ in pairs]))
+        beats = [s > b for s, b in pairs if b is not None]
+        beat_frac = float(np.mean(beats)) if beats else 0.0
+        out[model] = {"cv_mean": mean, "cv_beat_frac": beat_frac, "n_folds": len(pairs),
+                      "stable": mean >= _MIN_ABSOLUTE[task] and beat_frac >= _CV_MIN_BEAT_FRAC}
+    return out
 
 
 def _promotion_gate(
@@ -101,11 +130,14 @@ def _promotion_gate(
     return True, ""
 
 
-def _best_model(model_res, primary_metric):
-    """Return (model_name, metric_value) for the best non-baseline model."""
+def _best_model(model_res, primary_metric, allowed=None):
+    """Return (model_name, metric_value) for the best non-baseline model, among
+    `allowed` names when given."""
     best_name, best_val = None, -np.inf
     for name, res in model_res.items():
         if name in ("baseline", "_meta") or "error" in res:
+            continue
+        if allowed is not None and name not in allowed:
             continue
         val = res.get("metrics", {}).get(primary_metric, -np.inf)
         if val > best_val:
@@ -185,8 +217,17 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
             continue
 
         meta_block = model_res.get("_meta", {})
-        best_name, best_val = _best_model(model_res, primary)
+        stability  = meta_block.get("cv_stability")      # absent → no CV record to check
+        allowed    = (None if force or stability is None else
+                      {m for m, s in stability.items() if s["stable"]})
+        best_name, best_val = _best_model(model_res, primary, allowed)
         if best_name is None:
+            if allowed is not None:
+                # No model's edge held up across the CV folds, the production
+                # model's type included: serve nothing for this target.
+                print(f"  ✗ GATE[stability]  {target:20s}  no model cleared {primary}≥"
+                      f"{_MIN_ABSOLUTE[task]:.2f} on average and beat the baseline in "
+                      f"≥{_CV_MIN_BEAT_FRAC:.0%} of CV folds — not served")
             continue
         best_res = model_res[best_name]
         if "model_obj" not in best_res:
@@ -302,6 +343,9 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
             "n_features":       len(sel_features),
             "metrics":          metrics_clean,
         }
+        if stability and best_name in stability:
+            metadata["cv"] = {k: (round(v, 6) if isinstance(v, float) else v)
+                              for k, v in stability[best_name].items()}
         (tgt_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
 
         active[target] = {
@@ -312,6 +356,7 @@ def save_registry(all_holdout, ticker, registry_dir, force: bool = False,
         }
         print(f"  ✓ {target:20s}  [{best_name:10s}  {primary}={best_val:.4f}]")
 
+    reg_root.mkdir(parents=True, exist_ok=True)       # no target may have registered
     (reg_root / "active.json").write_text(
         json.dumps({"ticker": ticker, "created_at": created_at,
                     "targets": active}, indent=2))

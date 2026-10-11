@@ -164,3 +164,92 @@ class TestRealisticScenarios:
         """dir_1d F1_w=0.355 improves on 0.350, and clears floor=0.30."""
         passes, _ = gate(0.355, 0.350, None, "classification")
         assert passes  # above floor, sufficient improvement
+
+
+# Walk-forward stability — a model must have held up across the CV folds before
+# its holdout score counts (lgb's 5d holdout IC was 0.23 while its CV IC was
+# negative in 6 of 8 quarters).
+
+import json
+
+from sklearn.dummy import DummyRegressor
+
+from registry import cv_stability, save_registry, _CV_MIN_BEAT_FRAC
+
+
+def _folds(task, baseline, **models):
+    """run_folds-shaped records: one baseline + one row per model per fold."""
+    key = "ic" if task == "regression" else "f1_w"
+    recs = [{"fold": f, "model": "baseline", key: b} for f, b in enumerate(baseline)]
+    for name, vals in models.items():
+        recs += [{"fold": f, "model": name, key: v} for f, v in enumerate(vals)]
+    return recs
+
+
+class TestCvStability:
+    def test_min_beat_fraction_constant(self):
+        assert _CV_MIN_BEAT_FRAC == 0.5
+
+    def test_one_lucky_fold_is_not_stable(self):
+        s = cv_stability(_folds("regression", [0, 0, 0, 0],
+                                lucky=[0.6, -0.1, -0.1, -0.1]), "regression")["lucky"]
+        assert s["cv_mean"] == pytest.approx(0.075)
+        assert s["cv_beat_frac"] == 0.25 and not s["stable"]
+
+    def test_consistent_edge_is_stable(self):
+        s = cv_stability(_folds("regression", [0, 0, 0, 0],
+                                steady=[0.05, 0.03, -0.01, 0.04]), "regression")["steady"]
+        assert s["stable"] and s["n_folds"] == 4
+
+    def test_often_positive_but_mean_below_floor_is_not_stable(self):
+        s = cv_stability(_folds("regression", [0, 0, 0, 0],
+                                weak=[0.01, 0.01, 0.01, -0.01]), "regression")["weak"]
+        assert s["cv_beat_frac"] == 0.75 and not s["stable"]
+
+    def test_classification_compares_against_each_folds_baseline(self):
+        s = cv_stability(_folds("classification", [0.30, 0.40, 0.30, 0.40],
+                                clf=[0.35, 0.35, 0.35, 0.35]), "classification")["clf"]
+        assert s["cv_beat_frac"] == 0.5 and s["stable"]
+
+    def test_errored_fold_rows_are_ignored(self):
+        recs = _folds("regression", [0, 0], m=[0.05, 0.05])
+        recs.append({"fold": 2, "model": "m", "error": "boom"})
+        assert cv_stability(recs, "regression")["m"]["n_folds"] == 2
+
+
+def _holdout(stability, **ics):
+    res = {"baseline": {"metrics": {"ic": 0.0}},
+           "_meta": {"sel_features": ["f1"], "cv_stability": stability}}
+    for name, ic in ics.items():
+        res[name] = {"metrics": {"ic": ic}, "model_obj": DummyRegressor().fit([[0]], [0])}
+    return {("target_5d", "B"): res}
+
+
+def _stable(flag):
+    return {"cv_mean": 0.05 if flag else -0.1, "cv_beat_frac": 0.6 if flag else 0.2,
+            "n_folds": 8, "stable": flag}
+
+
+class TestRegistryUsesStability:
+    def test_best_stable_model_wins_over_better_unstable_holdout(self, tmp_path):
+        save_registry(_holdout({"lgb": _stable(False), "ridge": _stable(True)},
+                               lgb=0.23, ridge=0.06), "TST", tmp_path)
+        active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
+        assert active["target_5d"]["model_type"] == "ridge"
+        meta = json.loads((tmp_path / "TST" / "target_5d" / "metadata.json").read_text())
+        assert meta["cv"]["stable"] is True
+
+    def test_no_stable_model_serves_nothing(self, tmp_path):
+        save_registry(_holdout({"lgb": _stable(False)}, lgb=0.23), "TST", tmp_path)
+        active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
+        assert "target_5d" not in active
+
+    def test_force_ignores_stability(self, tmp_path):
+        save_registry(_holdout({"lgb": _stable(False)}, lgb=0.23), "TST", tmp_path, force=True)
+        active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
+        assert active["target_5d"]["model_type"] == "lgb"
+
+    def test_without_cv_record_behaves_as_before(self, tmp_path):
+        save_registry(_holdout(None, lgb=0.23), "TST", tmp_path)
+        active = json.loads((tmp_path / "TST" / "active.json").read_text())["targets"]
+        assert active["target_5d"]["model_type"] == "lgb"

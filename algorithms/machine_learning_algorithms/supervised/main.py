@@ -19,7 +19,7 @@ from plots import (
     plot_pr_combined, plot_version_comparison,
 )
 from ensemble import run_ensemble
-from registry import save_registry
+from registry import save_registry, cv_stability
 from mlflow_tracker import setup_experiment, log_run
 
 _REGISTRY_DIR = Path(__file__).parent / "model_registry"
@@ -76,6 +76,7 @@ def main():
 
             print(f"    → Holdout ({HOLDOUT_ROWS} rows):")
             h_res = run_holdout(df, cv_idx_t, holdout_idx, features, target, task)
+            h_res["_meta"]["cv_stability"] = cv_stability(fold_records, task)
             all_holdout[(target, version)] = h_res
 
             # Log params, CV metrics, holdout metrics, and feature artifacts to MLflow
