@@ -1,10 +1,12 @@
 """
 routes/ml.py — ML Signals tab: the model registry, served through predictor.py.
 
-GET /api/predict/<ticker>, /api/drift/<ticker>, /api/model/status and
-/api/mlflow/runs/<ticker>. Responses are 200 with success:false when a ticker has
+GET /api/predict/<ticker>, /api/drift/<ticker>, /api/model/status,
+/api/mlflow/runs/<ticker> and /api/ml/backtest/<ticker> (the daily retrain's
+walk-forward backtest of the trading signal, backtesting/backtest.py). Responses are 200 with success:false when a ticker has
 no trained models yet, so the panels can show the reason.
 """
+import json
 import re
 from pathlib import Path
 
@@ -86,3 +88,17 @@ def mlflow_runs(ticker):
         'metrics':  r.data.metrics,
         'params':   r.data.params,
     } for r in runs]})
+
+
+@bp.route('/api/ml/backtest/<ticker>')
+def ml_backtest(ticker):
+    t = _ticker(ticker)
+    if not t:
+        return jsonify({'success': False, 'error': 'invalid ticker'}), 400
+    import model_sync
+    model_sync.ensure_fresh()
+    path = _PROJECT_ROOT / 'backtesting' / 'output' / f'{t}_backtest_summary.json'
+    if not path.exists():
+        return jsonify({'success': False,
+                        'error': f'No backtest for {t} yet — the daily retrain publishes one.'})
+    return jsonify({'success': True, **json.loads(path.read_text())})

@@ -53,13 +53,13 @@ START_CASH = 100_000.0       # same as the model paper account
 OUT_DIR    = HERE / "output"
 
 
-def served_model(ticker: str) -> str:
-    """The model type the registry is serving for TARGET, else lgb."""
+def served_model(ticker: str):
+    """The model type the registry is serving for TARGET, or None (not served)."""
     active = ML / "supervised" / "model_registry" / ticker / "active.json"
     try:
         return json.loads(active.read_text())["targets"][TARGET]["model_type"]
     except Exception:
-        return "lgb"
+        return None
 
 
 def walk_forward_forecast(df, features, model_name, every):
@@ -94,7 +94,8 @@ def main():
     ap.add_argument("ticker", nargs="?", default="NVDA")
     ap.add_argument("--model", default=None,
                     help="model(s) from supervised/models.py reg_model_set, comma-separated, "
-                         "or 'all' (default: the one the registry serves for target_5d)")
+                         "or 'all' (default: the one the registry serves for target_5d, "
+                         "else all)")
     ap.add_argument("--features-csv", type=Path, default=None,
                     help="feature matrix (default data_pipelines/<TICKER>_features_with_regimes.csv)")
     ap.add_argument("--retrain-every", type=int, default=21,
@@ -116,8 +117,9 @@ def main():
     features += [c for c in REGIME_COLS if c in df.columns and c not in features]
 
     ladder = list(reg_model_set())
-    models = (ladder if args.model == "all" else
-              args.model.split(",") if args.model else [served_model(ticker)])
+    served = served_model(ticker)
+    models = (args.model.split(",") if args.model and args.model != "all" else
+              [served] if not args.model and served else ladder)
     unknown = [m for m in models if m not in ladder]
     if unknown:
         sys.exit(f"unknown model(s) {unknown}; choose from {ladder}")
@@ -177,8 +179,12 @@ def main():
     (OUT_DIR / f"{ticker}_backtest_summary.json").write_text(json.dumps({
         "ticker": ticker, "target": TARGET, "threshold": args.threshold,
         "retrain_every": args.retrain_every, "slippage": SLIPPAGE,
-        "start_cash": START_CASH, "features": features, "strategies": summary,
-    }, indent=2))
+        "start_cash": START_CASH, "served_model": served, "features": features,
+        "strategies": summary,
+        # daily equity per strategy, for the app's chart (≈ 750 rows × strategies)
+        "equity": {"dates": out["Date"].dt.strftime("%Y-%m-%d").tolist(),
+                   **{name: out[f"{name}_equity"].tolist() for name in strategies}},
+    }, separators=(",", ":")))
     print(f"Wrote {OUT_DIR.relative_to(ROOT)}/{ticker}_backtest_{{daily.csv,summary.json}}")
 
 

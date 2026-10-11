@@ -113,3 +113,32 @@ class TestWalkForward:
     def test_signal_rule(self):
         out = signal_from_forecast([0.02, -0.02, 0.005, np.nan, 0.01], 0.01)
         assert out[:3].tolist() == [1, -1, 0] and np.isnan(out[3]) and out[4] == 0
+
+
+class TestBacktestRoute:
+    """GET /api/ml/backtest/<ticker> serves the summary the daily retrain publishes."""
+
+    @pytest.fixture()
+    def client(self, tmp_path, monkeypatch):
+        import app as app_module
+        from routes import ml
+        monkeypatch.setattr(ml, "_PROJECT_ROOT", tmp_path)
+        app_module.app.config["TESTING"] = True
+        return app_module.app.test_client(), tmp_path
+
+    def test_serves_published_summary(self, client):
+        c, root = client
+        out = root / "backtesting" / "output"
+        out.mkdir(parents=True)
+        (out / "NVDA_backtest_summary.json").write_text(
+            '{"served_model": null, "strategies": {"buy_and_hold": {"sharpe": 1.4}}}')
+        d = c.get("/api/ml/backtest/nvda").get_json()
+        assert d["success"] and d["served_model"] is None
+        assert d["strategies"]["buy_and_hold"]["sharpe"] == 1.4
+
+    def test_missing_summary_explains(self, client):
+        d = client[0].get("/api/ml/backtest/NVDA").get_json()
+        assert not d["success"] and "daily retrain" in d["error"]
+
+    def test_rejects_path_like_ticker(self, client):
+        assert client[0].get("/api/ml/backtest/..%2Fetc").status_code in (400, 404)

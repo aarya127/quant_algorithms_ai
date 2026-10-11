@@ -32,7 +32,7 @@ committed AND deployed to Render.
 | Prediction serving + drift | `backend/predictor.py` | served by `backend/routes/ml.py` (`/api/predict`, `/api/drift`, `/api/model/status`, `/api/mlflow/runs`) |
 | Model sync | `backend/model_sync.py` | pulls the `models` branch on Render (≤ every 6 h); no-op locally |
 | Paper trading | `backend/paper.py` (fill rules) + `routes/paper.py` + `static/js/paper.js` | portfolios live in the browser (localStorage); the server only quotes and fills, from bars starting after the order. USD account, other listings converted at live FX; shorting up to 2× equity gross. Bookkeeping test: `node tests/js/test_paper_accounting.js`. The chat proposes `ORDER:` lines rendered as confirm buttons |
-| ML signal backtest | `backtesting/backtest.py` (+ `simulator.py`) | walk-forward refits, live signal rule, paper-account fills; `python backtesting/backtest.py NVDA --model all`. Output in `backtesting/output/` (gitignored) |
+| ML signal backtest | `backtesting/backtest.py` (+ `simulator.py`) | walk-forward refits, live signal rule, paper-account fills; `python backtesting/backtest.py NVDA --model all`. Output in `backtesting/output/` (gitignored). The daily retrain runs it (`--model all`, non-blocking) and publishes `<T>_backtest_summary.json` on the `models` branch; served by `GET /api/ml/backtest/<T>` and shown in the Paper tab |
 | Model paper account | `scripts/paper_model_account.py` | run by the daily retrain; ledger `paper/<T>_model_account.json` is published on the `models` branch |
 | Retraining driver | `algorithms/machine_learning_algorithms/orchestrator.py` | 5-step pipeline |
 | Pipeline stages | `.../data_pipelines/` | `run_pipeline.py`, `clean.py`, `normalize.py` |

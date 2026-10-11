@@ -402,7 +402,7 @@ curl http://localhost:5001/api/pipeline/status/a1b2c3d4
 
 ### Daily schedule (`.github/workflows/daily-retrain.yml`)
 
-A GitHub Actions workflow (cron `0 2 * * 1-5` — 02:00 UTC weekdays, plus manual dispatch with a ticker input) runs `orchestrator.py` **on the Actions runner**. Each run is a full rebuild; only the model registry and `mlflow.db` carry over, restored from the `models` branch so the promotion gate compares against the models being served. Afterwards it force-pushes a single-commit `models` branch containing `supervised/model_registry/**`, `data_pipelines/<TICKER>_features_with_regimes.csv`, and `mlflow.db`. The run's green/red badge is your daily retraining health signal; a failure email means a pipeline step failed on the runner — read that step's log in the Actions tab.
+A GitHub Actions workflow (cron `0 2 * * 1-5` — 02:00 UTC weekdays, plus manual dispatch with a ticker input) runs `orchestrator.py` **on the Actions runner**. Each run is a full rebuild; only the model registry and `mlflow.db` carry over, restored from the `models` branch so the promotion gate compares against the models being served. Afterwards it force-pushes a single-commit `models` branch containing `supervised/model_registry/**`, `data_pipelines/<TICKER>_features_with_regimes.csv`, `mlflow.db`, the model's paper ledger (`paper/`) and the backtest summary (`backtesting/output/<TICKER>_backtest_summary.json`). The run's green/red badge is your daily retraining health signal; a failure email means a pipeline step failed on the runner — read that step's log in the Actions tab.
 
 **Serving the results:** on Render, `backend/model_sync.py` downloads the `models` branch tarball at most every 6 h (triggered by the prediction, drift, model-status and MLflow-runs endpoints) and unpacks only those paths over the copies baked into the image. Local runs never sync.
 
@@ -551,7 +551,9 @@ python backtesting/backtest.py NVDA --model all     # or --model lgb,ridge; defa
   model paper account's fills: decide at the close, fill at the next open, 5 bps slippage
 - Compares against buy-and-hold and a naive 5-day momentum rule: return, CAGR,
   Sharpe, max drawdown, trades, long/short time, out-of-sample forecast IC
-- Writes `backtesting/output/<TICKER>_backtest_{daily.csv,summary.json}` (gitignored)
+- Writes `backtesting/output/<TICKER>_backtest_{daily.csv,summary.json}` (gitignored); the daily
+  retrain runs it for every model and publishes the summary (with equity curves) to the
+  `models` branch → `GET /api/ml/backtest/<TICKER>` → the Paper tab's backtest table
 - The feature allow-list was chosen on the full history, so model results are
   slightly optimistic; `simulator.py` is dependency-light and unit-tested (`tests/test_backtest.py`)
 

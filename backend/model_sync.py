@@ -2,8 +2,8 @@
 model_sync.py — keep the served models current with the `models` branch.
 
 Retraining runs in GitHub Actions (.github/workflows/daily-retrain.yml), which
-force-pushes the registry, feature CSVs, MLflow store and the model's paper-trading
-ledger (paper/) to the `models` branch.
+force-pushes the registry, feature CSVs, MLflow store, the model's paper-trading
+ledger (paper/) and the backtest summary (backtesting/output/) to the `models` branch.
 On Render, ensure_fresh() downloads that branch's tarball at most every _TTL
 seconds and unpacks it over the copies baked into the image. Local runs never
 sync, so a local pipeline run isn't overwritten.
@@ -26,7 +26,8 @@ _TTL = 6 * 3600
 _ALLOWED = ('algorithms/machine_learning_algorithms/supervised/model_registry/',
             'algorithms/machine_learning_algorithms/data_pipelines/',
             'mlflow.db',
-            'paper/')
+            'paper/',
+            'backtesting/output/')
 
 _lock = threading.Lock()
 _last_attempt = 0.0

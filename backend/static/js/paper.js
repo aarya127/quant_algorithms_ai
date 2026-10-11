@@ -331,6 +331,44 @@ function paperLoadModelAccount() {
     }).catch(function () { box.innerHTML = '<div class="text-secondary">Model account unavailable.</div>'; });
 }
 
+// ── Backtest (published by the daily retrain; backtesting/backtest.py) ─────
+
+function paperLoadBacktest() {
+    var box = document.getElementById('paperBacktest');
+    fetch('/api/ml/backtest/NVDA').then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.success) { box.innerHTML = '<div class="text-secondary">' + esc(d.error) + '</div>'; return; }
+        var served = d.served_model ? 'model_' + d.served_model : null;
+        var names = Object.keys(d.strategies).sort(function (a, b) {
+            return d.strategies[b].sharpe - d.strategies[a].sharpe;
+        });
+        var pct = function (v) {
+            return '<span style="color:' + (v >= 0 ? '#26c281' : '#f87171') + '">' +
+                   (v >= 0 ? '+' : '') + _paperFmt(v * 100, 0) + '%</span>';
+        };
+        var label = function (n) {
+            return n === 'buy_and_hold' ? 'buy &amp; hold' : n === 'naive_momentum_5d' ? 'naive momentum'
+                 : esc(n.replace(/^model_/, ''));
+        };
+        var rows = names.map(function (n) {
+            var s = d.strategies[n];
+            return '<tr' + (n === served ? ' style="color:#00c9a7"' : '') + '><td>' + label(n) +
+                   (n === served ? ' (live)' : '') + '</td><td class="text-end">' + pct(s.total_return) +
+                   '</td><td class="text-end">' + _paperFmt(s.sharpe) + '</td><td class="text-end">' +
+                   pct(s.max_drawdown) + '</td></tr>';
+        }).join('');
+        var first = d.strategies.buy_and_hold || d.strategies[names[0]];
+        box.innerHTML =
+            '<table class="table table-sm table-dark mb-1" style="font-size:.75rem">' +
+            '<thead><tr><th></th><th class="text-end">Return</th><th class="text-end">Sharpe</th>' +
+            '<th class="text-end">Max DD</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+            (served ? '' : '<div class="text-warning" style="font-size:.7rem">No 5-day model passed the ' +
+                'stability gate, so the live signal stays neutral (cash).</div>') +
+            '<div class="text-secondary" style="font-size:.7rem">' + esc(first.start) + ' → ' + esc(first.end) +
+            ' · retrained every ' + d.retrain_every + ' sessions on past data only · same fills as the model ' +
+            'account · features picked on the full history, so models look slightly better than they were</div>';
+    }).catch(function () { box.innerHTML = '<div class="text-secondary">Backtest unavailable.</div>'; });
+}
+
 // ── For the AI chat ────────────────────────────────────────────────────────
 
 // Compact portfolio snapshot for the chat's SCREEN block
@@ -374,6 +412,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('navTrading').addEventListener('click', function () {
         paperStartPolling();
         paperLoadModelAccount();
+        paperLoadBacktest();
     });
     paperRender();
 });

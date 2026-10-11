@@ -7,7 +7,7 @@
 #
 # Every run is a full rebuild (a fresh checkout has no feature CSVs to append to);
 # only the model registry, MLflow history and the model's paper-trading ledger carry
-# over from the previous run, so the promotion gate compares against the models
+# over from the previous run (the backtest summary is regenerated each run), so the promotion gate compares against the models
 # currently being served.
 #
 # Data-provider keys come from repo secrets (Settings → Secrets and variables →
@@ -97,6 +97,12 @@ jobs:
       - name: Trade the model's paper account
         run: python scripts/paper_model_account.py "$TICKER"
 
+      # Walk-forward backtest of every model's signal vs buy-and-hold; informational,
+      # so a failure here must not stop the models being published
+      - name: Backtest the trading signal
+        continue-on-error: true
+        run: python backtesting/backtest.py "$TICKER" --model all
+
       - name: Publish to the models branch
         if: github.event_name == 'schedule' || inputs.publish
         run: |
@@ -107,6 +113,10 @@ jobs:
           cp "$PIPES/${TICKER}_features_with_regimes.csv" "$PUBLISHED/$PIPES/"
           if [ -f mlflow.db ]; then cp mlflow.db "$PUBLISHED/"; fi
           mkdir -p "$PUBLISHED/paper" && cp paper/*.json "$PUBLISHED/paper/"
+          if [ -f "backtesting/output/${TICKER}_backtest_summary.json" ]; then
+            mkdir -p "$PUBLISHED/backtesting/output"
+            cp "backtesting/output/${TICKER}_backtest_summary.json" "$PUBLISHED/backtesting/output/"
+          fi
 
           cd "$PUBLISHED"
           git init -q -b models
