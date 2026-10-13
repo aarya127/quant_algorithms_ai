@@ -31,6 +31,7 @@ import app as app_module          # noqa: E402
 import pipeline_store             # noqa: E402
 import routes.pipeline as pipeline_routes  # noqa: E402
 import routes.news as news_routes          # noqa: E402
+import routes.stock as stock_routes        # noqa: E402
 
 
 @pytest.fixture()
@@ -197,6 +198,39 @@ def test_twitter_news_count_is_capped(client, monkeypatch):
     monkeypatch.setattr(news_routes, "get_market_tweets", fake_tweets, raising=False)
     client.get("/api/news/twitter?count=99999")
     assert seen["count"] == 100  # clamped to the max
+
+
+# --- metrics: peer-relative grades -----------------------------------------------
+# Finnhub stubbed with the real response shapes: peers include the symbol itself,
+# profile2 carries finnhubIndustry, basic financials nest ratios under "metric".
+
+def test_metrics_ranks_against_peers(client, monkeypatch):
+    fins = {
+        "JPM": {"peBasicExclExtraTTM": 15, "pbQuarterly": 2.4, "roeTTM": 17,
+                "netProfitMarginTTM": 33, "totalDebt/totalEquityQuarterly": 3.3},
+        "BAC": {"peBasicExclExtraTTM": 14, "pbQuarterly": 1.3, "roeTTM": 10, "netProfitMarginTTM": 26},
+        "WFC": {"peBasicExclExtraTTM": 13, "pbQuarterly": 1.6, "roeTTM": 12, "netProfitMarginTTM": 24},
+        "C":   {"peBasicExclExtraTTM": 12, "pbQuarterly": 0.9, "roeTTM": 7, "netProfitMarginTTM": 18},
+        "USB": {"peBasicExclExtraTTM": 12, "pbQuarterly": 1.4, "roeTTM": 11, "netProfitMarginTTM": 23},
+    }
+
+    def basic_financials(symbol):
+        if symbol == "PNC":
+            raise RuntimeError("429 rate limited")
+        return {"metric": fins[symbol], "series": {}}
+
+    monkeypatch.setattr(stock_routes, "_cached_get_basic_financials", basic_financials)
+    monkeypatch.setattr(stock_routes, "_cached_get_company_profile",
+                        lambda s: {"ticker": s, "finnhubIndustry": "Banking"})
+    monkeypatch.setattr(stock_routes, "_cached_get_company_peers",
+                        lambda s: ["JPM", "BAC", "WFC", "PNC", "C", "USB"])
+    body = client.get("/api/metrics/jpm").get_json()
+    assert body["success"] is True
+    assert body["peers"] == ["BAC", "WFC", "C", "USB"]       # failed fetch dropped
+    pe = body["metrics"]["valuation"]["inputs"]["P/E (TTM)"]
+    assert pe == {"value": 15, "percentile": 0, "grade": "F", "note": None}
+    assert body["metrics"]["profitability"]["grade"] == "A"
+    assert body["metrics"]["financial_health"]["grade"] is None
 
 
 # --- route table sanity ---------------------------------------------------------

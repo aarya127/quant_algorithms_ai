@@ -16,7 +16,7 @@ from services import (
     yf, StockAnalyzer, get_company_overview_llm,
     get_company_profile, get_stock_quote, get_basic_financials, get_company_news,
     get_company_statistics, format_statistics_for_display,
-    _cached_get_stock_quote, _cached_get_company_profile,
+    _cached_get_stock_quote, _cached_get_company_profile, _cached_get_company_peers,
     _cached_get_basic_financials, _cached_get_company_news, _cached_yf_info,
 )
 
@@ -25,6 +25,13 @@ bp = Blueprint('stock', __name__)
 # backend/ directory (this file lives one level deeper than app.py did; moved
 # code that used os.path.dirname(__file__) now uses _BACKEND instead)
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _safe(fn, *args):
+    try:
+        return fn(*args)
+    except Exception:
+        return None
 
 @bp.route('/api/stock/<symbol>')
 def stock_details(symbol):
@@ -207,12 +214,6 @@ def get_statistics(symbol):
         # Fetch both upstreams in parallel through the shared TTL caches
         # (yf info: 5 min, Finnhub financials: 10 min) — the Overview tab
         # usually warmed these already, making this a cache hit.
-        def _safe(fn, *args):
-            try:
-                return fn(*args)
-            except Exception:
-                return None
-
         with ThreadPoolExecutor(max_workers=2) as ex:
             f_info = ex.submit(_safe, _cached_yf_info, symbol_upper)
             f_fins = ex.submit(_safe, _cached_get_basic_financials, symbol_upper)
@@ -490,23 +491,38 @@ def scenario_analysis(symbol):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+# Finnhub's free tier allows 60 calls/min; a cold request makes 3 + MAX_PEERS.
+MAX_PEERS = 8
+
+
 @bp.route('/api/metrics/<symbol>')
 def stock_metrics(symbol):
-    """Get comprehensive metrics and grading using StockAnalyzer"""
+    """Fundamental grades relative to the company's Finnhub industry peers."""
     try:
-        analyzer = StockAnalyzer(symbol.upper())
-        try:
-            fins = _cached_get_basic_financials(symbol.upper())
-        except Exception:
-            fins = None  # get_detailed_metrics falls back to its own fetch
-        metrics_data = analyzer.get_detailed_metrics(financials=fins)
+        from grading import grade_fundamentals
+        symbol_upper = symbol.upper()
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            f_fins = ex.submit(_cached_get_basic_financials, symbol_upper)
+            f_profile = ex.submit(_safe, _cached_get_company_profile, symbol_upper)
+            f_peers = ex.submit(_safe, _cached_get_company_peers, symbol_upper)
+            metric = (f_fins.result() or {}).get('metric') or {}
+            industry = (f_profile.result() or {}).get('finnhubIndustry')
+            peers = [p for p in (f_peers.result() or []) if p != symbol_upper][:MAX_PEERS]
+        with ThreadPoolExecutor(max_workers=MAX_PEERS) as ex:
+            fins = ex.map(lambda p: _safe(_cached_get_basic_financials, p), peers)
+            peer_metrics = {p: f['metric'] for p, f in zip(peers, fins) if f and f.get('metric')}
+
+        metrics_data = grade_fundamentals(metric, list(peer_metrics.values()), industry)
         if not metrics_data['graded_categories']:
             return jsonify({'success': False, 'error':
-                            f'Not enough fundamental data to grade {symbol.upper()} '
+                            f'Not enough fundamental data to grade {symbol_upper} '
                             '(ETFs and funds are not graded).'})
 
         return jsonify({
             'success': True,
+            'symbol': symbol_upper,
+            'industry': industry,
+            'peers': list(peer_metrics),
             **metrics_data
         })
         
