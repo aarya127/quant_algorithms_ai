@@ -1014,7 +1014,9 @@ async function loadMetrics(symbol) {
                         <p>${getGradeDescription(data.overall_grade)}</p>
                         <strong>Average Score: ${data.average_score.toFixed(1)}/100</strong>
                         <span class="text-muted ms-2">graded on ${data.graded_categories} of 4 categories ·
-                            market-wide thresholds, not sector-adjusted</span>
+                            ${data.peers.length
+                                ? `vs ${esc(data.industry || 'industry')} peers: ${data.peers.map(esc).join(', ')}`
+                                : 'no peer data, market-wide thresholds'}</span>
                     </div>
                 </div>
             </div>
@@ -1036,10 +1038,12 @@ async function loadMetrics(symbol) {
 
 // Create metric card
 function createMetricCard(title, metric) {
-    // grade/score are null when the inputs are missing or not meaningful (N/A)
-    const inputs = Object.entries(metric.inputs || {})
-        .map(([k, v]) => `${esc(k)}: ${Number(v).toLocaleString('en-US', {maximumFractionDigits: 2})}`)
-        .join(' · ');
+    // grade/score are null when the inputs are missing or not meaningful (N/A);
+    // an input without a peer percentile says why in its note
+    const inputs = Object.entries(metric.inputs)
+        .map(([k, i]) => `${esc(k)}: ${Number(i.value).toLocaleString('en-US', {maximumFractionDigits: 2})}
+            (${i.percentile != null ? `pctl ${i.percentile}` : esc([i.grade, i.note].filter(Boolean).join(', '))})`)
+        .join('<br>');
     return `
         <div class="metric-card">
             <div class="d-flex justify-content-between align-items-center mb-3">

@@ -12,7 +12,7 @@ Owns two things that used to live at the top of the app.py monolith:
 2. The TTL caches over the hot Finnhub/yfinance getters, deduplicated into one
    decorator (the monolith repeated the same lock/lookup/store pattern five times).
 
-Quotes: 30s | Profiles: 1h | Financials/news: 10min | yf info: 5min
+Quotes: 30s | Profiles: 1h | Peers: 24h | Financials/news: 10min | yf info: 5min
 """
 import os
 import sys
@@ -35,7 +35,7 @@ def _unavailable(*_a, **_kw):
 
 get_company_news = get_basic_financials = get_earnings_surprises = _unavailable
 get_insider_transactions = get_insider_sentiment = get_earnings_calendar = _unavailable
-get_company_profile = get_stock_quote = _unavailable
+get_company_profile = get_company_peers = get_stock_quote = _unavailable
 get_company_overview_llm = _unavailable
 get_market_tweets = get_financial_news_feed = _unavailable
 get_recent_news = _unavailable
@@ -53,6 +53,7 @@ try:
         get_insider_sentiment,
         get_earnings_calendar,
         get_company_profile,
+        get_company_peers,
         get_stock_quote
     )
     from data.alphavantage import AlphaVantage
@@ -100,6 +101,11 @@ def _cached_get_stock_quote(symbol):
 @_ttl_cached(TTLCache(maxsize=256, ttl=3600))
 def _cached_get_company_profile(symbol):
     return get_company_profile(symbol)
+
+
+@_ttl_cached(TTLCache(maxsize=256, ttl=86400))
+def _cached_get_company_peers(symbol):
+    return get_company_peers(symbol)
 
 
 @_ttl_cached(TTLCache(maxsize=256, ttl=600))
