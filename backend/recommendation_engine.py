@@ -20,7 +20,6 @@ backtesting/simulator.py — next to buy-and-hold. The rules there are long or
 cash (a Sell means "be out", not "short").
 """
 import json
-import math
 import sys
 from pathlib import Path
 

@@ -29,7 +29,6 @@ import zlib
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from cachetools import TTLCache
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
