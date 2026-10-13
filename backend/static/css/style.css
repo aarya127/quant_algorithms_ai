@@ -367,6 +367,7 @@ option { background: var(--bg-card); }
 .recommendation-card.action-buy .timeframe-badge { background: var(--pos); color: #04170e; }
 .recommendation-card.action-sell .timeframe-badge { background: var(--neg); color: #2a0707; }
 .recommendation-card.action-hold .timeframe-badge { background: var(--warning-color); color: #241500; }
+.progress { background-color: var(--bg-hover); }
 .score-bar { position: relative; background: var(--bg-hover); height: 8px; border-radius: 4px; margin: 0.75rem 0 0.25rem; }
 .score-bar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text-3); }
 .score-fill { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }

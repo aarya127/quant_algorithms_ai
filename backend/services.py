@@ -17,6 +17,7 @@ Quotes: 30s | Profiles: 1h | Peers: 24h | Financials/news: 10min | yf info: 5min
 import os
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 
 from cachetools import TTLCache
@@ -121,3 +122,31 @@ def _cached_get_company_news(symbol, from_date, to_date):
 @_ttl_cached(TTLCache(maxsize=256, ttl=300))
 def _cached_yf_info(ticker_symbol):
     return yf.Ticker(ticker_symbol).info
+
+
+def _safe(fn, *args):
+    try:
+        return fn(*args)
+    except Exception:
+        return None
+
+
+MAX_PEERS = 8
+
+
+def graded_fundamentals(symbol):
+    """(grades, industry, peers): the company's Finnhub fundamentals graded against
+    up to MAX_PEERS industry peers (grading.py). Shared by /api/metrics and the
+    Recommendations quality vote. A peer whose fetch fails (e.g. a 429) drops out."""
+    from grading import grade_fundamentals
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_fins = ex.submit(_cached_get_basic_financials, symbol)
+        f_profile = ex.submit(_safe, _cached_get_company_profile, symbol)
+        f_peers = ex.submit(_safe, _cached_get_company_peers, symbol)
+        metric = (f_fins.result() or {}).get('metric') or {}
+        industry = (f_profile.result() or {}).get('finnhubIndustry')
+        peers = [p for p in (f_peers.result() or []) if p != symbol][:MAX_PEERS]
+    with ThreadPoolExecutor(max_workers=MAX_PEERS) as ex:
+        fins = ex.map(lambda p: _safe(_cached_get_basic_financials, p), peers)
+        peer_metrics = {p: f['metric'] for p, f in zip(peers, fins) if f and f.get('metric')}
+    return grade_fundamentals(metric, list(peer_metrics.values()), industry), industry, list(peer_metrics)

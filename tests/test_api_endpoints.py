@@ -28,6 +28,7 @@ pytest.importorskip("cachetools", reason="cachetools not installed — backend d
 
 # conftest.py puts backend/ on sys.path
 import app as app_module          # noqa: E402
+import services                    # noqa: E402
 import pipeline_store             # noqa: E402
 import routes.pipeline as pipeline_routes  # noqa: E402
 import routes.news as news_routes          # noqa: E402
@@ -219,10 +220,10 @@ def test_metrics_ranks_against_peers(client, monkeypatch):
             raise RuntimeError("429 rate limited")
         return {"metric": fins[symbol], "series": {}}
 
-    monkeypatch.setattr(stock_routes, "_cached_get_basic_financials", basic_financials)
-    monkeypatch.setattr(stock_routes, "_cached_get_company_profile",
+    monkeypatch.setattr(services, "_cached_get_basic_financials", basic_financials)
+    monkeypatch.setattr(services, "_cached_get_company_profile",
                         lambda s: {"ticker": s, "finnhubIndustry": "Banking"})
-    monkeypatch.setattr(stock_routes, "_cached_get_company_peers",
+    monkeypatch.setattr(services, "_cached_get_company_peers",
                         lambda s: ["JPM", "BAC", "WFC", "PNC", "C", "USB"])
     body = client.get("/api/metrics/jpm").get_json()
     assert body["success"] is True

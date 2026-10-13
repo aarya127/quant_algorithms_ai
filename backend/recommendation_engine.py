@@ -8,7 +8,8 @@ Signals, each a vote of +1 (bullish), -1 (bearish) or 0:
               (time-series momentum, Moskowitz-Ooi-Pedersen 2012)
   model     — the ML registry's 5-day return forecast beyond ±1%, only where a
               model is served (it has passed the CV-stability gate)
-  quality   — the Metrics & Grades overall grade: A/B +1, C 0, D/F -1.
+  quality   — the Metrics & Grades overall grade (vs industry peers):
+              A/B +1, C 0, D/F -1.
               Fundamentals aren't point-in-time here, so this one can't be
               backtested; it only counts at 3M+ and with a small weight.
 
@@ -122,14 +123,14 @@ def _model_vote(symbol):
 
 def _quality_vote(symbol):
     try:
-        from services import StockAnalyzer, _cached_get_basic_financials
-        m = StockAnalyzer(symbol).get_detailed_metrics(financials=_cached_get_basic_financials(symbol))
+        from services import graded_fundamentals
+        m, industry, _ = graded_fundamentals(symbol)
     except Exception:
         return None
     g = m.get('overall_grade')
     if not g:
         return None
-    return {'A': 1.0, 'B': 1.0, 'C': 0.0}.get(g, -1.0), f'overall grade {g}'
+    return {'A': 1.0, 'B': 1.0, 'C': 0.0}.get(g, -1.0), f"overall grade {g} vs {industry or 'industry'} peers"
 
 
 def recommend(symbol: str) -> dict:

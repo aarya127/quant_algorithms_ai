@@ -18,6 +18,7 @@ from services import (
     get_company_statistics, format_statistics_for_display,
     _cached_get_stock_quote, _cached_get_company_profile, _cached_get_company_peers,
     _cached_get_basic_financials, _cached_get_company_news, _cached_yf_info,
+    _safe, graded_fundamentals,
 )
 
 bp = Blueprint('stock', __name__)
@@ -26,12 +27,6 @@ bp = Blueprint('stock', __name__)
 # code that used os.path.dirname(__file__) now uses _BACKEND instead)
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-
-def _safe(fn, *args):
-    try:
-        return fn(*args)
-    except Exception:
-        return None
 
 @bp.route('/api/stock/<symbol>')
 def stock_details(symbol):
@@ -498,27 +493,12 @@ def scenario_analysis(symbol):
         return jsonify({'success': False, 'error': str(e)})
 
 # Finnhub's free tier allows 60 calls/min; a cold request makes 3 + MAX_PEERS.
-MAX_PEERS = 8
-
-
 @bp.route('/api/metrics/<symbol>')
 def stock_metrics(symbol):
     """Fundamental grades relative to the company's Finnhub industry peers."""
     try:
-        from grading import grade_fundamentals
         symbol_upper = symbol.upper()
-        with ThreadPoolExecutor(max_workers=3) as ex:
-            f_fins = ex.submit(_cached_get_basic_financials, symbol_upper)
-            f_profile = ex.submit(_safe, _cached_get_company_profile, symbol_upper)
-            f_peers = ex.submit(_safe, _cached_get_company_peers, symbol_upper)
-            metric = (f_fins.result() or {}).get('metric') or {}
-            industry = (f_profile.result() or {}).get('finnhubIndustry')
-            peers = [p for p in (f_peers.result() or []) if p != symbol_upper][:MAX_PEERS]
-        with ThreadPoolExecutor(max_workers=MAX_PEERS) as ex:
-            fins = ex.map(lambda p: _safe(_cached_get_basic_financials, p), peers)
-            peer_metrics = {p: f['metric'] for p, f in zip(peers, fins) if f and f.get('metric')}
-
-        metrics_data = grade_fundamentals(metric, list(peer_metrics.values()), industry)
+        metrics_data, industry, peers = graded_fundamentals(symbol_upper)
         if not metrics_data['graded_categories']:
             return jsonify({'success': False, 'error':
                             f'Not enough fundamental data to grade {symbol_upper} '
@@ -528,7 +508,7 @@ def stock_metrics(symbol):
             'success': True,
             'symbol': symbol_upper,
             'industry': industry,
-            'peers': list(peer_metrics),
+            'peers': peers,
             **metrics_data
         })
         
