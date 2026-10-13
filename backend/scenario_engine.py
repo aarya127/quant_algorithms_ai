@@ -2,32 +2,34 @@
 scenario_engine.py — deterministic scenario numbers for the Scenarios /
 Recommendations tabs. Numbers come from math; words come from llm_analyst.py.
 
-Two tiers, selected automatically per ticker:
+Filtered historical simulation over 5 years of daily prices:
+  - volatility: EWMA (RiskMetrics, λ = 0.94) for today's level, mean-reverting
+    to the 5-year average over the horizon (persistence 0.97/day, GARCH-like),
+    so a calm or a stressed week isn't extrapolated for a year
+  - shape: this ticker's own daily returns standardised by their EWMA vol,
+    resampled in 5-day blocks (keeps fat tails and short-run clustering)
+  - drift: half the 5-year mean, half a 7%/yr equity prior — trailing returns
+    are a weak forecast, and NVDA's at full weight would promise ~60%/yr
+  - tickers with a trained registry (backend/predictor.py) use the model's
+    5-day return/vol forecast for the first 5 days instead
 
-  Tier 1 — statistical (any ticker):
-    base target from historical drift (shrunk 50%), bull/bear at ±1σ√h of
-    realized volatility around it.
+Bull / base / bear are the 80th / 50th / 20th percentiles of the simulated
+price, so each card's probability is true by construction (20% / 60% / 20%).
+`calibration` checks the band against history: the share of past h-day moves
+that landed inside it (ideal 60%), using only data available at each start.
 
-  Tier 2 — model-backed (tickers with a trained registry, currently NVDA):
-    the registry's predicted 5-day return / vol (backend/predictor.py) replace
-    drift and vol for the first 5 days, shrunk like the statistical drift.
-    Falls back to Tier 1 on any error.
-
-Probabilities refer to the displayed targets: P(price ≥ bull), P(≤ bear), and
-the rest. When ≥10 non-overlapping h-day windows exist (1W, 1M on 2 years) they
-use the ticker's own return shape, standardised and placed on the engine's
-drift/band; longer horizons have too few independent windows (overlapping ones
-gave 0%/100% at 1Y), so they use the normal approximation.
-
-All outputs are cached for 15 minutes per (symbol, timeframe).
+Outputs are cached for 15 minutes per (symbol, timeframe); prices for 15 minutes
+per symbol.
 """
 import math
 import os
 import sys
 import threading
+import zlib
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from cachetools import TTLCache
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -42,10 +44,17 @@ _REGISTRY_DIR = (Path(__file__).resolve().parents[1]
 # trading-day horizons for the UI timeframes
 HORIZON_DAYS = {'1W': 5, '1M': 21, '3M': 63, '6M': 126, '1Y': 252}
 
-_cache = TTLCache(maxsize=256, ttl=900)
+EWMA_LAMBDA = 0.94        # RiskMetrics daily decay
+VOL_PERSISTENCE = 0.97    # per-day pull of today's vol back toward the long-run level
+BLOCK = 5                 # bootstrap block length (days)
+N_PATHS = 4000
+DRIFT_SHRINK = 0.5        # weight on the trailing mean; the rest goes to the prior
+PRIOR_ANNUAL = 0.07       # equity-premium-like prior for the drift
+MIN_INDEPENDENT = 10      # non-overlapping windows needed to report calibration
+BANDS = (0.2, 0.5, 0.8)   # bear / base / bull percentiles
 
-DRIFT_SHRINK = 0.5        # daily drift estimates are noisy; halve them toward zero
-MIN_INDEPENDENT = 10      # non-overlapping windows needed for empirical probabilities
+_cache = TTLCache(maxsize=256, ttl=900)
+_prices_cache = TTLCache(maxsize=128, ttl=900)
 _cache_lock = threading.Lock()
 
 
@@ -54,18 +63,54 @@ def has_model(symbol: str) -> bool:
     return (_REGISTRY_DIR / symbol.upper() / 'active.json').exists()
 
 
-def _history(symbol: str):
-    """(~2y of daily closes oldest→newest, listing currency). App symbols for
-    Canadian listings map to the TSX ticker, matching the Overview tab."""
+def prices(symbol: str):
+    """(~5y daily DataFrame [Date, Open, Close], listing currency). App symbols
+    for Canadian listings map to the TSX ticker, matching the Overview tab."""
+    symbol = symbol.upper()
+    with _cache_lock:
+        if symbol in _prices_cache:
+            return _prices_cache[symbol]
     tk = yf.Ticker(get_ticker_for_charts(symbol))
-    hist = tk.history(period='2y', interval='1d')
+    hist = tk.history(period='5y', interval='1d')
     if hist is None or hist.empty or len(hist) < 60:
         raise ValueError(f'insufficient history for {symbol}')
-    return hist['Close'].to_numpy(dtype=float), (tk.history_metadata or {}).get('currency', 'USD')
+    df = hist[['Open', 'Close']].reset_index().rename(columns={hist.index.name or 'index': 'Date'})
+    out = (df, (tk.history_metadata or {}).get('currency', 'USD'))
+    with _cache_lock:
+        _prices_cache[symbol] = out
+    return out
 
 
-def _norm_cdf(x):
-    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+def _history(symbol: str):
+    """(daily closes oldest→newest, listing currency)."""
+    df, currency = prices(symbol)
+    return df['Close'].to_numpy(dtype=float), currency
+
+
+def ewma_var(log_ret: np.ndarray) -> np.ndarray:
+    """σ² for each day, from returns strictly before it (seeded with the first
+    20 days' variance): element t is the forecast for return t; the last+1
+    element is the forecast for tomorrow."""
+    var = np.empty(len(log_ret) + 1)
+    var[0] = np.var(log_ret[:20], ddof=1)
+    for t, r in enumerate(log_ret):
+        var[t + 1] = EWMA_LAMBDA * var[t] + (1 - EWMA_LAMBDA) * r * r
+    return var
+
+
+def var_path(var_now: float, var_lr: float, h: int) -> np.ndarray:
+    """Daily variance for days 1..h, decaying from today's EWMA level to the long run."""
+    return var_lr + (var_now - var_lr) * VOL_PERSISTENCE ** np.arange(1, h + 1)
+
+
+def _bootstrap_sums(z: np.ndarray, sig: np.ndarray, rng) -> np.ndarray:
+    """Simulated sums of sig_k · z over len(sig) days, z resampled in blocks."""
+    h = len(sig)
+    n_blocks = -(-h // BLOCK)
+    starts = rng.integers(0, len(z), size=(N_PATHS, n_blocks))
+    idx = (starts[:, :, None] + np.arange(BLOCK)) % len(z)          # circular blocks
+    draws = z[idx.reshape(N_PATHS, -1)[:, :h]]
+    return (draws * sig).sum(axis=1)
 
 
 def _model_overlay(symbol: str):
@@ -88,15 +133,34 @@ def _model_overlay(symbol: str):
             'prediction_date': result.get('date'),
         }
         # target_vol_5d is the std of DAILY returns over the next 5 days, so it
-        # is already a daily vol (dividing by √5 made the bands ~2.2× too narrow)
+        # is already a daily vol
         return float(r5) / 5.0 * DRIFT_SHRINK, float(v5), meta
     except Exception as exc:
         print(f'[SCENARIOS] model overlay unavailable for {symbol}: {exc}', flush=True)
         return None
 
 
+def _calibration(log_ret, var, z, mu, var_lr, h, rng):
+    """Share of past h-day moves inside the 20–80% band, each band built from the
+    EWMA vol known at its start (the return shape uses the full sample)."""
+    starts = np.arange(252, len(log_ret) - h + 1)
+    if len(log_ret) // h < MIN_INDEPENDENT or len(starts) == 0:
+        return None
+    unit = _bootstrap_sums(z, np.ones(h), rng) / math.sqrt(h)       # unit-variance shape
+    q_lo, q_hi = np.quantile(unit, [BANDS[0], BANDS[2]])
+    k = VOL_PERSISTENCE ** np.arange(1, h + 1)
+    total_var = h * var_lr + (var[starts] - var_lr) * k.sum()
+    csum = np.concatenate([[0.0], np.cumsum(log_ret)])
+    realised = csum[starts + h] - csum[starts]
+    centre = mu * h
+    inside = (realised >= centre + q_lo * np.sqrt(total_var)) & \
+             (realised <= centre + q_hi * np.sqrt(total_var))
+    return {'inside_band': round(float(inside.mean()), 3), 'ideal': BANDS[2] - BANDS[0],
+            'windows': int(len(starts)), 'independent_windows': int(len(log_ret) // h)}
+
+
 def compute_scenarios(symbol: str, timeframe: str = '1M') -> dict:
-    """Bull/base/bear targets + empirical probabilities for one timeframe."""
+    """Bull/base/bear targets (80th/50th/20th percentiles) for one timeframe."""
     symbol = symbol.upper()
     h = HORIZON_DAYS.get(timeframe, 21)
     key = (symbol, h)
@@ -107,51 +171,27 @@ def compute_scenarios(symbol: str, timeframe: str = '1M') -> dict:
     closes, currency = _history(symbol)
     last = float(closes[-1])
     log_ret = np.diff(np.log(closes))
+    var = ewma_var(log_ret)
+    z = log_ret / np.sqrt(var[:-1])                 # standardised by the vol known that day
+    z = (z - z.mean()) / z.std(ddof=1)
+    var_lr = float(np.var(log_ret, ddof=1))
+    mu = DRIFT_SHRINK * float(np.mean(log_ret)) + (1 - DRIFT_SHRINK) * math.log(1 + PRIOR_ANNUAL) / 252
 
-    # Tier 1: historical drift (shrunk toward zero — daily drift estimates
-    # are noisy and momentum-chasing at full weight) and realized vol.
-    stat_drift = float(np.mean(log_ret)) * DRIFT_SHRINK
-    stat_vol = float(np.std(log_ret, ddof=1))
-    drift, vol = stat_drift, stat_vol
-    total_drift = drift * h
-    total_var = vol * vol * h
-    meta = {'engine': 'vol-scaled statistical', 'model_backed': False}
-
-    # Tier 2 overlay when a trained registry exists for this ticker. The model
-    # predicts a 5-day return/vol — apply it over its NATIVE horizon only and
-    # use statistical drift/vol for the remainder, otherwise a 5d prediction
-    # extrapolated to 1Y would imply absurd targets.
+    mus = np.full(h, mu)
+    sig = np.sqrt(var_path(float(var[-1]), var_lr, h))
+    meta = {'engine': 'filtered historical simulation', 'model_backed': False}
     if has_model(symbol):
         overlay = _model_overlay(symbol)
         if overlay is not None:
             m_drift, m_vol, meta = overlay
-            model_days = min(h, 5)
-            rest = h - model_days
-            total_drift = m_drift * model_days + stat_drift * rest
-            total_var = m_vol ** 2 * model_days + stat_vol ** 2 * rest
-            if rest:
-                meta['engine'] = 'ML registry (5d) + statistical beyond'
+            n = min(h, 5)
+            mus[:n], sig[:n] = m_drift, m_vol
+            meta['engine'] = 'ML registry (5d)' + (' + simulation beyond' if h > 5 else '')
 
-    # Targets: geometric drift over the horizon, bands at ±1σ√h
-    band = math.sqrt(total_var)
-    base = last * math.exp(total_drift)
-    bull = last * math.exp(total_drift + band)
-    bear = last * math.exp(total_drift - band)
-
-    # Probabilities of reaching the displayed targets (see module docstring)
-    independent = len(log_ret) // h
-    if independent >= MIN_INDEPENDENT and band > 0:
-        h_rets = np.array([log_ret[i:i + h].sum() for i in range(len(log_ret) - h + 1)])
-        z = (h_rets - h_rets.mean()) / h_rets.std(ddof=1)      # the ticker's own shape
-        p_bull = float(np.mean(z >= 1))
-        p_bear = float(np.mean(z <= -1))
-        p_up = float(np.mean(total_drift + z * band > 0))
-        method = f'empirical ({independent} non-overlapping {h}-day windows)'
-    else:
-        p_bull = p_bear = 1 - _norm_cdf(1)                      # ±1σ under a normal
-        p_up = _norm_cdf(total_drift / band) if band > 0 else 0.5
-        method = 'normal approximation (too few independent windows)'
-    p_base = 1.0 - p_bull - p_bear
+    rng = np.random.default_rng(zlib.crc32(f'{symbol}:{h}'.encode()))   # same answer on refresh
+    totals = mus.sum() + _bootstrap_sums(z, sig, rng)
+    pct = np.quantile(totals, [0.05, *BANDS, 0.95])
+    targets = last * np.exp(pct)
 
     result = {
         'symbol': symbol,
@@ -159,13 +199,19 @@ def compute_scenarios(symbol: str, timeframe: str = '1M') -> dict:
         'horizon_days': h,
         'current_price': round(last, 2),
         'currency': currency,
-        'annualized_vol': round(band / math.sqrt(h) * math.sqrt(252), 4),
-        'p_up': round(p_up, 3),
-        'probability_method': method,
+        'annualized_vol': round(float(np.sqrt(np.mean(sig ** 2) * 252)), 4),
+        'vol_now_annualized': round(float(np.sqrt(var[-1] * 252)), 4),
+        'vol_longrun_annualized': round(math.sqrt(var_lr * 252), 4),
+        'drift_annualized': round(math.exp(mu * 252) - 1, 4),
+        'p_up': round(float(np.mean(totals > 0)), 3),
+        'p_loss_10': round(float(np.mean(totals < math.log(0.9))), 3),
+        'range_90': {'low': round(float(targets[0]), 2), 'high': round(float(targets[-1]), 2)},
+        'probability_method': f'{N_PATHS:,} simulated paths from {len(log_ret):,} days of history',
+        'calibration': _calibration(log_ret, var, z, mu, var_lr, h, rng),
         'scenarios': {
-            'bull_case': {'price_target': round(bull, 2), 'probability': round(p_bull * 100, 1)},
-            'base_case': {'price_target': round(base, 2), 'probability': round(p_base * 100, 1)},
-            'bear_case': {'price_target': round(bear, 2), 'probability': round(p_bear * 100, 1)},
+            'bull_case': {'price_target': round(float(targets[3]), 2), 'probability': 20.0},
+            'base_case': {'price_target': round(float(targets[2]), 2), 'probability': 60.0},
+            'bear_case': {'price_target': round(float(targets[1]), 2), 'probability': 20.0},
         },
         **meta,
     }

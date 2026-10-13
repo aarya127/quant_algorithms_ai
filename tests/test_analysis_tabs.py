@@ -17,38 +17,57 @@ from grading import grade_fundamentals
 
 @pytest.fixture()
 def prices(monkeypatch):
-    """2 years of synthetic closes with an upward drift, no trained model."""
+    """5 years of synthetic daily bars with an upward drift, no trained model."""
+    import pandas as pd
     rng = np.random.default_rng(0)
-    closes = 100 * np.exp(np.cumsum(rng.normal(0.0008, 0.015, 504)))
-    monkeypatch.setattr(se, "_history", lambda s: (closes, "USD"))
+    closes = 100 * np.exp(np.cumsum(rng.normal(0.0008, 0.015, 1260)))
+    bars = pd.DataFrame({"Date": pd.bdate_range("2021-10-01", periods=1260),
+                         "Open": closes * (1 + rng.normal(0, 0.002, 1260)), "Close": closes})
+    monkeypatch.setattr(se, "prices", lambda s: (bars, "USD"))
     monkeypatch.setattr(se, "has_model", lambda s: False)
     se._cache.clear()
-    return closes
+    return bars
 
 
 @pytest.mark.parametrize("tf", list(se.HORIZON_DAYS))
-def test_targets_ordered_and_probabilities_sum(prices, tf):
+def test_targets_are_ordered_percentiles(prices, tf):
     r = se.compute_scenarios("TEST", tf)
     s = r["scenarios"]
     assert s["bear_case"]["price_target"] < s["base_case"]["price_target"] < s["bull_case"]["price_target"]
-    probs = [s[k]["probability"] for k in ("bull_case", "base_case", "bear_case")]
-    assert all(0 <= p <= 100 for p in probs)
-    assert sum(probs) == pytest.approx(100, abs=0.2)
+    assert r["range_90"]["low"] < s["bear_case"]["price_target"]
+    assert r["range_90"]["high"] > s["bull_case"]["price_target"]
+    # the probabilities are true by construction: 20 / 60 / 20
+    assert [s[k]["probability"] for k in ("bull_case", "base_case", "bear_case")] == [20.0, 60.0, 20.0]
 
 
 def test_long_horizons_never_certain(prices):
-    """Overlapping windows gave 0% bear / 100% up at 1Y; the normal approximation doesn't."""
+    """Overlapping windows used to give 0% bear / 100% up at 1Y."""
     r = se.compute_scenarios("TEST", "1Y")
-    assert r["probability_method"].startswith("normal")
     assert 0.05 < r["p_up"] < 0.95
-    assert r["scenarios"]["bear_case"]["probability"] == pytest.approx(15.9, abs=0.1)
+    assert r["calibration"] is None              # 5 independent years: too few to check
 
 
-def test_short_horizons_use_the_tickers_own_distribution(prices):
-    r = se.compute_scenarios("TEST", "1W")
-    assert r["probability_method"].startswith("empirical")
-    # roughly normal synthetic returns → about 16% beyond ±1σ each side
-    assert 10 < r["scenarios"]["bull_case"]["probability"] < 22
+def test_bands_are_calibrated_on_well_behaved_data(prices):
+    """On i.i.d. returns the 20–80 band should hold ~60% of past moves."""
+    cal = se.compute_scenarios("TEST", "1M")["calibration"]
+    assert 0.5 < cal["inside_band"] < 0.7 and cal["ideal"] == pytest.approx(0.6)
+
+
+def test_vol_reverts_toward_the_long_run():
+    path = se.var_path(var_now=4e-4, var_lr=1e-4, h=252)
+    assert path[0] < 4e-4 and abs(path[-1] - 1e-4) < 1e-5 and np.all(np.diff(path) < 0)
+
+
+def test_ewma_uses_only_past_returns():
+    r = np.r_[np.full(30, 0.01), 0.5, np.full(5, 0.01)]
+    var = se.ewma_var(r)
+    assert var[30] < 0.01 and var[31] > var[30]  # the shock moves only the next day's forecast
+
+
+def test_simulation_is_deterministic(prices):
+    a = se.compute_scenarios("TEST", "3M")
+    se._cache.clear()
+    assert se.compute_scenarios("TEST", "3M") == a
 
 
 def test_model_vol_is_already_daily(monkeypatch):
@@ -64,6 +83,7 @@ def test_model_vol_is_already_daily(monkeypatch):
 
 
 def test_canadian_symbol_uses_tsx_listing(monkeypatch):
+    import pandas as pd
     seen = {}
 
     class Ticker:
@@ -72,12 +92,48 @@ def test_canadian_symbol_uses_tsx_listing(monkeypatch):
             self.history_metadata = {"currency": "CAD"}
 
         def history(self, **kw):
-            import pandas as pd
-            return pd.DataFrame({"Close": np.linspace(100, 110, 300)})
+            idx = pd.bdate_range("2024-01-01", periods=300, name="Date")
+            return pd.DataFrame({"Open": np.linspace(100, 110, 300), "Close": np.linspace(100, 110, 300)}, index=idx)
 
     monkeypatch.setattr(se, "yf", types.SimpleNamespace(Ticker=Ticker))
-    closes, currency = se._history("TD")
-    assert seen["t"] == "TD.TO" and currency == "CAD"
+    se._prices_cache.clear()
+    bars, currency = se.prices("TD")
+    assert seen["t"] == "TD.TO" and currency == "CAD" and list(bars.columns) == ["Date", "Open", "Close"]
+
+
+# Recommendations
+
+import recommendation_engine as rec
+
+
+def test_price_signals_match_their_definitions():
+    closes = np.r_[np.linspace(100, 50, 300), np.linspace(50, 120, 300)]
+    sig = rec.price_signals(closes)
+    assert np.isnan(sig["trend"][198]) and np.isnan(sig["momentum"][rec.WARMUP - 1])
+    t = 599
+    assert sig["trend"][t] == (1.0 if closes[t] > closes[t - 199:t + 1].mean() else -1.0)
+    assert sig["momentum"][t] == np.sign(closes[t - 5] / closes[t - 257] - 1)
+
+
+def test_recommend_votes_and_evidence(prices, monkeypatch):
+    monkeypatch.setattr(rec, "_quality_vote", lambda s: (-1.0, "overall grade D"))
+    r = rec.recommend("TEST")
+    assert set(r["horizons"]) == set(rec.WEIGHTS)
+    one_y = r["horizons"]["1Y"]
+    assert {v["signal"] for v in one_y["votes"]} == {"trend", "momentum", "quality"}
+    assert sum(v["weight"] for v in one_y["votes"]) == pytest.approx(1.0, abs=0.01)
+    # no model served → 1W uses only the price signals, reweighted
+    assert {v["signal"] for v in r["horizons"]["1W"]["votes"]} == {"trend", "momentum"}
+    expected = sum(v["vote"] * v["weight"] for v in one_y["votes"])
+    assert one_y["score"] == pytest.approx(expected, abs=0.01)
+    assert one_y["action"] == ("Buy" if expected > 0.3 else "Sell" if expected < -0.3 else "Hold")
+    rules = [row["rule"] for row in r["evidence"]["rows"]]
+    assert rules[0] == "Buy and hold" and "Trend (200-day average)" in rules
+
+
+def test_long_or_cash_never_shorts():
+    out = rec._long_or_cash(np.array([1.0, -1.0, 0.0, np.nan]))
+    assert out[:3].tolist() == [1.0, 0.0, 0.0] and np.isnan(out[3])
 
 
 # Metrics & Grades

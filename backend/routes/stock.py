@@ -450,9 +450,9 @@ def scenario_analysis(symbol):
         if not isinstance(rationale, dict):
             rationale = {}
         default_txt = {
-            'bull': f"Price 1σ above the base case after {sc['horizon_days']} trading days",
-            'base': f"Expected path: half the historical drift over {sc['horizon_days']} trading days",
-            'bear': f"Price 1σ below the base case after {sc['horizon_days']} trading days",
+            'bull': f"1-in-5 chance the price ends above this after {sc['horizon_days']} trading days",
+            'base': f"Median outcome after {sc['horizon_days']} trading days",
+            'bear': f"1-in-5 chance the price ends below this after {sc['horizon_days']} trading days",
         }
 
         def case(name, factor_key):
@@ -465,8 +465,8 @@ def scenario_analysis(symbol):
                 'return': c['return'],
                 'factors': [f for f in listed if isinstance(f, str)] if isinstance(listed, list) else [],
                 'rationale': text if isinstance(text, str) and text else (
-                    f"{default_txt[name]} ({sc['annualized_vol']:.0%} annualized vol, "
-                    f"{sc['engine']}). Probability: {sc['probability_method']}."),
+                    f"{default_txt[name]} ({sc['engine']}, {sc['annualized_vol']:.0%} "
+                    f"annualized vol over the horizon)."),
             }
 
         return jsonify({
@@ -481,6 +481,12 @@ def scenario_analysis(symbol):
             'model_backed': sc['model_backed'],
             'annualized_vol': sc['annualized_vol'],
             'p_up': sc['p_up'],
+            'p_loss_10': sc['p_loss_10'],
+            'range_90': sc['range_90'],
+            'calibration': sc['calibration'],
+            'vol_now_annualized': sc['vol_now_annualized'],
+            'vol_longrun_annualized': sc['vol_longrun_annualized'],
+            'drift_annualized': sc['drift_annualized'],
             'data_sources': ['yfinance history', sc['engine']],
             'bull_case': case('bull', 'bull'),
             'base_case': case('base', None),
@@ -515,86 +521,23 @@ def stock_metrics(symbol):
 
 @bp.route('/api/recommendations/<symbol>')
 def recommendations(symbol):
-    """Time-based recommendations driven by scenario_engine numbers (empirical
-    p_up + expected return), with LLM narrative when the brief is cached.
-    Every recommendation is logged so its hit rate can be measured later."""
+    """Per-horizon Buy/Hold/Sell from a weighted vote of trend, momentum, the ML
+    model and the quality grade, with each price rule backtested on this ticker
+    (recommendation_engine.py). The cached AI brief, when present, is shown once
+    as the 1-month view."""
     try:
-        import scenario_engine
-        symbol_u = symbol.upper()
-
+        import recommendation_engine
+        rec = recommendation_engine.recommend(symbol)
         brief = None
         try:
             import llm_analyst
             with llm_analyst._lock:
-                brief = llm_analyst._brief_cache.get(symbol_u)
+                brief = llm_analyst._brief_cache.get(symbol.upper())
         except Exception:
             pass
-
-        timeframes = [
-            ('1W', 'Short-term Trading'),
-            ('1M', 'Swing Trading'),
-            ('3M', 'Medium-term Investment'),
-            ('6M', 'Position Trading'),
-            ('1Y', 'Long-term Investment'),
-        ]
-
-        recommendations_data = {}
-        current_price = None
-        for tf, description in timeframes:
-            sc = scenario_engine.compute_scenarios(symbol_u, tf)
-            current_price = sc['current_price']
-            base_return = sc['scenarios']['base_case']['return']
-            p_up = sc['p_up']
-
-            # A rule over the scenario numbers, not a backtested signal
-            if p_up >= 0.62 and base_return > 2:
-                action = 'Strong Buy'
-            elif p_up >= 0.55 and base_return > 0:
-                action = 'Buy'
-            elif p_up <= 0.38 or base_return < -5:
-                action = 'Strong Sell' if p_up <= 0.33 else 'Sell'
-            else:
-                action = 'Hold'
-            reasoning = (f"{description}: estimated {p_up:.0%} chance the price is higher "
-                         f"in {sc['horizon_days']} trading days; base case {base_return:+.1f}% "
-                         f"({sc['engine']}; {sc['probability_method']}).")
-            if brief and isinstance(brief.get('narrative'), str):
-                reasoning += f" AI analyst (1-month view): {brief['narrative']}"
-
-            recommendations_data[tf] = {
-                'action': action,
-                'reasoning': reasoning,
-                'timeframe': description,
-                'expected_return': base_return,
-                'p_up': p_up,
-                'model_backed': sc['model_backed'],
-            }
-
-        # Audit trail — measurable hit rate later (price at recommendation time)
-        try:
-            import datetime as _dt, json as _json
-            log_path = os.path.join(_BACKEND, 'recommendation_log.jsonl')
-            with open(log_path, 'a') as fh:
-                fh.write(_json.dumps({
-                    'ts': _dt.datetime.now().isoformat(),
-                    'symbol': symbol_u, 'price': current_price,
-                    'recommendations': {tf: {k: r[k] for k in ('action', 'p_up', 'expected_return')}
-                                        for tf, r in recommendations_data.items()},
-                }) + '\n')
-        except OSError:
-            pass
-
-        return jsonify({
-            'success': True,
-            'symbol': symbol_u,
-            'recommendations': recommendations_data,
-            'signal': (brief or {}).get('signal'),
-            'engine_note': 'a rule over the Scenarios numbers (chance of a rise and base-case '
-                           'return), not a backtested signal; ML-registry drift/vol where a '
-                           'trained model exists',
-            'currency': sc['currency'],
-        })
-
+        return jsonify({'success': True, **rec,
+                        'ai_brief': {'signal': brief.get('signal'), 'narrative': brief.get('narrative')}
+                        if brief else None})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 

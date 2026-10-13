@@ -360,12 +360,20 @@ option { background: var(--bg-card); }
 
 /* RECOMMENDATIONS */
 .recommendations-container { display: flex; flex-direction: column; gap: 1.5rem; }
-.recommendation-card { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.recommendation-card { background: var(--bg-card); color: var(--text-1); border: 1px solid var(--border); border-left: 4px solid var(--text-3); border-radius: 12px; padding: 1.25rem; }
+.recommendation-card.action-buy { border-left-color: var(--pos); }
+.recommendation-card.action-sell { border-left-color: var(--neg); }
+.recommendation-card.action-hold { border-left-color: var(--warning-color); }
+.recommendation-card.action-buy .timeframe-badge { background: var(--pos); color: #04170e; }
+.recommendation-card.action-sell .timeframe-badge { background: var(--neg); color: #2a0707; }
+.recommendation-card.action-hold .timeframe-badge { background: var(--warning-color); color: #241500; }
+.score-bar { position: relative; background: var(--bg-hover); height: 8px; border-radius: 4px; margin: 0.75rem 0 0.25rem; }
+.score-bar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text-3); }
+.score-fill { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
+.vote-list { list-style: none; padding: 0; margin: 0.75rem 0; font-size: 0.85rem; }
+.vote-list li { padding: 2px 0; }
 .recommendation-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .timeframe-badge { background: rgba(255,255,255,0.2); padding: 0.4rem 1rem; border-radius: 20px; font-weight: bold; font-size: 0.85rem; }
-.recommendation-action { font-size: 1.4rem; font-weight: bold; margin: 1rem 0; }
-.confidence-bar { background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; overflow: hidden; margin-top: 0.5rem; }
-.confidence-fill { height: 100%; background: white; border-radius: 4px; transition: width 0.3s ease; }
 
 /* CALENDAR */
 .calendar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 1rem; margin-top: 1rem; }

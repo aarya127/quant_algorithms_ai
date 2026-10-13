@@ -223,9 +223,8 @@ pipeline_state.db-wal
 pipeline_state.db-shm
 backend/pipeline_state.db*
 
-# LLM analyst + recommendation audit logs (runtime data)
+# LLM analyst audit log (runtime data)
 backend/analyst_log.jsonl
-backend/recommendation_log.jsonl
 
 # Model paper-trading ledger: produced by the retrain workflow, lives on the models branch
 /paper/

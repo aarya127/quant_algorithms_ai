@@ -901,14 +901,24 @@ async function loadScenarios(symbol, timeframe) {
             ? '<span class="badge bg-success" title="Targets use the trained ML registry (predicted return + volatility)">⚡ model-backed</span>'
             : '<span class="badge bg-secondary" title="Targets use realized volatility">statistical</span>';
         const cur = data.currency === 'USD' ? '$' : `${esc(data.currency)} `;
+        const pct = x => `${(x * 100).toFixed(0)}%`;
+        const cal = data.calibration;
+        const calText = cal
+            ? `History check: ${pct(cal.inside_band)} of past ${esc(timeframe)} moves landed between the bear and bull
+               prices built this way (ideal ${pct(cal.ideal)}; ${cal.independent_windows} independent periods).`
+            : `Not enough history to check ${esc(timeframe)} bands against past moves.`;
         container.innerHTML = `
             <div class="alert alert-info mb-3">
                 <strong>Current Price:</strong> ${cur}${data.current_price.toFixed(2)} |
-                <strong>Chance of a rise:</strong> ${(data.p_up * 100).toFixed(0)}% |
-                <strong>Ann. Vol:</strong> ${(data.annualized_vol * 100).toFixed(0)}%
+                <strong>Chance of a rise:</strong> ${pct(data.p_up)} |
+                <strong>Chance of losing 10%+:</strong> ${pct(data.p_loss_10)} |
+                <strong>90% range:</strong> ${cur}${data.range_90.low.toFixed(2)} – ${cur}${data.range_90.high.toFixed(2)}
                 ${engineBadge}
-                <br><small>Engine: ${esc(data.engine)}${data.prediction_date ? ` (model prediction from ${esc(data.prediction_date)})` : ''}
-                    · Probabilities: ${esc(data.probability_method)} · Bull/bear are ±1σ around the base case</small>
+                <br><small>Volatility ${pct(data.vol_now_annualized)} now, reverting toward its 5-year average of
+                    ${pct(data.vol_longrun_annualized)} · assumed drift ${data.drift_annualized >= 0 ? '+' : ''}${pct(data.drift_annualized)}/yr
+                    (half trailing, half a 7% prior) · ${esc(data.probability_method)}${data.prediction_date
+                    ? ` · ML forecast from ${esc(data.prediction_date)} for the first 5 days` : ''}</small>
+                <br><small>${calText}</small>
             </div>
             <div class="scenario-container">
                 ${createScenarioCard('bull', data.bull_case, cur)}
@@ -943,7 +953,7 @@ function createScenarioCard(type, scenario, cur) {
             <div class="scenario-title">
                 <i class="fas ${icons[type]} text-${colors[type]}"></i>
                 ${type.toUpperCase()} CASE
-                <span class="ms-auto badge bg-${colors[type]}">${esc(scenario.probability)}%</span>
+                <span class="ms-auto badge bg-${colors[type]}">${{bull: 'top 20%', base: 'median', bear: 'bottom 20%'}[type]}</span>
             </div>
             <div class="price-target">
                 Target: ${cur}${scenario.price_target.toFixed(2)}
@@ -1072,19 +1082,30 @@ async function loadRecommendations(symbol) {
             return;
         }
         
-        const signalBadge = data.signal
-            ? `<span class="badge ${data.signal === 'long' ? 'bg-success' : data.signal === 'short' ? 'bg-danger' : 'bg-secondary'}">AI signal: ${esc(data.signal.toUpperCase())}</span>`
-            : '';
+        const ev = data.evidence;
+        const pc = x => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`;
+        const evRows = ev.rows.map(r => `<tr>
+                <td>${esc(r.rule)}${r.window ? `<br><small class="text-muted">${esc(r.window)}</small>` : ''}</td>
+                <td class="text-end">${pc(r.cagr)}</td><td class="text-end">${r.sharpe.toFixed(2)}</td>
+                <td class="text-end">${pc(r.max_drawdown)}</td><td class="text-end">${(r.invested * 100).toFixed(0)}%</td>
+            </tr>`).join('');
         container.innerHTML = `
-            <div class="alert alert-info mb-3">
-                <strong>Analysis Base:</strong> ${esc(data.engine_note || 'empirical return distribution')}
-                ${signalBadge}
-            </div>
             <div class="recommendations-container">
-                ${Object.entries(data.recommendations).map(([timeframe, rec]) =>
-                    createRecommendationCard(timeframe, rec)
-                ).join('')}
+                ${['1W', '1M', '3M', '6M', '1Y'].filter(tf => data.horizons[tf])   // JSON keys arrive sorted
+                    .map(tf => createRecommendationCard(tf, data.horizons[tf])).join('')}
             </div>
+            <div class="card mt-3"><div class="card-body">
+                <h6 class="mb-1">How these signals have done on ${esc(data.symbol)}</h6>
+                <small class="text-muted d-block mb-2">${esc(ev.start)} → ${esc(ev.end)} · decided at the close, filled at the
+                    next open with slippage · price rules are long-or-cash · past results on one stock guarantee nothing</small>
+                <div class="table-responsive"><table class="table table-sm mb-0">
+                    <thead><tr><th>Rule</th><th class="text-end">CAGR</th><th class="text-end">Sharpe</th>
+                        <th class="text-end">Max drawdown</th><th class="text-end">Invested</th></tr></thead>
+                    <tbody>${evRows}</tbody>
+                </table></div>
+                ${data.ai_brief ? `<p class="mt-2 mb-0 small"><strong>AI analyst (1-month view, ${esc(data.ai_brief.signal)}):</strong>
+                    ${esc(data.ai_brief.narrative)}</p>` : ''}
+            </div></div>
         `;
         
     } catch (error) {
@@ -1096,31 +1117,23 @@ async function loadRecommendations(symbol) {
 
 // Create recommendation card
 function createRecommendationCard(timeframe, rec) {
-    const actionColors = {
-        'Strong Buy': 'success',
-        'Buy': 'info',
-        'Hold': 'warning',
-        'Sell': 'danger',
-        'Strong Sell': 'dark'
-    };
-    
+    const names = {trend: 'Trend', momentum: 'Momentum', model: 'ML model', quality: 'Quality grade'};
+    const arrow = v => v > 0 ? '<span class="text-positive">▲</span>' : v < 0 ? '<span class="text-negative">▼</span>' : '<span class="text-muted">●</span>';
     return `
-        <div class="recommendation-card">
+        <div class="recommendation-card action-${esc(rec.action.toLowerCase())}">
             <div class="recommendation-header">
-                <h5><i class="far fa-clock"></i> ${timeframe}</h5>
+                <h5><i class="far fa-clock"></i> ${timeframe} <small class="text-muted">${esc(rec.label)}</small></h5>
                 <span class="timeframe-badge">${esc(rec.action)}</span>
             </div>
-            <div class="recommendation-action">
-                ${esc(rec.action)}
+            <div class="score-bar" title="Score ${rec.score}: Buy above +0.3, Sell below −0.3">
+                <div class="score-fill" style="left:${50 + Math.min(rec.score, 0) * 50}%; width:${Math.abs(rec.score) * 50}%"></div>
             </div>
-            <p>${esc(rec.reasoning)}</p>
-            <div>
-                <small>Chance of a rise</small>
-                <div class="confidence-bar">
-                    <div class="confidence-fill" style="width: ${rec.p_up * 100}%"></div>
-                </div>
-                <small class="mt-1 d-block">${(rec.p_up * 100).toFixed(0)}%</small>
-            </div>
+            <small class="text-muted">Score ${rec.score >= 0 ? '+' : ''}${rec.score.toFixed(2)} (−1 to +1)</small>
+            <ul class="vote-list">
+                ${rec.votes.map(v => `<li>${arrow(v.vote)} <strong>${esc(names[v.signal] || v.signal)}</strong>
+                    <span class="text-muted">(${(v.weight * 100).toFixed(0)}%)</span>: ${esc(v.detail)}</li>`).join('')}
+            </ul>
+            <small class="text-muted">Scenarios: ${(rec.p_up * 100).toFixed(0)}% chance of a rise, median ${rec.base_return >= 0 ? '+' : ''}${rec.base_return.toFixed(1)}%</small>
         </div>
     `;
 }
