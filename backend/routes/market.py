@@ -20,85 +20,19 @@ _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @bp.route('/api/search/<query>')
 def search_stocks(query):
-    """Search for stocks by symbol or company name - Fast version with minimal API calls"""
+    """Search for stocks by symbol or company name (one Yahoo search call)"""
     try:
-        query = query.upper().strip()
-        results = []
-        
-        # Use yfinance's fast search functionality
-        # This uses Yahoo's search API which is much faster than fetching individual tickers
-        try:
-            import yfinance.utils as yf_utils
-            
-            # Search for tickers matching the query
-            search_results = yf.Ticker(query).get_fast_info()
-            
-            # For the primary symbol, get basic info
-            stock = yf.Ticker(query)
-            
-            # Use fast_info instead of info to avoid slow API calls
-            fast_info = stock.fast_info
-            
-            if fast_info:
-                # Get additional info only for the exact match (much faster)
-                info = stock.info
-                if info and info.get('symbol'):
-                    exchange = info.get('exchange', '')
-                    # Filter for major exchanges
-                    if exchange in ['NYQ', 'NMS', 'NAS', 'NYSE', 'NASDAQ', 'TOR', 'TSX', 'TSE', 'NEO', 'CNQ'] or not exchange:
-                        results.append({
-                            'symbol': info.get('symbol', query),
-                            'name': info.get('longName', info.get('shortName', query)),
-                            'exchange': exchange or 'Unknown',
-                            'type': info.get('quoteType', 'EQUITY'),
-                            'currency': info.get('currency', 'USD'),
-                            'sector': info.get('sector', ''),
-                            'industry': info.get('industry', '')
-                        })
-        except:
-            # Fallback: just try the exact symbol with minimal info
-            try:
-                stock = yf.Ticker(query)
-                info = stock.info
-                
-                if info and info.get('symbol'):
-                    results.append({
-                        'symbol': info.get('symbol', query),
-                        'name': info.get('longName', info.get('shortName', query)),
-                        'exchange': info.get('exchange', 'Unknown'),
-                        'type': info.get('quoteType', 'EQUITY'),
-                        'currency': info.get('currency', 'USD'),
-                        'sector': info.get('sector', ''),
-                        'industry': info.get('industry', '')
-                    })
-            except:
-                pass
-        
-        # Only try TSX variant if no results and query doesn't already have a suffix
-        if not results and '.' not in query:
-            try:
-                tsx_symbol = f"{query}.TO"
-                stock = yf.Ticker(tsx_symbol)
-                info = stock.info
-                
-                if info and info.get('symbol'):
-                    results.append({
-                        'symbol': info.get('symbol', tsx_symbol),
-                        'name': info.get('longName', info.get('shortName', tsx_symbol)),
-                        'exchange': info.get('exchange', 'TSX'),
-                        'type': info.get('quoteType', 'EQUITY'),
-                        'currency': info.get('currency', 'CAD'),
-                        'sector': info.get('sector', ''),
-                        'industry': info.get('industry', '')
-                    })
-            except:
-                pass
-        
-        return jsonify({
-            'success': True,
-            'results': results,
-            'query': query
-        })
+        quotes = yf.Search(query.strip(), max_results=10, news_count=0).quotes
+        results = [{
+            'symbol': q['symbol'],
+            'name': q.get('longname') or q.get('shortname') or q['symbol'],
+            'exchange': q.get('exchange', ''),
+            'type': q.get('quoteType', ''),
+            'sector': q.get('sector', ''),
+            'industry': q.get('industry', ''),
+        } for q in quotes
+            if q.get('exchange') in ('NYQ', 'NMS', 'NGM', 'NCM', 'ASE', 'PCX', 'TOR', 'NEO', 'CNQ')]
+        return jsonify({'success': True, 'results': results, 'query': query})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e), 'results': []})
 
