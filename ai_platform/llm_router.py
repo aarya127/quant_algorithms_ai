@@ -80,8 +80,12 @@ _PROVIDERS = {
         # meta/llama-3.1-70b-instruct was) doesn't take the chat down.
         "models": os.environ.get(
             "NVIDIA_MODELS",
-            "nvidia/nemotron-3-super-120b-a12b,deepseek-ai/deepseek-v4.1-flash",
+            "nvidia/nemotron-3-super-120b-a12b,openai/gpt-oss-20b",
         ).split(","),
+        # With reasoning on, both spent the whole 900-token brief budget
+        # thinking and returned no text; off/low they answer in ~5–15 s.
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False},
+                       "reasoning_effort": "low"},
     },
 }
 
@@ -125,7 +129,9 @@ def _openai_chat(
 
     cfg    = _PROVIDERS[provider]
     key    = _get_key(provider)
-    kwargs = dict(api_key=key, timeout=timeout)
+    # The model chain is the retry: the SDK's default 2 retries turned one
+    # 30 s timeout into 90 s+ before the fallback model was tried.
+    kwargs = dict(api_key=key, timeout=timeout, max_retries=0)
     if "base_url" in cfg:
         kwargs["base_url"] = cfg["base_url"]
 
@@ -137,6 +143,7 @@ def _openai_chat(
         max_tokens=max_tokens,
         temperature=temperature,
         stream=stream,
+        extra_body=cfg.get("extra_body"),
     )
 
 
