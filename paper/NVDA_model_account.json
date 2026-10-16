@@ -1,0 +1,44 @@
+{
+  "ticker": "NVDA",
+  "start_cash": 100000.0,
+  "cash": 199849.25181530762,
+  "shares": -464,
+  "pending": {
+    "target": "flat",
+    "placed_at": "2026-10-15T16:00:00-04:00",
+    "signal": "neutral",
+    "predicted_5d_return": -0.009439
+  },
+  "last_signal": {
+    "date": "2026-10-15",
+    "signal": "neutral",
+    "confidence": "medium",
+    "predicted_5d_return": -0.009439
+  },
+  "trades": [
+    {
+      "date": "2026-10-15",
+      "side": "sell",
+      "qty": 464,
+      "price": 215.1924,
+      "target": "short",
+      "signal": "short",
+      "predicted_5d_return": -0.015857
+    }
+  ],
+  "equity": [
+    {
+      "date": "2026-10-14",
+      "close": 221.3,
+      "equity": 100000.0,
+      "benchmark": 100000.0
+    },
+    {
+      "date": "2026-10-15",
+      "close": 217.23,
+      "equity": 99054.53,
+      "benchmark": 98160.86
+    }
+  ],
+  "benchmark_start_close": 221.3000030517578
+}

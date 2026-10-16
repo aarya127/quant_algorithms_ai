@@ -1,0 +1,26 @@
+{
+  "ticker": "NVDA",
+  "target": "target_5d",
+  "task": "regression",
+  "model_type": "huber",
+  "feature_version": "B",
+  "feature_space": "raw-v2",
+  "trained_before": "2025-10-14",
+  "created_at": "2026-10-15T07:15:04.470239Z",
+  "primary_metric": "ic",
+  "metric_value": 0.110702,
+  "n_features": 5,
+  "metrics": {
+    "mae": 0.040239189283378524,
+    "rmse": 0.0496672009769711,
+    "r2": -0.027124254236926992,
+    "dir_acc": 0.5101214574898786,
+    "ic": 0.1107021472461035
+  },
+  "cv": {
+    "cv_mean": 0.024013,
+    "cv_beat_frac": 0.5,
+    "n_folds": 8,
+    "stable": true
+  }
+}

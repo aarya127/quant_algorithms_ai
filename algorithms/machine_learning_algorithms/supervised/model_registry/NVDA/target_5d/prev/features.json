@@ -1,0 +1,10 @@
+[
+  "low_52w_pct",
+  "reversal_1w",
+  "volume_zscore",
+  "bb_pct",
+  "price_to_sma200",
+  "downside_deviation",
+  "ATR_14",
+  "qqq_corr_20d"
+]
