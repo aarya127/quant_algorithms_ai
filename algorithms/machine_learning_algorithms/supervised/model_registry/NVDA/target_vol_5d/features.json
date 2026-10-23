@@ -1,0 +1,12 @@
+[
+  "price_to_sma50",
+  "low_52w_pct",
+  "high_52w_pct",
+  "reversal_1w",
+  "volume_zscore",
+  "bb_pct",
+  "price_to_sma200",
+  "atr_pct",
+  "anomaly_iso",
+  "anomaly_score"
+]

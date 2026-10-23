@@ -1,0 +1,12 @@
+[
+  "downside_deviation",
+  "insdr_change",
+  "ATR_14",
+  "SMA_200",
+  "news_sent_av_7d",
+  "news_sent_7d",
+  "news_sent_marketaux",
+  "qqq_corr_20d",
+  "yield_curve_slope",
+  "anomaly_score"
+]
