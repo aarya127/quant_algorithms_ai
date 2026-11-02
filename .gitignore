@@ -228,3 +228,6 @@ backend/analyst_log.jsonl
 
 # Model paper-trading ledger: produced by the retrain workflow, lives on the models branch
 /paper/
+
+# Provider response cache (Finnhub filings, yfinance earnings/splits, AV/Finnhub news)
+algorithms/machine_learning_algorithms/data_pipelines/.pipeline_cache/

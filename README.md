@@ -570,9 +570,12 @@ python backtesting/backtest.py NVDA --model all     # or --model lgb,ridge; defa
 **Cross-sectional factors on a universe** — rank many stocks at once instead of timing one:
 
 ```bash
-python algorithms/machine_learning_algorithms/data_pipelines/universe.py large50   # ~10 s, one yfinance call
+python algorithms/machine_learning_algorithms/data_pipelines/universe.py large50          # ~10 s, one yfinance call
+python algorithms/machine_learning_algorithms/data_pipelines/fundamentals_pit.py large50  # ~3 min cold (Finnhub 60/min), cached 24 h
 python backtesting/factor_backtest.py large50
+python backtesting/pooled_backtest.py large50
 ```
+(`make factors` runs all four.)
 
 - `universe.py` builds a long panel (`UNIVERSE_<name>_panel.csv`, gitignored) for 50 liquid US
   large caps: adjusted OHLCV, the pipeline's price-only features and the six targets, computed
@@ -582,6 +585,14 @@ python backtesting/factor_backtest.py large50
   next open with 5 bps on the traded value; holdings drift between rebalances
   (`backtesting/cross_section.py`). Benchmark: the equal-weight universe. Also reports each
   factor's rank IC and its t-statistic on non-overlapping dates
+- `fundamentals_pit.py` adds **point-in-time fundamentals** from SEC filings (Finnhub "financials
+  as reported", with each filing's date) and EPS surprises (yfinance): gross profitability, ROA,
+  ROE, accruals, asset and revenue growth, leverage, earnings yield, book-to-market, sales/price,
+  latest surprise. Each number is usable from the business day after its filing, as first
+  reported; 10-Q year-to-date figures become trailing twelve months only from earlier filings;
+  market caps convert filed share counts with the splits after the filing. The factor backtest
+  adds gross profitability, earnings yield, book-to-market, low accruals, low asset growth and
+  post-earnings drift; the pooled model adds a `+fund` variant with the fundamentals as features
 - The list is today's large caps, so it carries survivorship bias: compare factors with the
   equal-weight universe, not with zero
 - `pooled_backtest.py` trains **one model across all 50 tickers** (~70k rows vs one ticker's
@@ -590,7 +601,10 @@ python backtesting/factor_backtest.py large50
   held. Judged against the equal-weight universe and the plain factors on the same window.
   Result so far (2022-11 → 2026-11): untuned Ridge and LightGBM land within ±1%/yr of equal
   weight with monthly IC ≈ 0 — their IC was negative in 2022–23 and positive in 2024–26, so
-  price-only features don't rank these large caps consistently. Tests confirm the machinery
+  price-only features don't rank these large caps consistently. Adding the point-in-time
+  fundamentals doesn't change that (Ridge +1.2%/yr, IC +0.002; LightGBM worse). Of the single
+  factors, low asset growth had the best Sharpe (1.29) and low accruals the strongest IC
+  (t 1.58) over 2021-11 → 2026-11 — neither past the t ≈ 2 bar. Tests confirm the machinery
   finds a planted predictive feature and nothing in noise
 
 Options-volatility backtests are separate: `/api/backtest` (POST) and
@@ -832,8 +846,9 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 ### In Progress
 - [ ] Deep learning (LSTM, Transformer) in `deep_learning/`
 - [ ] Factor strategies — time-series trend / momentum / mean reversion (`backtesting/strategies.py`) and cross-sectional momentum / low-vol / reversal on a 50-stock universe (`backtesting/factor_backtest.py`) done; quality needs point-in-time fundamentals
-- [x] Pooled ML model across the universe (`backtesting/pooled_backtest.py`) — no consistent edge from price-only features yet; next inputs to try: fundamentals (point-in-time), earnings/news events, a wider universe
-- [ ] Point-in-time fundamental database for rigorous backtest training
+- [x] Pooled ML model across the universe (`backtesting/pooled_backtest.py`) — no consistent edge from price-only features or point-in-time fundamentals on 50 large caps
+- [x] Point-in-time fundamentals + EPS surprises (`data_pipelines/fundamentals_pit.py`)
+- [ ] A wider universe with delisted names (removes survivorship bias; more breadth for factors)
 
 ### Completed ✅
 - [x] **Walk-forward backtesting harness** — `backtesting/backtest.py` trades the model signal on the feature matrix vs buy-and-hold

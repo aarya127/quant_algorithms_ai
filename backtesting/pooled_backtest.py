@@ -52,6 +52,13 @@ TOP_FRAC = 0.2
 MIN_TRAIN_DATES = 504     # two years of feature dates before the first refit
 MIN_NAMES = 10            # tickers needed to rank a date
 
+# point-in-time fundamentals (data_pipelines/fundamentals_pit.py), used when present
+FUND_FEATURES = [
+    "gross_profitability", "roa", "roe", "accruals", "asset_growth", "revenue_growth",
+    "leverage", "earnings_yield", "book_to_market", "sales_to_price",
+    "eps_surprise", "days_since_earnings",
+]
+
 FEATURES = [
     "reversal_1w", "momentum_1m", "momentum_3m", "momentum_6m", "momentum_12m",
     "high_52w_pct", "low_52w_pct", "price_accel",
@@ -79,11 +86,14 @@ def add_target(panel: pd.DataFrame, h: int = HORIZON) -> pd.DataFrame:
     return out
 
 
-def prepare(panel: pd.DataFrame, h: int = HORIZON):
+def prepare(panel: pd.DataFrame, h: int = HORIZON, features=None):
     """(rows, X, dates) — rows: Date, symbol, date_pos, y; X: ranked features
-    with missing values at the cross-sectional median (0); dates: sorted."""
+    with missing values at the cross-sectional median (0); dates: sorted.
+    Usable dates are judged on the price features, so adding fundamentals
+    doesn't move the out-of-sample window."""
+    features = features or FEATURES
     df = add_target(panel, h)
-    X = cs_rank(df, FEATURES).fillna(0.0).to_numpy(dtype=float)
+    X = cs_rank(df, features).fillna(0.0).to_numpy(dtype=float)
     dates = np.sort(df["Date"].unique())
     pos = {d: i for i, d in enumerate(dates)}
     rows = df[["Date", "symbol", "y"]].copy()
@@ -156,18 +166,24 @@ def run(panel: pd.DataFrame, model_names) -> dict:
         results[name] = stats
         curves[name] = daily["equity"].round(2).tolist()
 
+    feature_sets = {"": (X, FEATURES)}
+    fund = [f for f in FUND_FEATURES if f in panel.columns]
+    if fund:
+        _, X_all, _ = prepare(panel, features=FEATURES + fund)
+        feature_sets["+fund"] = (X_all, FEATURES + fund)
     for m in model_names:
-        print(f"  fitting pooled {m} …", flush=True)
-        scores = walk_forward_scores(rows, X, dates, lambda: reg_model_set()[m], start)
-        stats, daily = evaluate(scores.loc[oos], opens, closes, HORIZON)
-        results[f"pooled_{m}"] = stats
-        curves[f"pooled_{m}"] = daily["equity"].round(2).tolist()
+        for suffix, (Xs, _) in feature_sets.items():
+            print(f"  fitting pooled {m}{suffix} …", flush=True)
+            scores = walk_forward_scores(rows, Xs, dates, lambda: reg_model_set()[m], start)
+            stats, daily = evaluate(scores.loc[oos], opens, closes, HORIZON)
+            results[f"pooled_{m}{suffix}"] = stats
+            curves[f"pooled_{m}{suffix}"] = daily["equity"].round(2).tolist()
 
     ew = results["equal_weight_universe"]["cagr"]
     for r in results.values():
         r["excess_cagr"] = r["cagr"] - ew
     return {"results": results, "equity": curves, "tickers": int(panel["symbol"].nunique()),
-            "features": FEATURES, "horizon": HORIZON, "top_frac": TOP_FRAC,
+            "features": FEATURES, "fundamental_features": fund, "horizon": HORIZON, "top_frac": TOP_FRAC,
             "train_rows_at_last_refit": int(((rows["date_pos"] < len(dates) - 2 * HORIZON)
                                               & rows["usable"] & rows["y"].notna()).sum())}
 

@@ -93,3 +93,25 @@ def test_noise_features_find_nothing():
     oos = pd.DatetimeIndex(dates[start:])
     ic = rank_ic(scores.loc[oos], forward_returns(wide(panel, "Close").loc[oos], pb.HORIZON), pb.HORIZON)
     assert abs(ic.mean()) < 0.15
+
+
+def test_fundamental_features_extend_the_matrix_without_moving_the_window():
+    panel = _panel(n_dates=600)
+    panel["earnings_yield"] = np.random.default_rng(5).normal(size=len(panel))
+    rows, X, _ = pb.prepare(panel)
+    rows2, X2, _ = pb.prepare(panel, features=pb.FEATURES + ["earnings_yield"])
+    assert X2.shape[1] == X.shape[1] + 1
+    assert pb.first_refit(rows) == pb.first_refit(rows2)
+
+
+def test_drift_factor_counts_only_recent_surprises():
+    import factor_backtest as fb
+    p = pd.DataFrame({"eps_surprise": [0.1, 0.2], "days_since_earnings": [10, 61]})
+    assert fb.add_derived(p)["recent_surprise"].tolist()[0] == 0.1
+    assert np.isnan(fb.add_derived(p)["recent_surprise"].tolist()[1])
+
+
+def test_factors_without_their_column_are_skipped():
+    import factor_backtest as fb
+    have = fb.available_factors(pd.DataFrame(columns=["momentum_12m", "realized_vol_60d", "reversal_1w"]))
+    assert set(have) == {"momentum_12m", "low_volatility", "reversal_1w"}

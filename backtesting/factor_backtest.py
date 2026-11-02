@@ -10,9 +10,16 @@ traded at the next open with backend/paper.py's slippage on the traded value.
 Benchmark: all tickers equal-weighted, rebalanced monthly. Textbook parameters,
 fixed in advance:
 
-  momentum_12m   — 12-month return skipping the last week (Jegadeesh-Titman), monthly
-  low_volatility — lowest 60-day realized vol (Ang et al. 2006; Frazzini-Pedersen), monthly
-  reversal_1w    — worst last-week return (Lehmann 1990; Jegadeesh 1990), weekly
+  momentum_12m        — 12-month return skipping the last week (Jegadeesh-Titman), monthly
+  low_volatility      — lowest 60-day realized vol (Ang et al. 2006; Frazzini-Pedersen), monthly
+  reversal_1w         — worst last-week return (Lehmann 1990; Jegadeesh 1990), weekly
+  with point-in-time fundamentals (data_pipelines/fundamentals_pit.py), monthly:
+  gross_profitability — gross profit / assets (Novy-Marx 2013)
+  earnings_yield      — net income / market cap (value)
+  book_to_market      — equity / market cap (Fama-French value)
+  low_accruals        — lowest (net income - operating cash flow) / assets (Sloan 1996)
+  low_asset_growth    — slowest asset growth (Cooper, Gulen & Schill 2008)
+  earnings_drift      — latest EPS surprise, within 60 sessions of it (post-earnings drift)
 
 Each factor's information coefficient (IC) is the rank correlation between its
 score and the next rebalance period's return across tickers, on
@@ -49,15 +56,37 @@ TOP_FRAC = 0.2
 
 # name → (panel column, sign: +1 = higher is better, rebalance every N sessions)
 FACTORS = {
-    "momentum_12m":   ("momentum_12m", +1, 21),
-    "low_volatility": ("realized_vol_60d", -1, 21),
-    "reversal_1w":    ("reversal_1w", -1, 5),
+    "momentum_12m":        ("momentum_12m", +1, 21),
+    "low_volatility":      ("realized_vol_60d", -1, 21),
+    "reversal_1w":         ("reversal_1w", -1, 5),
+    "gross_profitability": ("gross_profitability", +1, 21),
+    "earnings_yield":      ("earnings_yield", +1, 21),
+    "book_to_market":      ("book_to_market", +1, 21),
+    "low_accruals":        ("accruals", -1, 21),
+    "low_asset_growth":    ("asset_growth", -1, 21),
+    "earnings_drift":      ("recent_surprise", +1, 21),
 }
+DRIFT_WINDOW = 60          # sessions an EPS surprise keeps counting
+
+
+def add_derived(panel: pd.DataFrame) -> pd.DataFrame:
+    """recent_surprise: the latest EPS surprise while it's at most DRIFT_WINDOW sessions old."""
+    if {"eps_surprise", "days_since_earnings"} <= set(panel.columns):
+        panel = panel.assign(recent_surprise=panel["eps_surprise"].where(
+            panel["days_since_earnings"] <= DRIFT_WINDOW))
+    return panel
+
+
+def available_factors(panel: pd.DataFrame) -> dict:
+    """The FACTORS whose column the panel has (fundamentals need fundamentals_pit.py)."""
+    return {k: v for k, v in FACTORS.items() if v[0] in panel.columns}
 
 
 def run(panel: pd.DataFrame) -> dict:
+    panel = add_derived(panel)
+    factors = available_factors(panel)
     opens, closes = wide(panel, "Open"), wide(panel, "Close")
-    scores = {name: wide(panel, col) * sign for name, (col, sign, _) in FACTORS.items()}
+    scores = {name: wide(panel, col) * sign for name, (col, sign, _) in factors.items()}
 
     # common window: from the first date every factor can rank enough names
     ready = pd.concat([s.notna().sum(axis=1) >= 10 for s in scores.values()], axis=1).all(axis=1)
@@ -75,7 +104,7 @@ def run(panel: pd.DataFrame) -> dict:
     curves = {"dates": [d.date().isoformat() for d in bench_daily["Date"]],
               "equal_weight_universe": bench_daily["equity"].round(2).tolist()}
 
-    for name, (_, _, every) in FACTORS.items():
+    for name, (_, _, every) in factors.items():
         w = top_weights(scores[name], TOP_FRAC, every)
         daily, reb = simulate_portfolio(opens, closes, w, START_CASH, SLIPPAGE)
         ic = ic_summary(rank_ic(scores[name], forward_returns(closes, every), every))

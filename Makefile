@@ -49,7 +49,8 @@ test:
 		tests/test_api_endpoints.py \
 		tests/test_backtest.py \
 		tests/test_cross_section.py \
-		tests/test_pooled.py
+		tests/test_pooled.py \
+		tests/test_fundamentals_pit.py
 	@echo "  ℹ️  Live-API smoke suite is separate: 'cd tests && python3 run_all_tests.py' (needs API keys)"
 
 clean:
@@ -70,6 +71,7 @@ backtest:
 UNIVERSE ?= large50
 factors:
 	@python3 algorithms/machine_learning_algorithms/data_pipelines/universe.py $(UNIVERSE)
+	@python3 algorithms/machine_learning_algorithms/data_pipelines/fundamentals_pit.py $(UNIVERSE)
 	@python3 backtesting/factor_backtest.py $(UNIVERSE)
 	@python3 backtesting/pooled_backtest.py $(UNIVERSE)
 

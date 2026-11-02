@@ -4,7 +4,8 @@ universe.py — a multi-ticker daily panel for cross-sectional research.
     python universe.py [UNIVERSE] [PERIOD]      # defaults: large50, 6y
 
 Writes UNIVERSE_<name>_panel.csv here (gitignored): one row per (Date, symbol)
-with adjusted OHLCV, the price-only features the single-ticker pipeline builds
+with split- and dividend-adjusted OHLCV, Close_raw (split-adjusted only, for
+market caps — fundamentals_pit.py), the price-only features the single-ticker pipeline builds
 (DataTransformer's momentum, risk and microstructure blocks) and the six
 canonical targets (targets.py), each computed within its own ticker.
 
@@ -47,7 +48,7 @@ def ticker_features(bars: pd.DataFrame) -> pd.DataFrame:
     from algorithms.machine_learning_algorithms.data_pipelines.transform import DataTransformer
     from algorithms.machine_learning_algorithms.data_pipelines.targets import add_targets
 
-    df = bars[PRICE_COLS].astype(float).copy()
+    df = bars[PRICE_COLS + [c for c in ("Close_raw",) if c in bars.columns]].astype(float).copy()
     df = df[(df["Open"] > 0) & (df["Close"] > 0)]
     df["log_return"] = np.log(df["Close"] / df["Close"].shift(1))
     df = DataTransformer._add_momentum_features(df)
@@ -72,17 +73,23 @@ def to_panel(frames: dict) -> pd.DataFrame:
 
 
 def download(tickers, period="6y") -> dict:
-    """{symbol: adjusted daily OHLCV} from one yfinance bulk call; tickers with
-    no data are left out (and reported)."""
+    """{symbol: daily OHLCV adjusted for splits and dividends, plus Close_raw
+    (split-adjusted only)} from one yfinance bulk call; tickers with no data are
+    left out (and reported)."""
     import yfinance as yf
     raw = yf.download(tickers, period=period, interval="1d", group_by="ticker",
-                      auto_adjust=True, progress=False, threads=True)
+                      auto_adjust=False, progress=False, threads=True)
     out, missing = {}, []
     for t in tickers:
         try:
-            df = raw[t].dropna(subset=["Close"])
+            df = raw[t].dropna(subset=["Close", "Adj Close"]).copy()
         except KeyError:
             df = pd.DataFrame()
+        if len(df) >= 300:
+            factor = df["Adj Close"] / df["Close"]          # dividend adjustment
+            df["Close_raw"] = df["Close"]
+            for col in ("Open", "High", "Low", "Close"):
+                df[col] = df[col] * factor
         if len(df) < 300:
             missing.append(t)
             continue
