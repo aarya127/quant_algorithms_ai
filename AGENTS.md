@@ -131,13 +131,12 @@ Exit code 0 = done/up_to_date, 1 = a step failed.
 The repo mixes shipped code, standalone research, and empty scaffolding. Before
 "fixing" or extending something, check it's real:
 
-- **Wired & working**: `backend/`, `data/`, `sentiment/`, `ai_platform/` (except
-  `signal_narrator.py`), the ML pipeline + registry + MLflow, `volatility_forecasting/`.
+- **Wired & working**: `backend/`, `data/`, `sentiment/`, `ai_platform/`,
+  the ML pipeline + registry + MLflow, `volatility_forecasting/`.
 - **Real but standalone** (not called by app/pipeline): `time_series_models/`,
   `eda/`, `factor_discovery/`, `greeks/`, `macd_rsi/`, and `performance/`
   (C++/Go — real code, but not imported by the deployed app; their READMEs
   overstate the dir layout).
-- **Not yet wired**: `ai_platform/signal_narrator.py` (no caller).
 - **Empty placeholders** (imply features that don't exist): all of top-level
   `models/`, `deep_learning/`, `monte_carlo/`, `data/streaming/`, `backtesting/stress_testing/`,
   and several 0-byte `prototype.py` stubs. Don't document these as working.

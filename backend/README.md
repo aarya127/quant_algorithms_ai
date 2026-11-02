@@ -109,7 +109,7 @@ Navigate to `http://localhost:5000`
 - `GET /` - Main dashboard page
 - `GET /api/dashboard` - Trending news data
 - `GET /api/stock/<symbol>` - Stock details
-- `GET /api/sentiment/<symbol>` - Sentiment analysis
+- `GET /api/sentiment/news/<symbol>` - News sentiment (see backend/sentiment_feed.py)
 - `GET /api/scenarios/<symbol>` - Bull/Base/Bear scenarios
 - `GET /api/metrics/<symbol>` - Metrics and grading
 - `GET /api/recommendations/<symbol>` - Time-based suggestions

@@ -39,7 +39,9 @@ target without updating `targets.py` and `tests/test_targets.py` (which imports 
 First, only models with a stable walk-forward CV record are candidates
 (`registry.cv_stability`, attached by `main.py` as `_meta["cv_stability"]`): mean
 CV metric ≥ the floor and beat each fold's naive baseline in ≥ 50% of folds. No
-stable model → the target isn't served. The best stable model then replaces
+stable model → the target isn't served. A production model whose type is
+unstable in this run's CV gets no protection from the improvement check. The best
+stable model then replaces
 production only if it clears **all three** checks in
 `registry.py._promotion_gate` (unless `force=True`):
 1. Absolute floor — regression `ic > 0.02`, classification `f1_w > 0.30`

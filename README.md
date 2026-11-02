@@ -16,7 +16,7 @@ An end-to-end quantitative research and trading platform. The system combines a 
 4. [API Layer (Flask Backend)](#4-api-layer-flask-backend)
 5. [Data Pipeline](#5-data-pipeline)
 6. [AI Summaries — NVIDIA LLM](#6-ai-summaries--nvidia-llm)
-7. [Sentiment Analysis — FinBERT](#7-sentiment-analysis--finbert)
+7. [Sentiment Analysis](#7-sentiment-analysis)
 8. [ML Feature Matrix](#8-ml-feature-matrix)
 9. [Scheduled Retraining & MLOps](#9-scheduled-retraining--mlops)
 10. [Quant Algorithms](#10-quant-algorithms)
@@ -71,7 +71,7 @@ ML Pipeline + MLOps  (orchestrator → MLflow → model registry → drift alert
 | Web framework | Flask 3.0 + Gunicorn |
 | Frontend | Bootstrap 5, Chart.js, vanilla JS |
 | Primary data | yfinance, Finnhub, Polygon, Alpaca SDK, Fiscal.ai |
-| AI / NLP | FinBERT (ProsusAI), NVIDIA Mistral Large 3, multi-provider LLM router |
+| AI / NLP | FinBERT (ProsusAI, pipeline features), NVIDIA Mistral Large 3 (overviews), Nemotron 3 Super → gpt-oss-20b (chat/briefs), multi-provider LLM router |
 | Quant | QuantLib, scipy, numpy, pandas |
 | ML / MLOps | scikit-learn, XGBoost, LightGBM, MLflow, local model registry |
 | High-perf | C++ (pybind11), Go (gRPC) |
@@ -163,10 +163,10 @@ Single-page application served from `backend/templates/index.html`.
 | **Overview** | Company profile, real-time price, recent news |
 | **Statistics** | P/E, P/B, margins, debt ratios, growth rates, 52-week range |
 | **Charts** | Candlestick + Volume + RSI + MACD — timeframes 1D → MAX |
-| **Sentiment** | FinBERT scores (Bullish/Bearish/Neutral) across last 7 days of news |
-| **Scenarios** | Bull / Base / Bear price targets at 1W, 1M, 3M, 6M, 1Y horizons |
-| **Metrics & Grades** | Composite evaluation scores and letter grades |
-| **Recommendations** | LLM-assisted and rule-based investment suggestions |
+| **Sentiment** | Alpha Vantage ticker sentiment per article (relevance-weighted overall score, ±0.15 neutral band) + Finnhub headlines, daily trend over 7 days – 1 year; says "no scored news" instead of a neutral 0 when Alpha Vantage is out |
+| **Scenarios** | Bull / base / bear = 80th / 50th / 20th percentiles of a filtered historical simulation at 1W – 1Y; the ML 5-day forecast drives week one when fresh and plausible; a history check of the band on non-overlapping past windows |
+| **Metrics & Grades** | Finnhub fundamentals graded A–F by percentile among up to 8 industry peers (market-wide scale as fallback); negative-earnings/equity inputs marked not meaningful; balance-sheet health skipped for financials; ETFs not graded |
+| **Recommendations** | Buy / Hold / Sell per horizon from weighted votes — price trend (200-day average + 12-month momentum), the served ML model (1W/1M, if fresh), quality grade (3M+) — with each price rule backtested on the ticker against buy-and-hold |
 
 ---
 
@@ -180,33 +180,43 @@ Single-page application served from `backend/templates/index.html`.
 |---|---|---|
 | `/health` | GET | Deployment health check |
 | `/` | GET | SPA entry point |
-| `/api/search/<query>` | GET | Symbol/name search |
+| `/api/search/<query>` | GET | Symbol/name search (yfinance Search, plus the NYSE/NASDAQ/TSX lists) |
 | `/api/indices` | GET | Live index levels (SPX, RUT, INDU, VIX) |
 | `/api/indices/history` | GET | 30-day index performance |
 | `/api/dashboard` | GET | Aggregated overview for a stock |
 | `/api/stock/<symbol>` | GET | Price + profile + news bundle |
 | `/api/ai-overview/<symbol>` | GET | NVIDIA Mistral Large 3 company overview |
-| `/api/backtest` | POST | Run a backtest |
-| `/api/backtest/strategies` | GET | List available backtest strategies |
 | `/api/statistics/<symbol>` | GET | Ratios, margins, growth metrics |
-| `/api/sentiment/<symbol>` | GET | FinBERT sentiment scores |
-| `/api/sentiment/news/<symbol>` | GET | Per-article FinBERT sentiment for recent news |
-| `/api/scenarios/<symbol>` | GET | Bull/Base/Bear scenario analysis |
-| `/api/metrics/<symbol>` | GET | Evaluation grades |
-| `/api/recommendations/<symbol>` | GET | Investment recommendations |
+| `/api/sentiment/news/<symbol>` | GET | Sentiment tab: Alpha Vantage-scored articles + Finnhub headlines, overall score, daily trend (`?days=`, ≤ 365) |
+| `/api/scenarios/<symbol>` | GET | Bull/base/bear percentiles, risk stats and a history check (`?timeframe=1W…1Y`) |
+| `/api/metrics/<symbol>` | GET | Fundamental grades vs industry peers |
+| `/api/recommendations/<symbol>` | GET | Per-horizon Buy/Hold/Sell votes + backtested evidence |
+| `/api/narrate/<symbol>` | GET | AI Signal Brief — LLM narrative over computed numbers (cached 1 h) |
+| `/api/chat` | POST | AI chat (streams; sees the user's screen and mentioned tickers) |
+| `/api/llm/status` | GET | Which LLM provider/models are configured |
+| `/api/predict/<ticker>` | GET | Latest ML predictions from the model registry |
+| `/api/drift/<ticker>` | GET | Data- and model-drift report |
+| `/api/model/status` | GET | Registry overview |
+| `/api/mlflow/runs/<ticker>` | GET | MLflow run history |
+| `/api/ml/backtest/<ticker>` | GET | Walk-forward backtest of the trading signal (published by the daily retrain) |
+| `/api/paper/quote` | GET | Paper trading: latest prices (+ FX to USD) |
+| `/api/paper/fill` | POST | Paper trading: decide fills for open orders |
+| `/api/paper/model` | GET | The ML model's paper-trading account |
+| `/api/backtest` | POST | Options-volatility strategy backtest (`backend/backtest_runner.py`) |
+| `/api/backtest/strategies` | GET | List the options-volatility strategies |
 | `/api/calendar` | GET | Economic events calendar |
 | `/api/charts/<symbol>` | GET | OHLCV chart data + indicators |
 | `/api/charts/<symbol>/all-timeframes` | GET | 1D / 5D / 1M / 3M / 6M / 1Y / 5Y / MAX |
-| `/api/charts/compare` | POST | Multi-ticker chart comparison |
+| `/api/charts/compare` | GET | Multi-ticker chart comparison |
 | `/api/charts/<symbol>/indicators` | GET | SMA, EMA, RSI, MACD, ATR, OBV |
+| `/api/trading/chart` | POST | Custom TradingView-style chart render |
+| `/api/trading/ohlcv` | POST | OHLCV bars for the trading chart |
 | `/api/news/twitter` | GET | Twitter/X feed (market influencers) |
 | `/api/news/alpaca` | GET | Alpaca real-time news stream |
 | `/api/news/combined` | GET | Merged multi-source news |
 | `/api/research/<paper>` | GET | Research paper content (LaTeX/markdown) |
-| `/api/research/<paper>/markdown` | GET | Research paper rendered as markdown |
 | `/api/research/diagnostics/notebook` | GET | Jupyter diagnostic notebook |
 | `/api/algorithm/<name>` | GET | Algorithm source + docs |
-| `/api/trading/chart` | POST | Custom TradingView-style chart render |
 | `/api/pipeline/run` | POST | **Start a model-retraining job** — local runs; refused on Render (see [§9](#9-scheduled-retraining--mlops)) |
 | `/api/pipeline/status/<job_id>` | GET | **Poll a retraining job's status** |
 
@@ -296,23 +306,22 @@ The broader LLM layer lives in `ai_platform/` — see [§9](#9-scheduled-retrain
 
 ---
 
-## 7. Sentiment Analysis — FinBERT
+## 7. Sentiment Analysis
 
-`sentiment/finbert.py` + `/api/sentiment/<symbol>`
+**Sentiment tab** — `backend/sentiment_feed.py` behind `/api/sentiment/news/<symbol>`:
+1. One Alpha Vantage `NEWS_SENTIMENT` call (newest first, up to 1,000 articles) for the window,
+   plus Finnhub company news — at most two upstream calls, no sleeps, cached 30 min per
+   symbol/window, and a per-process Alpha Vantage budget of 10/day (the daily retrain shares the key)
+2. Each article's score is Alpha Vantage's ticker-specific sentiment ∈ [−1, 1]; labels use its
+   ±0.15 neutral band; Finnhub headlines are shown unscored
+3. The overall score and the daily trend are the same relevance-weighted average. With no scored
+   article (quota used up, a ticker Alpha Vantage doesn't cover) the tab says so instead of
+   showing a neutral 0, and notes when the 1,000-article cap shortens the covered window
 
-Uses **ProsusAI/finbert** — a BERT model fine-tuned on financial text — to score news articles as Bullish, Bearish, or Neutral.
-
-**Flow:**
-1. Fetch last N days of news headlines + summaries via Finnhub
-2. Score each article: FinBERT → `(label, {positive, negative, neutral})`
-3. Aggregate scores across all articles
-4. Return dominant sentiment + breakdown to the Sentiment tab
-
-**Two variants:**
-- `finbert.py` — US stocks (Finnhub data source)
-- `finbert_canadian.py` — Canadian stocks (Alpha Vantage data source)
-
-Model loads lazily on first request to avoid blocking the Gunicorn worker at startup.
+**FinBERT** — `sentiment/finbert.py` (US) and `finbert_canadian.py` score raw headlines with
+**ProsusAI/finbert** for the ML pipeline's news-sentiment features
+(`DataExtractor.news_sentiment_history`). The model loads lazily, once, under a lock; the web
+app no longer loads it.
 
 ---
 
@@ -432,7 +441,7 @@ SQLite backend at the repo root, one experiment per ticker, runs named `<target>
 
 Per ticker: an `active.json` index plus one directory per target holding `model.pkl`, scalers, `features.json`, `train_stats.json` (drift baselines), `metadata.json`, and a `prev/` snapshot for rollback.
 
-**Promotion gate** (`registry.py`) — candidates are first limited to models whose edge held up across the walk-forward CV folds (`cv_stability`: mean CV metric ≥ the floor below *and* beat that fold's naive baseline in ≥ 50% of folds). If none qualifies the target isn't served — one good holdout year isn't enough. The best qualifying model then replaces production only if it clears **all three** (unless forced):
+**Promotion gate** (`registry.py`) — candidates are first limited to models whose edge held up across the walk-forward CV folds (`cv_stability`: mean CV metric ≥ the floor below *and* beat that fold's naive baseline in ≥ 50% of folds). If none qualifies the target isn't served — one good holdout year isn't enough. The production model gets no protection when its model type's CV record in this run is unstable, so it can't keep its seat on one holdout year either. The best qualifying model then replaces production only if it clears **all three** (unless forced):
 1. Absolute floor — regression `ic > 0.02`, classification `f1_w > 0.30`
 2. Beats the naive baseline by ≥ 5%
 3. Improves over the current production model by ≥ 0.005
@@ -447,8 +456,7 @@ Served over HTTP by `backend/routes/ml.py`: `GET /api/predict/<ticker>`, `/api/d
 
 ### LLM layer (`ai_platform/`)
 
-- `llm_router.py` — unified multi-provider client (OpenAI → Anthropic → NVIDIA priority; override with `LLM_PROVIDER`)
-- `signal_narrator.py` — turns predictions into prose (`narrate_predictions()`) — ⚠️ scaffolded, not yet wired to a caller
+- `llm_router.py` — unified multi-provider client (OpenAI → Anthropic → NVIDIA priority; override with `LLM_PROVIDER`). The NVIDIA chain is Nemotron 3 Super then gpt-oss-20b, thinking off (`NVIDIA_MODELS` overrides)
 - `llm_judge.py` — `run_judge(ticker)` runs at the end of the orchestrator, asks an LLM for a promotion verdict, and writes it to `supervised/output/monitoring/`
 
 ---
@@ -736,7 +744,6 @@ quant_algorithms_ai/
 │
 ├── ai_platform/                          LLM layer
 │   ├── llm_router.py                       multi-provider client
-│   ├── signal_narrator.py                  predictions → prose
 │   ├── llm_judge.py                        LLM-as-judge promotion verdict
 │   └── nvidia_llm.py
 │
@@ -785,9 +792,6 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 - `performance/cpp_execution/` (C++ order book/engine) and `performance/go_services/`
   (Go gRPC risk engine) — real but **not imported by the deployed Flask app**; their
   READMEs describe more subdirs than actually exist
-
-**🚧 Not yet wired**
-- `ai_platform/signal_narrator.py` — no caller yet
 
 **📦 Placeholder / empty (present in the tree, no implementation)**
 - All of top-level `models/` (interest-rate, execution, allocation, credit, options)
