@@ -567,6 +567,24 @@ python backtesting/backtest.py NVDA --model all     # or --model lgb,ridge; defa
 - The feature allow-list was chosen on the full history, so model results are
   slightly optimistic; `simulator.py` is dependency-light and unit-tested (`tests/test_backtest.py`)
 
+**Cross-sectional factors on a universe** — rank many stocks at once instead of timing one:
+
+```bash
+python algorithms/machine_learning_algorithms/data_pipelines/universe.py large50   # ~10 s, one yfinance call
+python backtesting/factor_backtest.py large50
+```
+
+- `universe.py` builds a long panel (`UNIVERSE_<name>_panel.csv`, gitignored) for 50 liquid US
+  large caps: adjusted OHLCV, the pipeline's price-only features and the six targets, computed
+  within each ticker. Price-only because the news/fundamentals sources have daily quotas
+- `factor_backtest.py` holds the top fifth by 12-month momentum, low 60-day volatility, or
+  1-week reversal (textbook settings), re-ranked monthly (weekly for reversal), traded at the
+  next open with 5 bps on the traded value; holdings drift between rebalances
+  (`backtesting/cross_section.py`). Benchmark: the equal-weight universe. Also reports each
+  factor's rank IC and its t-statistic on non-overlapping dates
+- The list is today's large caps, so it carries survivorship bias: compare factors with the
+  equal-weight universe, not with zero
+
 Options-volatility backtests are separate: `/api/backtest` (POST) and
 `/api/backtest/strategies` (GET) run `backend/backtest_runner.py` on the engine below.
 
@@ -805,7 +823,8 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 
 ### In Progress
 - [ ] Deep learning (LSTM, Transformer) in `deep_learning/`
-- [ ] Factor strategies — time-series trend / momentum / mean reversion done (`backtesting/strategies.py`); cross-sectional and quality factors need a multi-ticker universe and point-in-time fundamentals
+- [ ] Factor strategies — time-series trend / momentum / mean reversion (`backtesting/strategies.py`) and cross-sectional momentum / low-vol / reversal on a 50-stock universe (`backtesting/factor_backtest.py`) done; quality needs point-in-time fundamentals
+- [ ] Pooled ML model trained across the universe (more rows per model than one ticker's ~1,250)
 - [ ] Point-in-time fundamental database for rigorous backtest training
 
 ### Completed ✅
