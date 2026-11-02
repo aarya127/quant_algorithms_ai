@@ -41,7 +41,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "backend"))
 
 from cross_section import (wide, top_weights, equal_weights, simulate_portfolio,  # noqa: E402
-                           portfolio_stats, forward_returns, rank_ic, ic_summary)
+                           portfolio_stats, forward_returns, rank_ic, ic_summary, eligible_frame)
 from simulator import retrain_blocks                                               # noqa: E402
 
 PIPES = ROOT / "algorithms" / "machine_learning_algorithms" / "data_pipelines"
@@ -92,7 +92,10 @@ def prepare(panel: pd.DataFrame, h: int = HORIZON, features=None):
     Usable dates are judged on the price features, so adding fundamentals
     doesn't move the out-of-sample window."""
     features = features or FEATURES
-    df = add_target(panel, h)
+    df = add_target(panel, h)                  # forward returns from each ticker's full history
+    if "in_index" in df.columns:               # then rank, train and score index members only
+        df = df[df["in_index"].astype(bool)].reset_index(drop=True)
+        df["y"] = df.groupby("Date")["fwd"].rank(pct=True) - 0.5
     X = cs_rank(df, features).fillna(0.0).to_numpy(dtype=float)
     dates = np.sort(df["Date"].unique())
     pos = {d: i for i, d in enumerate(dates)}
@@ -154,15 +157,18 @@ def run(panel: pd.DataFrame, model_names) -> dict:
     start = first_refit(rows)
     oos = pd.DatetimeIndex(dates[start:])
     opens, closes = wide(panel, "Open").loc[oos], wide(panel, "Close").loc[oos]
+    eligible = eligible_frame(panel, closes)
 
     results, curves = {}, {"dates": [d.date().isoformat() for d in oos]}
-    bench, breb = simulate_portfolio(opens, closes, equal_weights(closes, HORIZON), START_CASH, _slippage())
+    bench, breb = simulate_portfolio(opens, closes, equal_weights(closes, HORIZON, eligible),
+                                     START_CASH, _slippage())
     results["equal_weight_universe"] = portfolio_stats(bench, breb, START_CASH)
     curves["equal_weight_universe"] = bench["equity"].round(2).tolist()
 
     for name in ("momentum_12m", "low_volatility"):
         col, sign, every = FACTORS[name]
-        stats, daily = evaluate(wide(panel, col).loc[oos] * sign, opens, closes, every)
+        stats, daily = evaluate((wide(panel, col).loc[oos] * sign).reindex_like(closes).where(eligible),
+                                opens, closes, every)
         results[name] = stats
         curves[name] = daily["equity"].round(2).tolist()
 
@@ -188,15 +194,29 @@ def run(panel: pd.DataFrame, model_names) -> dict:
                                               & rows["usable"] & rows["y"].notna()).sum())}
 
 
+def bias_note(name: str) -> str:
+    """One line on how far the universe is from survivorship-free."""
+    import json
+    cov = PIPES / f"UNIVERSE_{name}_coverage.json"
+    if cov.exists():
+        c = json.loads(cov.read_text())
+        return (f"Point-in-time S&P 500 membership; {len(c['missing'])} of {c['companies']} companies "
+                f"({c['missing_member_day_share']:.1%} of member-days, mostly acquired or failed) have no "
+                f"prices — see {cov.name}.")
+    return "Survivorship-biased universe (today's large caps): compare rows with each other, not with zero."
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("universe", nargs="?", default="large50")
     ap.add_argument("--models", default="ridge,lgb")
     args = ap.parse_args()
-    path = PIPES / f"UNIVERSE_{args.universe}_panel.csv"
-    if not path.exists():
-        sys.exit(f"{path.name} not found — run data_pipelines/universe.py {args.universe} first")
-    panel = pd.read_csv(path, parse_dates=["Date"])
+    sys.path.insert(0, str(PIPES))
+    from universe import load_panel
+    try:
+        panel = load_panel(args.universe)
+    except FileNotFoundError as exc:
+        sys.exit(str(exc))
     out = run(panel, [m.strip() for m in args.models.split(",") if m.strip()])
     res = out["results"]
 
@@ -214,7 +234,7 @@ def main():
             v = s.get(c)
             cells.append("—" if v is None or (isinstance(v, float) and np.isnan(v)) else fmt.format(v))
         print(f"{k:<24}" + "".join(f"{v:>18}" for v in cells))
-    print("\nSame out-of-sample window for every row; untuned models; survivorship-biased universe.")
+    print("\nSame out-of-sample window for every row; untuned models. " + bias_note(args.universe))
 
     OUT_DIR.mkdir(exist_ok=True)
     dest = OUT_DIR / f"UNIVERSE_{args.universe}_pooled.json"

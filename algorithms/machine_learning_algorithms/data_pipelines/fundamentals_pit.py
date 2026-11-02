@@ -273,7 +273,8 @@ def fetch_splits(symbol: str) -> pd.Series:
 
 
 def build(name="large50") -> pd.DataFrame:
-    path = HERE / f"UNIVERSE_{name}_panel.csv"
+    from universe import panel_path
+    path = panel_path(name)
     if not path.exists():
         sys.exit(f"{path.name} not found — run universe.py {name} first")
     panel = pd.read_csv(path, parse_dates=["Date"])

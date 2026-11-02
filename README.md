@@ -570,42 +570,61 @@ python backtesting/backtest.py NVDA --model all     # or --model lgb,ridge; defa
 **Cross-sectional factors on a universe** — rank many stocks at once instead of timing one:
 
 ```bash
-python algorithms/machine_learning_algorithms/data_pipelines/universe.py large50          # ~10 s, one yfinance call
-python algorithms/machine_learning_algorithms/data_pipelines/fundamentals_pit.py large50  # ~3 min cold (Finnhub 60/min), cached 24 h
-python backtesting/factor_backtest.py large50
-python backtesting/pooled_backtest.py large50
+U=sp500   # or large50
+python algorithms/machine_learning_algorithms/data_pipelines/universe.py $U          # sp500 ~2.5 min, large50 ~10 s
+python algorithms/machine_learning_algorithms/data_pipelines/fundamentals_pit.py $U  # sp500 ~1.5 h cold (rate limits), cached 24 h
+python backtesting/factor_backtest.py $U
+python backtesting/pooled_backtest.py $U                                              # sp500 ~8 min
 ```
-(`make factors` runs all four.)
+(`make factors UNIVERSE=sp500` runs all four.)
 
-- `universe.py` builds a long panel (`UNIVERSE_<name>_panel.csv`, gitignored) for 50 liquid US
-  large caps: adjusted OHLCV, the pipeline's price-only features and the six targets, computed
-  within each ticker. Price-only because the news/fundamentals sources have daily quotas
-- `factor_backtest.py` holds the top fifth by 12-month momentum, low 60-day volatility, or
-  1-week reversal (textbook settings), re-ranked monthly (weekly for reversal), traded at the
-  next open with 5 bps on the traded value; holdings drift between rebalances
-  (`backtesting/cross_section.py`). Benchmark: the equal-weight universe. Also reports each
-  factor's rank IC and its t-statistic on non-overlapping dates
+- **Universes** (`universe.py` → `UNIVERSE_<name>_panel.csv.gz`, gitignored): adjusted OHLCV, the
+  pipeline's price-only features and the six targets, computed within each ticker, plus
+  `in_index` — the dates the company belonged to the universe; everything below ranks and holds
+  only those
+  - `sp500` — **point-in-time S&P 500**: every company that was a member at any time in the window
+    (`membership.py`, from github.com/fja05680/sp500, MIT), flagged only while it was one; renamed
+    tickers mapped (FB→META, ANTM→ELV, …). yfinance doesn't price most acquired or failed
+    companies (Activision, Xilinx, SVB, First Republic, …): 54 of 626, **4.9% of member-days**,
+    listed in `UNIVERSE_sp500_coverage.json`. A holding whose prices end is cashed out at its last
+    price. Swap in a source with delisted prices to close the gap
+  - `large50` — a fixed list of 50 large caps picked in 2026. Survivorship-biased: over the same
+    window its equal-weight return was +15.3%/yr against +8.9% for the point-in-time S&P 500
 - `fundamentals_pit.py` adds **point-in-time fundamentals** from SEC filings (Finnhub "financials
   as reported", with each filing's date) and EPS surprises (yfinance): gross profitability, ROA,
   ROE, accruals, asset and revenue growth, leverage, earnings yield, book-to-market, sales/price,
   latest surprise. Each number is usable from the business day after its filing, as first
   reported; 10-Q year-to-date figures become trailing twelve months only from earlier filings;
-  market caps convert filed share counts with the splits after the filing. The factor backtest
-  adds gross profitability, earnings yield, book-to-market, low accruals, low asset growth and
-  post-earnings drift; the pooled model adds a `+fund` variant with the fundamentals as features
-- The list is today's large caps, so it carries survivorship bias: compare factors with the
-  equal-weight universe, not with zero
-- `pooled_backtest.py` trains **one model across all 50 tickers** (~70k rows vs one ticker's
-  ~1,250) to rank stocks by next-month return: target and the 22 price features are ranked across
-  tickers per date, refit monthly on labels known at the refit (21-session purge), top fifth
-  held. Judged against the equal-weight universe and the plain factors on the same window.
-  Result so far (2022-11 → 2026-11): untuned Ridge and LightGBM land within ±1%/yr of equal
-  weight with monthly IC ≈ 0 — their IC was negative in 2022–23 and positive in 2024–26, so
-  price-only features don't rank these large caps consistently. Adding the point-in-time
-  fundamentals doesn't change that (Ridge +1.2%/yr, IC +0.002; LightGBM worse). Of the single
-  factors, low asset growth had the best Sharpe (1.29) and low accruals the strongest IC
-  (t 1.58) over 2021-11 → 2026-11 — neither past the t ≈ 2 bar. Tests confirm the machinery
-  finds a planted predictive feature and nothing in noise
+  market caps convert filed share counts with the splits after the filing
+- `factor_backtest.py` holds the top fifth by a factor — 12-month momentum, low volatility,
+  1-week reversal, gross profitability, earnings yield, book-to-market, low accruals, low asset
+  growth, post-earnings drift (textbook settings) — re-ranked monthly (weekly for reversal),
+  traded at the next open with 5 bps on the traded value, holdings drifting between rebalances
+  (`cross_section.py`). Benchmark: the equal-weight universe. Reports each factor's rank IC and
+  its t-statistic on non-overlapping dates
+- `pooled_backtest.py` trains **one model across the universe** (~700k member rows for sp500) to
+  rank stocks by next-month return: target and the 22 price features ranked across members per
+  date, refit monthly on labels known at the refit (21-session purge), top fifth held, plus a
+  `+fund` variant with the fundamentals. Tests confirm it finds a planted predictive feature and
+  nothing in noise
+
+Results on the point-in-time S&P 500 (single factors 2021-11 → 2026-11, equal weight +8.9%/yr;
+pooled 2022-11 → 2026-11, equal weight +13.5%/yr; excess CAGR, IC t-stat):
+
+| | Excess / yr | IC t |
+|---|---|---|
+| Book-to-market | +4.1% | 0.87 |
+| Earnings yield | +3.7% | 1.61 |
+| 12-month momentum | +2.8% | 0.75 |
+| Low accruals | +2.1% | 0.32 |
+| Low asset growth | −0.1% | 0.35 |
+| Gross profitability | −2.2% | −0.44 |
+| Pooled LightGBM (price features) | +3.1% | 0.76 |
+| Pooled Ridge / either + fundamentals | −0.5% to −0.1% | ≤ 0.47 |
+
+Value leads, nothing clears t ≈ 2, and the models don't beat plain momentum (+3.8% on the pooled
+window). The factors that led on `large50` (low asset growth, low accruals) vanish on the full
+index: on 50 hand-picked stocks they were noise.
 
 Options-volatility backtests are separate: `/api/backtest` (POST) and
 `/api/backtest/strategies` (GET) run `backend/backtest_runner.py` on the engine below.
@@ -848,7 +867,8 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 - [ ] Factor strategies — time-series trend / momentum / mean reversion (`backtesting/strategies.py`) and cross-sectional momentum / low-vol / reversal on a 50-stock universe (`backtesting/factor_backtest.py`) done; quality needs point-in-time fundamentals
 - [x] Pooled ML model across the universe (`backtesting/pooled_backtest.py`) — no consistent edge from price-only features or point-in-time fundamentals on 50 large caps
 - [x] Point-in-time fundamentals + EPS surprises (`data_pipelines/fundamentals_pit.py`)
-- [ ] A wider universe with delisted names (removes survivorship bias; more breadth for factors)
+- [x] Point-in-time S&P 500 universe (`data_pipelines/membership.py`) — 95% of member-days priced
+- [ ] Prices for the acquired/failed members yfinance lacks (the last 4.9%), from a source with delisted tickers
 
 ### Completed ✅
 - [x] **Walk-forward backtesting harness** — `backtesting/backtest.py` trades the model signal on the feature matrix vs buy-and-hold

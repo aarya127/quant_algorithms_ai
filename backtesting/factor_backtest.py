@@ -46,7 +46,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "backend"))
 
 from cross_section import (wide, top_weights, equal_weights, simulate_portfolio,  # noqa: E402
-                           portfolio_stats, forward_returns, rank_ic, ic_summary)
+                           portfolio_stats, forward_returns, rank_ic, ic_summary, eligible_frame)
 from paper import SLIPPAGE                                                         # noqa: E402
 
 PIPES = ROOT / "algorithms" / "machine_learning_algorithms" / "data_pipelines"
@@ -86,18 +86,20 @@ def run(panel: pd.DataFrame) -> dict:
     panel = add_derived(panel)
     factors = available_factors(panel)
     opens, closes = wide(panel, "Open"), wide(panel, "Close")
-    scores = {name: wide(panel, col) * sign for name, (col, sign, _) in factors.items()}
+    eligible = eligible_frame(panel, closes)          # rank and hold only index members
+    scores = {name: (wide(panel, col) * sign).reindex_like(closes).where(eligible)
+              for name, (col, sign, _) in factors.items()}
 
     # common window: from the first date every factor can rank enough names
     ready = pd.concat([s.notna().sum(axis=1) >= 10 for s in scores.values()], axis=1).all(axis=1)
     if not ready.any():
         raise ValueError("no date where every factor has scores — is the panel long enough?")
     start = ready.idxmax()
-    opens, closes = opens.loc[start:], closes.loc[start:]
+    opens, closes, eligible = opens.loc[start:], closes.loc[start:], eligible.loc[start:]
     scores = {k: v.loc[start:] for k, v in scores.items()}
 
     results = {}
-    bench_daily, bench_reb = simulate_portfolio(opens, closes, equal_weights(closes, 21),
+    bench_daily, bench_reb = simulate_portfolio(opens, closes, equal_weights(closes, 21, eligible),
                                                 START_CASH, SLIPPAGE)
     results["equal_weight_universe"] = {**portfolio_stats(bench_daily, bench_reb, START_CASH),
                                         "rebalance_every": 21}
@@ -117,12 +119,26 @@ def run(panel: pd.DataFrame) -> dict:
             "cost_per_side": SLIPPAGE}
 
 
+def bias_note(name: str) -> str:
+    """One line on how far the universe is from survivorship-free."""
+    import json
+    cov = PIPES / f"UNIVERSE_{name}_coverage.json"
+    if cov.exists():
+        c = json.loads(cov.read_text())
+        return (f"Point-in-time S&P 500 membership; {len(c['missing'])} of {c['companies']} companies "
+                f"({c['missing_member_day_share']:.1%} of member-days, mostly acquired or failed) have no "
+                f"prices — see {cov.name}.")
+    return "Survivorship-biased universe (today's large caps): compare rows with each other, not with zero."
+
+
 def main():
     name = sys.argv[1] if len(sys.argv) > 1 else "large50"
-    path = PIPES / f"UNIVERSE_{name}_panel.csv"
-    if not path.exists():
-        sys.exit(f"{path.name} not found — run data_pipelines/universe.py {name} first")
-    panel = pd.read_csv(path, parse_dates=["Date"])
+    sys.path.insert(0, str(PIPES))
+    from universe import load_panel
+    try:
+        panel = load_panel(name)
+    except FileNotFoundError as exc:
+        sys.exit(str(exc))
     out = run(panel)
     res = out["results"]
 
@@ -139,8 +155,7 @@ def main():
             v = s.get(c)
             cells.append("—" if v is None or (isinstance(v, float) and np.isnan(v)) else fmt.format(v))
         print(f"{k:<24}" + "".join(f"{v:>18}" for v in cells))
-    print("\nSurvivorship-biased universe (today's large caps): compare rows with each other, "
-          "not with zero.")
+    print("\n" + bias_note(name))
 
     OUT_DIR.mkdir(exist_ok=True)
     dest = OUT_DIR / f"UNIVERSE_{name}_factors.json"

@@ -231,3 +231,6 @@ backend/analyst_log.jsonl
 
 # Provider response cache (Finnhub filings, yfinance earnings/splits, AV/Finnhub news)
 algorithms/machine_learning_algorithms/data_pipelines/.pipeline_cache/
+
+# Universe panels and their coverage reports (regenerate with data_pipelines/universe.py)
+algorithms/machine_learning_algorithms/data_pipelines/UNIVERSE_*

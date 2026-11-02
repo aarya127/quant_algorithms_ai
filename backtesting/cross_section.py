@@ -8,7 +8,8 @@ Execution matches the single-asset simulator and the paper account: weights
 decided at row t's close are traded at row t+1's open; costs are charged on the
 traded value (slippage per side). Between rebalances holdings drift with prices
 instead of being reset to target every day, so turnover is what a real
-portfolio would trade.
+portfolio would trade. A holding whose price series ends (an acquisition, a
+delisting) is turned into cash at its last price.
 """
 import math
 
@@ -41,11 +42,20 @@ def top_weights(scores: pd.DataFrame, top_frac: float = 0.2, every: int = 21,
     return w
 
 
-def equal_weights(closes: pd.DataFrame, every: int = 21) -> pd.DataFrame:
-    """Equal weight on every ticker with a price, rebalanced every `every` rows."""
+def eligible_frame(panel: pd.DataFrame, like: pd.DataFrame) -> pd.DataFrame:
+    """Date × symbol booleans from the panel's `in_index` (all True without it)."""
+    if "in_index" not in panel.columns:
+        return pd.DataFrame(True, index=like.index, columns=like.columns)
+    return wide(panel, "in_index").reindex(index=like.index, columns=like.columns).fillna(False).astype(bool)
+
+
+def equal_weights(closes: pd.DataFrame, every: int = 21, eligible: pd.DataFrame = None) -> pd.DataFrame:
+    """Equal weight on every (eligible) ticker with a price, rebalanced every `every` rows."""
     w = pd.DataFrame(np.nan, index=closes.index, columns=closes.columns)
     for i in range(0, len(closes), every):
         have = closes.iloc[i].notna()
+        if eligible is not None:
+            have &= eligible.iloc[i]
         if have.any():
             w.iloc[i] = np.where(have, 1.0 / have.sum(), 0.0)
     return w
@@ -69,6 +79,8 @@ def simulate_portfolio(opens: pd.DataFrame, closes: pd.DataFrame, weights: pd.Da
     cash = float(start_cash)
     last_px = np.where(np.isfinite(c[0]) & (c[0] > 0), c[0], np.nan)
     rows, rebalances = [(dates[0], cash, 0.0, 0)], []
+    ok_any = np.isfinite(c) & (c > 0)
+    last_row = np.where(ok_any.any(axis=0), n - 1 - np.argmax(ok_any[::-1], axis=0), -1)
 
     def move_to(px):
         nonlocal hold, last_px
@@ -79,6 +91,10 @@ def simulate_portfolio(opens: pd.DataFrame, closes: pd.DataFrame, weights: pd.Da
         return ok
 
     for d in range(1, n):
+        ended = (last_row < d) & (hold != 0)              # price series over: cash out
+        if ended.any():
+            cash += hold[ended].sum()
+            hold = np.where(ended, 0.0, hold)
         tradable = move_to(o[d])                         # overnight, to today's open
         target = w[d - 1]                                # decided at yesterday's close
         if np.isfinite(target).any():
