@@ -93,7 +93,7 @@ jobs:
 
       - name: Run unit tests — cross-sectional portfolios and universe panel
         run: |
-          pytest tests/test_cross_section.py \
+          pytest tests/test_cross_section.py tests/test_pooled.py \
             -v --tb=short
 
       - name: Run unit tests — backtest simulator

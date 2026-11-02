@@ -15,7 +15,7 @@ help:
 	@echo "  python     - Install Python dependencies"
 	@echo "  test       - Run all tests"
 	@echo "  backtest   - Walk-forward ML signal backtest (TICKER=NVDA MODEL=all)"
-	@echo "  factors    - Universe panel + cross-sectional factor backtest (UNIVERSE=large50)"
+	@echo "  factors    - Universe panel, factor backtest and pooled model (UNIVERSE=large50)"
 	@echo "  clean      - Remove build artifacts"
 	@echo "  run-risk   - Start Go risk engine"
 	@echo "  run-backend- Start Flask backend"
@@ -48,7 +48,8 @@ test:
 		tests/test_pipeline_integration.py \
 		tests/test_api_endpoints.py \
 		tests/test_backtest.py \
-		tests/test_cross_section.py
+		tests/test_cross_section.py \
+		tests/test_pooled.py
 	@echo "  ℹ️  Live-API smoke suite is separate: 'cd tests && python3 run_all_tests.py' (needs API keys)"
 
 clean:
@@ -70,6 +71,7 @@ UNIVERSE ?= large50
 factors:
 	@python3 algorithms/machine_learning_algorithms/data_pipelines/universe.py $(UNIVERSE)
 	@python3 backtesting/factor_backtest.py $(UNIVERSE)
+	@python3 backtesting/pooled_backtest.py $(UNIVERSE)
 
 # Service runners
 run-risk:

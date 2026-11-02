@@ -584,6 +584,14 @@ python backtesting/factor_backtest.py large50
   factor's rank IC and its t-statistic on non-overlapping dates
 - The list is today's large caps, so it carries survivorship bias: compare factors with the
   equal-weight universe, not with zero
+- `pooled_backtest.py` trains **one model across all 50 tickers** (~70k rows vs one ticker's
+  ~1,250) to rank stocks by next-month return: target and the 22 price features are ranked across
+  tickers per date, refit monthly on labels known at the refit (21-session purge), top fifth
+  held. Judged against the equal-weight universe and the plain factors on the same window.
+  Result so far (2022-11 → 2026-11): untuned Ridge and LightGBM land within ±1%/yr of equal
+  weight with monthly IC ≈ 0 — their IC was negative in 2022–23 and positive in 2024–26, so
+  price-only features don't rank these large caps consistently. Tests confirm the machinery
+  finds a planted predictive feature and nothing in noise
 
 Options-volatility backtests are separate: `/api/backtest` (POST) and
 `/api/backtest/strategies` (GET) run `backend/backtest_runner.py` on the engine below.
@@ -824,7 +832,7 @@ research prototypes, and scaffolding for planned work. Use this as the honest ma
 ### In Progress
 - [ ] Deep learning (LSTM, Transformer) in `deep_learning/`
 - [ ] Factor strategies — time-series trend / momentum / mean reversion (`backtesting/strategies.py`) and cross-sectional momentum / low-vol / reversal on a 50-stock universe (`backtesting/factor_backtest.py`) done; quality needs point-in-time fundamentals
-- [ ] Pooled ML model trained across the universe (more rows per model than one ticker's ~1,250)
+- [x] Pooled ML model across the universe (`backtesting/pooled_backtest.py`) — no consistent edge from price-only features yet; next inputs to try: fundamentals (point-in-time), earnings/news events, a wider universe
 - [ ] Point-in-time fundamental database for rigorous backtest training
 
 ### Completed ✅
