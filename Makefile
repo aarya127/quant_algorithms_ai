@@ -1,6 +1,6 @@
 # Makefile for Quant Algorithms AI
 
-.PHONY: all cpp go python clean test help backtest
+.PHONY: all cpp go python clean test help backtest factors
 
 # Default target
 all: cpp go python
@@ -15,6 +15,7 @@ help:
 	@echo "  python     - Install Python dependencies"
 	@echo "  test       - Run all tests"
 	@echo "  backtest   - Walk-forward ML signal backtest (TICKER=NVDA MODEL=all)"
+	@echo "  factors    - Universe panel + cross-sectional factor backtest (UNIVERSE=large50)"
 	@echo "  clean      - Remove build artifacts"
 	@echo "  run-risk   - Start Go risk engine"
 	@echo "  run-backend- Start Flask backend"
@@ -46,7 +47,8 @@ test:
 		tests/test_evaluation_gate.py \
 		tests/test_pipeline_integration.py \
 		tests/test_api_endpoints.py \
-		tests/test_backtest.py
+		tests/test_backtest.py \
+		tests/test_cross_section.py
 	@echo "  ℹ️  Live-API smoke suite is separate: 'cd tests && python3 run_all_tests.py' (needs API keys)"
 
 clean:
@@ -62,6 +64,12 @@ TICKER ?= NVDA
 MODEL  ?= all
 backtest:
 	@python3 backtesting/backtest.py $(TICKER) --model $(MODEL)
+
+# Cross-sectional factor portfolios on a ticker universe (builds the panel first)
+UNIVERSE ?= large50
+factors:
+	@python3 algorithms/machine_learning_algorithms/data_pipelines/universe.py $(UNIVERSE)
+	@python3 backtesting/factor_backtest.py $(UNIVERSE)
 
 # Service runners
 run-risk:
