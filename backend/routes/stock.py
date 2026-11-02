@@ -2,7 +2,6 @@
 routes/stock.py — per-symbol detail (stock, ai-overview, statistics, sentiment, scenarios, metrics, recommendations) blueprint, extracted verbatim from app.py.
 """
 import os
-import sys
 import json
 import datetime
 
@@ -10,10 +9,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Blueprint, jsonify, request
 
-from common import get_ticker_for_charts, is_canadian_stock
+from common import get_ticker_for_charts, is_canadian_stock, _int_arg
 from rate_limit import limiter, bypass_ok, LLM_LIMIT, AV_LIMIT
 from services import (
-    yf, StockAnalyzer, get_company_overview_llm,
+    yf, av, get_company_overview_llm,
     get_company_profile, get_stock_quote, get_basic_financials, get_company_news,
     get_company_statistics, format_statistics_for_display,
     _cached_get_stock_quote, _cached_get_company_profile, _cached_get_company_peers,
@@ -236,185 +235,23 @@ def get_statistics(symbol):
             'statistics': {}
         })
 
-@bp.route('/api/sentiment/<symbol>')
-@limiter.limit(AV_LIMIT, exempt_when=bypass_ok)
-def sentiment_analysis(symbol):
-    """Get comprehensive sentiment analysis from multiple sources"""
-    try:
-        analyzer = StockAnalyzer(symbol.upper())
-        sentiment_data = analyzer.get_comprehensive_sentiment()
-        
-        # Format for frontend
-        sources = sentiment_data.get('sources', {})
-        comparison = sentiment_data.get('comparison', {})
-        consensus = sentiment_data.get('consensus', {})
-        
-        # Build response
-        response = {
-            'success': True,
-            'symbol': symbol.upper(),
-            'timestamp': sentiment_data.get('timestamp'),
-            
-            # Overall consensus
-            'overall_sentiment': consensus.get('sentiment', 'neutral'),
-            'confidence': consensus.get('confidence', 0),
-            'consensus_score': consensus.get('score', 50),
-            
-            # Individual sources
-            'sources': [],
-            
-            # Comparison metrics
-            'agreement_level': comparison.get('agreement_level', 'unknown'),
-            'sentiment_consensus': comparison.get('sentiment_consensus', 'unknown'),
-            'average_score': comparison.get('average_score', 50),
-            'score_variance': comparison.get('variance', 0),
-            
-            # Summary
-            'summary': f"Analysis from {len(sources)} sources shows {consensus.get('sentiment', 'neutral')} sentiment "
-                      f"with {comparison.get('agreement_level', 'unknown')} agreement across providers."
-        }
-        
-        # Add detailed source information
-        for source_name, source_data in sources.items():
-            if 'error' not in source_data:
-                source_info = {
-                    'name': source_name,
-                    'provider': source_data.get('provider', source_name),
-                    'sentiment': source_data.get('overall_sentiment', 'unknown'),
-                    'score': source_data.get('score', 50),
-                    'articles_analyzed': source_data.get('articles_analyzed', 0)
-                }
-                
-                # Add source-specific metrics
-                if 'confidence' in source_data:
-                    source_info['confidence'] = source_data['confidence']
-                if 'positive_ratio' in source_data:
-                    source_info['positive_ratio'] = source_data['positive_ratio']
-                    source_info['negative_ratio'] = source_data['negative_ratio']
-                    source_info['neutral_ratio'] = source_data['neutral_ratio']
-                if 'sentiment_score' in source_data:
-                    source_info['raw_score'] = source_data['sentiment_score']
-                if 'mspr' in source_data:
-                    source_info['mspr'] = source_data['mspr']
-                    source_info['insider_signal'] = 'bullish' if source_data['mspr'] > 0 else 'bearish'
-                
-                response['sources'].append(source_info)
-        
-        # Calculate ratios for visualization
-        total = len(response['sources'])
-        if total > 0:
-            pos = sum(1 for s in response['sources'] if s['sentiment'] == 'positive')
-            neg = sum(1 for s in response['sources'] if s['sentiment'] == 'negative')
-            neu = sum(1 for s in response['sources'] if s['sentiment'] == 'neutral')
-            
-            response['positive_ratio'] = pos / total
-            response['negative_ratio'] = neg / total
-            response['neutral_ratio'] = neu / total
-            response['articles_analyzed'] = sum(s.get('articles_analyzed', 0) for s in response['sources'])
-        else:
-            response['positive_ratio'] = 0
-            response['negative_ratio'] = 0
-            response['neutral_ratio'] = 0
-            response['articles_analyzed'] = 0
-        
-        return jsonify(response)
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
 @bp.route('/api/sentiment/news/<symbol>')
 @limiter.limit(AV_LIMIT, exempt_when=bypass_ok)
 def sentiment_news(symbol):
-    """
-    Article-level sentiment feed + daily trend for the Sentiment tab.
+    """Sentiment tab: Alpha Vantage-scored articles + Finnhub headlines, a
+    relevance-weighted overall score and a daily trend (sentiment_feed.py).
 
-    Query params:
-        days  — lookback window in calendar days (default 30, max 365)
-
-    Returns up to 150 articles (AV + Finnhub) with pre-computed scores,
-    plus a daily aggregate series for charting.
-    API budget: 1 AV call (25/day) + 1 Finnhub call (60/min).
+    Query: days — lookback in calendar days (default 30, max 365).
+    At most one Alpha Vantage and one Finnhub call per symbol/window per 30 min.
     """
     try:
-        sys.path.insert(0, os.path.join(_BACKEND, '..'))
-        from algorithms.machine_learning_algorithms.data_pipelines.extractor import DataExtractor
-
-        sym      = symbol.upper()
-        days     = min(int(request.args.get('days', 30)), 365)
-        end      = datetime.date.today().isoformat()
-        start    = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
-
-        ex = DataExtractor()
-
-        # Article-level feed (AV scored + Finnhub unscored); cap conservatively to stay within timeout
-        max_art = 40 if days > 30 else 25
-        art_df = ex.news_with_scores(sym, start=start, end=end, max_articles=max_art)
-
-        # Daily aggregate trend (uses the same sources + weights)
-        daily_df = ex.news_sentiment_history(sym, start=start, end=end, use_finbert=False)
-
-        # --- Build articles list ---
-        articles = []
-        if not art_df.empty:
-            for _, r in art_df.iterrows():
-                score = r.get("sent_score")
-                score_val = float(score) if score == score else None  # NaN → None
-                articles.append({
-                    "date":      str(r["date"])[:10],
-                    "headline":  str(r.get("headline", "")),
-                    "source":    str(r.get("source", "")),
-                    "provider":  str(r.get("provider", "")),
-                    "score":     score_val,
-                    "label":     str(r.get("label", "neutral")),
-                    "url":       str(r.get("url", "") or ""),
-                })
-
-        # --- Build daily trend ---
-        daily = []
-        if not daily_df.empty:
-            for dt, row in daily_df.iterrows():
-                sc = row.get("news_sent_score")
-                daily.append({
-                    "date":  str(dt)[:10],
-                    "score": float(sc) if sc == sc else None,
-                    "count": int(row.get("news_articles", 0)),
-                })
-
-        # --- Overall summary (from AV-scored articles only) ---
-        scored = [a for a in articles if a["score"] is not None]
-        if scored:
-            mean_score = sum(a["score"] for a in scored) / len(scored)
-            overall_label = "positive" if mean_score > 0.05 else ("negative" if mean_score < -0.05 else "neutral")
-            pos = sum(1 for a in scored if a["label"] == "positive")
-            neg = sum(1 for a in scored if a["label"] == "negative")
-            neu = sum(1 for a in scored if a["label"] == "neutral")
-        else:
-            mean_score = 0.0
-            overall_label = "neutral"
-            pos = neg = neu = 0
-
-        source_counts = {}
-        for a in articles:
-            source_counts[a["provider"]] = source_counts.get(a["provider"], 0) + 1
-
-        return jsonify({
-            "success":        True,
-            "symbol":         sym,
-            "window_days":    days,
-            "overall_score":  round(mean_score, 3),
-            "overall_label":  overall_label,
-            "articles_total": len(articles),
-            "scored_total":   len(scored),
-            "positive_count": pos,
-            "negative_count": neg,
-            "neutral_count":  neu,
-            "source_counts":  source_counts,
-            "daily":          daily,
-            "articles":       articles,
-        })
-    except Exception as exc:
-        import traceback
-        return jsonify({"success": False, "error": str(exc), "traceback": traceback.format_exc()})
+        import sentiment_feed
+        days = _int_arg('days', 30, 365)
+        payload = sentiment_feed.get_feed(symbol.upper(), days, av, _cached_get_company_news)
+        return jsonify({'success': True, **payload})
+    except Exception as e:
+        print(f"[SENTIMENT] {symbol}: {e!r}", flush=True)
+        return jsonify({'success': False, 'error': 'Sentiment is unavailable right now.'}), 500
 
 
 @bp.route('/api/scenarios/<symbol>')

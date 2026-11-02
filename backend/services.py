@@ -41,7 +41,6 @@ get_company_overview_llm = _unavailable
 get_market_tweets = get_financial_news_feed = _unavailable
 get_recent_news = _unavailable
 get_company_statistics = format_statistics_for_display = _unavailable
-StockAnalyzer = None
 
 
 try:
@@ -62,7 +61,6 @@ try:
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
     from data.alpaca_news import get_recent_news
     from data.company_statistics import get_company_statistics, format_statistics_for_display
-    from stock_analyzer import StockAnalyzer
     av = AlphaVantage()
     _DATA_MODULES_LOADED = True
     print("[STARTUP] All data modules loaded successfully.", flush=True)

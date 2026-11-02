@@ -409,7 +409,7 @@
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <h5 class="mb-0"><i class="fas fa-brain"></i> News Sentiment Analysis</h5>
                                         <div class="d-flex align-items-center gap-2">
-                                            <span class="badge bg-secondary">1 AV + 1 Finnhub call</span>
+                                            <span class="badge bg-secondary">≤ 1 AV + 1 Finnhub call · cached 30 min</span>
                                             <select id="sentimentWindowSelect" class="form-select form-select-sm" style="width:auto">
                                                 <option value="7">7 days</option>
                                                 <option value="30" selected>30 days</option>
@@ -429,7 +429,7 @@
                                             <div class="col-md-3">
                                                 <div class="card text-center h-100" id="sentimentScoreCard">
                                                     <div class="card-body d-flex flex-column justify-content-center">
-                                                        <div class="small text-muted mb-1">30-Day Score</div>
+                                                        <div class="small text-muted mb-1" id="sentimentScoreTitle">Score</div>
                                                         <h2 id="sentimentScoreVal" class="mb-0 fw-bold">—</h2>
                                                         <span id="sentimentLabelBadge" class="badge mt-2 fs-6">—</span>
                                                     </div>
@@ -476,7 +476,7 @@
                                         </div>
                                     </div>
 
-                                    <!-- 30-day trend chart -->
+                                    <!-- daily trend chart -->
                                     <div id="sentimentChartWrap" class="d-none mb-3">
                                         <div class="card">
                                             <div class="card-body">

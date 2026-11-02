@@ -1503,7 +1503,9 @@ class DataExtractor:
                 logger.debug("AV cache written: %s (%s → %s) %d rows", symbol, start, end, len(result))
             except Exception:
                 pass
-            return result if not result.empty else None
+            # Empty is a real answer (a quiet window); None means rate-limited or failed,
+            # which news_sentiment_history takes as the signal to stop batching.
+            return result
 
         except Exception as exc:
             logger.warning("AlphaVantage news sentiment error for %s: %s", symbol, exc)

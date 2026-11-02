@@ -442,6 +442,7 @@ async function loadStockDetails(symbol) {
 
     // The other tabs only load on shown.bs.tab, so leaving one open would keep
     // the previous symbol's data under this header.
+    resetSentimentPanel();
     bootstrap.Tab.getOrCreateInstance(document.querySelector('#stockTabs [data-bs-target="#overview"]')).show();
 
     // Scroll to top of research section
@@ -698,6 +699,17 @@ function setupSentimentButton() {
     }
 }
 
+// Clear the Sentiment tab and drop any in-flight response — it loads only on
+// click, so without this the previous symbol's results stay under the new header.
+function resetSentimentPanel() {
+    _panelTurn('sentiment');
+    document.getElementById('sentimentBanner')?.classList.add('d-none');
+    document.getElementById('sentimentChartWrap')?.classList.add('d-none');
+    if (window._sentTrendChart) { window._sentTrendChart.destroy(); window._sentTrendChart = null; }
+    const container = document.getElementById('sentimentAnalysis');
+    if (container) container.innerHTML = '<p class="text-muted">Click <strong>Analyze</strong> to load recent news sentiment.</p>';
+}
+
 // Load sentiment analysis with dedicated API call
 async function loadSentiment(symbol, days = 30) {
     console.log(`🧠 API CALL: /api/sentiment/news/${symbol}?days=${days}`);
@@ -711,7 +723,7 @@ async function loadSentiment(symbol, days = 30) {
         <div class="text-center py-4">
             <div class="spinner-border text-primary" role="status"></div>
             <p class="mt-3 mb-1">Fetching news from Alpha Vantage & Finnhub…</p>
-            <p class="text-muted small">Uses 1 AV call (25/day budget) + 1 Finnhub call</p>
+            <p class="text-muted small">Results are cached for 30 minutes per symbol and window</p>
         </div>`;
     banner?.classList.add('d-none');
     chartWrap?.classList.add('d-none');
@@ -736,20 +748,22 @@ async function loadSentiment(symbol, days = 30) {
         const srcEl      = document.getElementById('sentSourceCounts');
         const totalEl    = document.getElementById('sentArticlesTotal');
 
-        const score = data.overall_score;
+        const score = data.overall_score;           // null when no article was scored
         const label = data.overall_label;
         const colorClass = label === 'positive' ? 'success' : label === 'negative' ? 'danger' : 'secondary';
+        const titleScoreEl = document.getElementById('sentimentScoreTitle');
 
-        if (scoreEl)   scoreEl.textContent = (score >= 0 ? '+' : '') + score.toFixed(3);
+        if (titleScoreEl) titleScoreEl.textContent = `${data.window_days}-Day Score`;
+        if (scoreEl)   scoreEl.textContent = score == null ? '—' : (score >= 0 ? '+' : '') + score.toFixed(3);
         if (badgeEl) {
-            badgeEl.textContent = label.toUpperCase();
+            badgeEl.textContent = score == null ? 'NO SCORED NEWS' : label.toUpperCase();
             badgeEl.className   = `badge mt-2 fs-6 bg-${colorClass}`;
         }
-        if (scoreCard) scoreCard.classList.add(`border-${colorClass}`);
+        if (scoreCard) scoreCard.className = `card text-center h-100 border-${colorClass}`;
         if (posEl)   posEl.textContent   = data.positive_count + ' articles';
         if (negEl)   negEl.textContent   = data.negative_count + ' articles';
-        if (neuEl)   neuEl.textContent   = data.neutral_count  + ' articles (unscored)';
-        if (totalEl) totalEl.textContent = `${data.articles_total} total · ${data.scored_total} scored`;
+        if (neuEl)   neuEl.textContent   = data.neutral_count  + ' articles';
+        if (totalEl) totalEl.textContent = `${data.articles_total} total · ${data.scored_total} scored · ${data.unscored_total} unscored`;
 
         if (srcEl && data.source_counts) {
             srcEl.innerHTML = Object.entries(data.source_counts)
@@ -782,7 +796,7 @@ async function loadSentiment(symbol, days = 30) {
                             type: 'line',
                             borderColor: scores.map(s => s == null ? 'transparent' : (s > 0 ? '#198754' : '#dc3545')),
                             backgroundColor: 'transparent',
-                            pointBackgroundColor: scores.map(s => s == null ? 'transparent' : (s > 0.05 ? '#198754' : s < -0.05 ? '#dc3545' : '#6c757d')),
+                            pointBackgroundColor: scores.map(s => s == null ? 'transparent' : (s >= 0.15 ? '#198754' : s <= -0.15 ? '#dc3545' : '#6c757d')),
                             borderWidth: 2,
                             tension: 0.3,
                             yAxisID: 'yScore',
@@ -820,8 +834,10 @@ async function loadSentiment(symbol, days = 30) {
         }
 
         // ---------- article feed ----------
+        const notes = (data.notes || []).map(n =>
+            `<div class="alert alert-warning py-1 px-2 small mb-2"><i class="fas fa-info-circle"></i> ${esc(n)}</div>`).join('');
         if (!data.articles || data.articles.length === 0) {
-            container.innerHTML = '<p class="text-muted">No articles found for the last 30 days.</p>';
+            container.innerHTML = notes + `<p class="text-muted">No news found for ${esc(symbol)} in the last ${esc(data.window_days)} days.</p>`;
             return;
         }
 
@@ -835,7 +851,7 @@ async function loadSentiment(symbol, days = 30) {
             const scoreStr = sc != null ? (sc >= 0 ? '+' : '') + sc.toFixed(3) : '—';
             const urlStr   = a.url
                 ? `<a href="${safeUrl(a.url)}" target="_blank" rel="noopener" class="stretched-link text-decoration-none">${esc(a.headline)}</a>`
-                : a.headline;
+                : esc(a.headline);
             return `
             <tr>
                 <td class="text-muted small">${esc(a.date)}</td>
@@ -849,9 +865,11 @@ async function loadSentiment(symbol, days = 30) {
             </tr>`;
         }).join('');
 
-        container.innerHTML = `
+        container.innerHTML = notes + `
             <div class="small text-muted mb-2">
-                Showing ${data.articles.length} articles · Scored articles use Alpha Vantage relevance-weighted scores ∈ [−1, +1]
+                Showing the ${data.articles.length} most recent of ${data.articles_total} articles ·
+                scores are Alpha Vantage ticker sentiment ∈ [−1, +1] (neutral within ±0.15); the overall score
+                weights each by its relevance · Finnhub headlines are unscored
             </div>
             <div class="table-responsive" style="max-height:480px;overflow-y:auto">
                 <table class="table table-sm table-hover align-middle">

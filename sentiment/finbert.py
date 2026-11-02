@@ -28,6 +28,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -74,12 +75,18 @@ def _key(env_var: str, label: str) -> str:
 # ---------------------------------------------------------------------------
 _tokenizer = None
 _model = None
+_model_lock = threading.Lock()
 
 
 def _load_model():
-    """Import torch/transformers and load ProsusAI/finbert on first use."""
+    """Import torch/transformers and load ProsusAI/finbert on first use. The lock
+    stops two threads that arrive together from each loading a ~250 MB copy."""
     global _tokenizer, _model
-    if _tokenizer is None or _model is None:
+    if _tokenizer is not None and _model is not None:
+        return
+    with _model_lock:
+        if _tokenizer is not None and _model is not None:
+            return
         import torch
         from transformers import AutoTokenizer, AutoModelForSequenceClassification
         logger.info("Loading FinBERT model (one-time, ~5-15s)…")
