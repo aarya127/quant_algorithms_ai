@@ -76,7 +76,8 @@ def test_model_vol_is_already_daily(monkeypatch):
         "date": "2026-10-07", "signal": "long",
         "predictions": {"predicted_5d_return": 0.03, "predicted_vol_5d": 0.02}})
     monkeypatch.setitem(sys.modules, "predictor", fake)
-    drift, vol, meta = se._model_overlay("NVDA")
+    (drift, vol, meta), problem = se._model_overlay("NVDA", "2026-10-08", 0.02)
+    assert problem is None
     assert vol == pytest.approx(0.02)
     assert drift == pytest.approx(0.03 / 5 * se.DRIFT_SHRINK)
     assert meta["prediction_date"] == "2026-10-07"
@@ -120,10 +121,10 @@ def test_recommend_votes_and_evidence(prices, monkeypatch):
     r = rec.recommend("TEST")
     assert set(r["horizons"]) == set(rec.WEIGHTS)
     one_y = r["horizons"]["1Y"]
-    assert {v["signal"] for v in one_y["votes"]} == {"trend", "momentum", "quality"}
+    assert {v["signal"] for v in one_y["votes"]} == {"price", "quality"}
     assert sum(v["weight"] for v in one_y["votes"]) == pytest.approx(1.0, abs=0.01)
-    # no model served → 1W uses only the price signals, reweighted
-    assert {v["signal"] for v in r["horizons"]["1W"]["votes"]} == {"trend", "momentum"}
+    # no model served → 1W uses only the price vote, reweighted
+    assert {v["signal"] for v in r["horizons"]["1W"]["votes"]} == {"price"}
     expected = sum(v["vote"] * v["weight"] for v in one_y["votes"])
     assert one_y["score"] == pytest.approx(expected, abs=0.01)
     assert one_y["action"] == ("Buy" if expected > 0.3 else "Sell" if expected < -0.3 else "Hold")
@@ -233,3 +234,160 @@ def test_bank_debt_is_not_graded():
     assert bank["graded_categories"] == 1                    # profitability only
     other = grade_fundamentals(metric, peers, industry="Technology")
     assert other["metrics"]["financial_health"]["inputs"]["Debt/Equity"]["percentile"] == 25
+
+
+# Robustness (bad price rows, stale/implausible ML overlay, past-only calibration)
+
+def test_clean_bars_drops_missing_and_non_positive_prices():
+    import pandas as pd
+    df = pd.DataFrame({"Date": pd.bdate_range("2026-01-05", periods=5),
+                       "Open": [10, np.nan, 0, 11, 12], "Close": [10, 10.5, 11, np.nan, 12]})
+    assert se.clean_bars(df)["Open"].tolist() == [10, 12]
+
+
+def test_a_bad_yfinance_row_cant_poison_the_scenarios(monkeypatch):
+    import pandas as pd
+    rng = np.random.default_rng(1)
+    closes = 100 * np.exp(np.cumsum(rng.normal(0.0005, 0.015, 800)))
+    hist = pd.DataFrame({"Open": closes, "Close": closes},
+                        index=pd.bdate_range("2023-01-02", periods=800, name="Date"))
+    hist.iloc[400, 1] = np.nan
+    hist.iloc[401, 0] = 0.0
+
+    class Ticker:
+        history_metadata = {"currency": "USD"}
+
+        def __init__(self, t):
+            pass
+
+        def history(self, **kw):
+            return hist
+
+    monkeypatch.setattr(se, "yf", types.SimpleNamespace(Ticker=Ticker))
+    monkeypatch.setattr(se, "has_model", lambda s: False)
+    se._cache.clear(); se._prices_cache.clear()
+    r = se.compute_scenarios("BADROW", "1M")
+    assert all(math.isfinite(v["price_target"]) for v in r["scenarios"].values())
+    assert math.isfinite(r["annualized_vol"])
+
+
+@pytest.mark.parametrize("args, phrase", [
+    ((0.02, 0.02, "2026-10-01", "2026-10-09", 0.02), "sessions before"),
+    ((0.02, 0.0, "2026-10-08", "2026-10-09", 0.02), "implausible"),
+    ((0.02, -0.01, "2026-10-08", "2026-10-09", 0.02), "implausible"),
+    ((0.40, 0.02, "2026-10-08", "2026-10-09", 0.02), "four standard deviations"),
+    ((None, 0.02, "2026-10-08", "2026-10-09", 0.02), "no 5-day"),
+    ((0.02, 0.02, None, "2026-10-09", 0.02), "no usable date"),
+])
+def test_overlay_problems_are_named(args, phrase):
+    assert phrase in se.overlay_problem(*args)
+
+
+def test_overlay_within_three_sessions_is_used():
+    assert se.overlay_problem(0.02, 0.02, "2026-10-06", "2026-10-09", 0.015) is None
+
+
+def test_stale_model_forecast_is_skipped_and_said_so(prices, monkeypatch):
+    fake = types.SimpleNamespace(predict_latest=lambda s: {
+        "date": "2020-01-02", "predictions": {"predicted_5d_return": 0.03, "predicted_vol_5d": 0.015}})
+    monkeypatch.setitem(sys.modules, "predictor", fake)
+    monkeypatch.setattr(se, "has_model", lambda s: True)
+    r = se.compute_scenarios("TEST", "1W")
+    assert r["model_backed"] is False and "not used" in r["model_note"]
+
+
+def test_calibration_uses_non_overlapping_windows(prices):
+    cal = se.compute_scenarios("TEST", "3M")["calibration"]
+    assert cal["independent_windows"] == len(range(252, 1259 - 63 + 1, 63))
+    assert "data before" in cal["method"]
+
+
+def test_calibration_ignores_the_future():
+    """Each window's verdict depends only on returns before it: appending wild
+    history afterwards leaves every earlier window's verdict unchanged."""
+    rng = np.random.default_rng(3)
+    r = rng.normal(0, 0.01, 252 + 21 * 12)
+    base = se.calibration_flags(r, se.ewma_var(r), 21, seed=7)
+    longer = np.r_[r, rng.normal(0, 0.2, 21 * 12)]
+    ext = se.calibration_flags(longer, se.ewma_var(longer), 21, seed=7)
+    assert len(ext) > len(base) and (ext[:len(base)] == base).all()
+
+
+def test_unknown_timeframe_falls_back_to_one_month(prices):
+    assert se.compute_scenarios("TEST", "5Y")["timeframe"] == "1M"
+
+
+# Recommendations: one price vote, quality that can matter
+
+import recommendation_engine as rec_eng   # noqa: E402
+
+
+@pytest.mark.parametrize("votes, tf, action", [
+    ({"price": 1, "quality": 1}, "3M", "Buy"),
+    ({"price": 1, "quality": -1}, "3M", "Hold"),      # quality can stop a Buy
+    ({"price": 0, "quality": 1}, "6M", "Buy"),        # mixed price signals, quality decides
+    ({"price": 0, "quality": -1}, "1Y", "Sell"),
+    ({"price": -1, "quality": 1}, "1Y", "Hold"),
+    ({"price": 1}, "1Y", "Buy"),                      # no grade (ETF): price alone
+    ({"price": 1, "model": -1}, "1W", "Hold"),
+])
+def test_horizon_actions(votes, tf, action):
+    assert rec_eng.horizon_action(votes, rec_eng.WEIGHTS[tf])[0] == action
+
+
+def test_weights_sum_to_one_per_horizon():
+    for w in rec_eng.WEIGHTS.values():
+        assert sum(w.values()) == pytest.approx(1.0)
+
+
+# Metrics & Grades: negative equity, share classes
+
+def test_roe_over_negative_equity_is_not_graded():
+    peers = [{"roeTTM": v} for v in (5, 10, 15, 20)]
+    r = grade_fundamentals({"roeTTM": 80, "bookValuePerShareQuarterly": -4.0}, peers)
+    rec = r["metrics"]["profitability"]["inputs"]["ROE % (TTM)"]
+    assert rec["grade"] is None and "negative equity" in rec["note"]
+
+
+def test_peers_with_negative_equity_dont_set_the_roe_bar():
+    peers = [{"roeTTM": v} for v in (5, 10, 15, 20)] + [{"roeTTM": 400, "pbQuarterly": -2}]
+    rec = grade_fundamentals({"roeTTM": 25}, peers)["metrics"]["profitability"]["inputs"]["ROE % (TTM)"]
+    assert rec["percentile"] == 100
+
+
+def test_share_classes_are_the_same_company():
+    from services import same_company
+    googl = {"revenueGrowthTTMYoy": 12.1, "grossMarginTTM": 58.2, "netProfitMarginTTM": 28.6, "roeTTM": 31.0}
+    assert same_company(googl, dict(googl))
+    assert not same_company(googl, {**googl, "roeTTM": 30.9})
+    assert not same_company(googl, {"roeTTM": 31.0})          # too little to tell
+
+
+# Scenarios route: the AI rationale is written for 1M only
+
+@pytest.fixture()
+def client():
+    import app as app_module
+    app_module.app.config["TESTING"] = True
+    return app_module.app.test_client()
+
+
+@pytest.mark.parametrize("tf, uses_brief", [("1M", True), ("1Y", False), ("bogus", True)])
+def test_brief_rationale_only_on_one_month(prices, client, monkeypatch, tf, uses_brief):
+    import llm_analyst
+    monkeypatch.setitem(llm_analyst._brief_cache, "TEST",
+                        {"scenario_rationale": {"bull": "BRIEF-BULL", "base": "BRIEF-BASE", "bear": "BRIEF-BEAR"}})
+    d = client.get(f"/api/scenarios/TEST?timeframe={tf}").get_json()
+    assert d["success"] and d["timeframe"] in se.HORIZON_DAYS
+    assert (d["bull_case"]["rationale"] == "BRIEF-BULL") is uses_brief
+
+
+def test_stale_forecast_casts_no_model_vote(monkeypatch):
+    import pandas as pd
+    fake = types.SimpleNamespace(predict_latest=lambda s: {
+        "date": "2026-05-06", "predictions": {"predicted_5d_return": 0.021}})
+    monkeypatch.setitem(sys.modules, "predictor", fake)
+    monkeypatch.setattr(se, "has_model", lambda s: True)
+    assert rec_eng._model_vote("NVDA", pd.Timestamp("2026-10-30")) is None
+    vote = rec_eng._model_vote("NVDA", pd.Timestamp("2026-05-08"))
+    assert vote[0] == 1.0

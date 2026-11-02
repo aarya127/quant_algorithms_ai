@@ -443,6 +443,7 @@ async function loadStockDetails(symbol) {
     // The other tabs only load on shown.bs.tab, so leaving one open would keep
     // the previous symbol's data under this header.
     resetSentimentPanel();
+    resetGradeBadge();
     bootstrap.Tab.getOrCreateInstance(document.querySelector('#stockTabs [data-bs-target="#overview"]')).show();
 
     // Scroll to top of research section
@@ -923,7 +924,8 @@ async function loadScenarios(symbol, timeframe) {
         const cal = data.calibration;
         const calText = cal
             ? `History check: ${pct(cal.inside_band)} of past ${esc(timeframe)} moves landed between the bear and bull
-               prices built this way (ideal ${pct(cal.ideal)}; ${cal.independent_windows} independent periods).`
+               prices built this way from the data available at the time (ideal ${pct(cal.ideal)};
+               ${cal.independent_windows} non-overlapping periods; the ML overlay isn't checked).`
             : `Not enough history to check ${esc(timeframe)} bands against past moves.`;
         container.innerHTML = `
             <div class="alert alert-info mb-3">
@@ -936,7 +938,7 @@ async function loadScenarios(symbol, timeframe) {
                     ${pct(data.vol_longrun_annualized)} · assumed drift ${data.drift_annualized >= 0 ? '+' : ''}${pct(data.drift_annualized)}/yr
                     (half trailing, half a 7% prior) · ${esc(data.probability_method)}${data.prediction_date
                     ? ` · ML forecast from ${esc(data.prediction_date)} for the first 5 days` : ''}</small>
-                <br><small>${calText}</small>
+                <br><small>${calText}</small>${data.model_note ? `<br><small class="text-warning">${esc(data.model_note)}</small>` : ''}
             </div>
             <div class="scenario-container">
                 ${createScenarioCard('bull', data.bull_case, cur)}
@@ -990,6 +992,13 @@ function createScenarioCard(type, scenario, cur) {
     `;
 }
 
+// The header grade is only written by the Metrics tab; clear it so the previous
+// symbol's grade never sits next to a new one's price.
+function resetGradeBadge() {
+    const el = document.getElementById('overallGrade');
+    if (el) el.innerHTML = '...';
+}
+
 // Load metrics and grading with dedicated API call
 async function loadMetrics(symbol) {
     console.log(`⭐ API CALL: /api/metrics/${symbol}`);
@@ -1012,6 +1021,7 @@ async function loadMetrics(symbol) {
         // undefined on an error payload, and a throw here would land in the
         // generic catch below and mask the backend's actual error message.
         if (!data.success) {
+            resetGradeBadge();
             container.innerHTML = `<div class="alert alert-warning">${esc(data.error || 'Failed to load metrics')}</div>`;
             return;
         }
@@ -1034,7 +1044,9 @@ async function loadMetrics(symbol) {
                         <span class="text-muted ms-2">graded on ${data.graded_categories} of 4 categories ·
                             ${data.peers.length
                                 ? `vs ${esc(data.industry || 'industry')} peers: ${data.peers.map(esc).join(', ')}`
-                                : 'no peer data, market-wide thresholds'}</span>
+                                : 'no peer data, market-wide thresholds'}${(data.peers_unavailable || []).length
+                                ? ` · couldn't fetch ${data.peers_unavailable.map(esc).join(', ')} (rate limit?) — grades may shift on refresh`
+                                : ''}</span>
                     </div>
                 </div>
             </div>
@@ -1050,6 +1062,7 @@ async function loadMetrics(symbol) {
     } catch (error) {
         if (_panelStale('metrics', turn)) return;
         console.error(`✗ Error loading metrics for ${symbol}:`, error);
+        resetGradeBadge();
         container.innerHTML = '<div class="alert alert-danger">Failed to load metrics. Please try again.</div>';
     }
 }
@@ -1139,7 +1152,7 @@ async function loadRecommendations(symbol) {
 
 // Create recommendation card
 function createRecommendationCard(timeframe, rec) {
-    const names = {trend: 'Trend', momentum: 'Momentum', model: 'ML model', quality: 'Quality grade'};
+    const names = {price: 'Price trend', trend: 'Trend', momentum: 'Momentum', model: 'ML model', quality: 'Quality grade'};
     const arrow = v => v > 0 ? '<span class="text-positive">▲</span>' : v < 0 ? '<span class="text-negative">▼</span>' : '<span class="text-muted">●</span>';
     return `
         <div class="recommendation-card action-${esc(rec.action.toLowerCase())}">

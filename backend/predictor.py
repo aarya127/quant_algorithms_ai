@@ -9,8 +9,10 @@ Used by backend/app.py to power:
 
 import os
 import sys
+import copy
 import json
 import datetime
+import threading
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -27,6 +29,13 @@ _MONITORING  = _SUPERVISED / "output" / "monitoring"
 sys.path.insert(0, str(_SUPERVISED))
 from registry import load_registry   # noqa: E402
 import model_sync                    # noqa: E402
+
+# predict_latest results, keyed by what can change them (the features CSV and the
+# registry index, both replaced by model_sync): one Recommendations load asks up
+# to six times, and each miss also rewrites prediction_log.csv.
+_PRED_CACHE: dict = {}
+_PRED_LOCK = threading.Lock()
+_LOG_LOCK = threading.Lock()
 
 _DRIFT_Z_THRESH = 3.0
 _MODEL_DRIFT_IC_DROP = 0.10   # flag when rolling IC falls this far below registered IC
@@ -101,7 +110,30 @@ def _preprocess_row(row_df: pd.DataFrame, reg: dict) -> np.ndarray:
 
 # public API
 
+def _mtime(path: Path):
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
 def predict_latest(ticker: str) -> dict:
+    """Cached _predict_latest_uncached (see that docstring for the output)."""
+    model_sync.ensure_fresh()
+    key = (ticker, _mtime(_PIPELINES / f"{ticker}_features_with_regimes.csv"),
+           _mtime(_REGISTRY / ticker / "active.json"))
+    with _PRED_LOCK:
+        hit = _PRED_CACHE.get(key)
+    if hit is None:
+        hit = _predict_latest_uncached(ticker)
+        with _PRED_LOCK:
+            for k in [k for k in _PRED_CACHE if k[0] == ticker]:
+                del _PRED_CACHE[k]            # keep one entry per ticker
+            _PRED_CACHE[key] = hit
+    return copy.deepcopy(hit)
+
+
+def _predict_latest_uncached(ticker: str) -> dict:
     """
     Generate predictions for the most recent row in the features CSV.
 
@@ -331,16 +363,26 @@ def _log_prediction(pred: dict) -> None:
     }
     _MONITORING.mkdir(parents=True, exist_ok=True)
     row_df = pd.DataFrame([flat])
-    if _PRED_LOG.exists():
-        existing = pd.read_csv(_PRED_LOG, dtype=str)
-        dup_mask = ~(
-            (existing["date"]   == str(flat["date"])) &
-            (existing["ticker"] == str(flat["ticker"]))
-        )
-        combined = pd.concat([existing[dup_mask], row_df], ignore_index=True)
-    else:
-        combined = row_df
-    combined.to_csv(_PRED_LOG, index=False)
+    # Locked and written via a temp file + rename: concurrent request threads
+    # used to interleave writes and leave a file read_csv couldn't parse.
+    with _LOG_LOCK:
+        existing = None
+        if _PRED_LOG.exists():
+            try:
+                existing = pd.read_csv(_PRED_LOG, dtype=str)
+            except Exception as exc:
+                print(f"[PREDICT] prediction log unreadable, starting a new one: {exc}", flush=True)
+        if existing is not None and {"date", "ticker"} <= set(existing.columns):
+            dup_mask = ~(
+                (existing["date"]   == str(flat["date"])) &
+                (existing["ticker"] == str(flat["ticker"]))
+            )
+            combined = pd.concat([existing[dup_mask], row_df], ignore_index=True)
+        else:
+            combined = row_df
+        tmp = _PRED_LOG.with_name(_PRED_LOG.name + ".tmp")
+        combined.to_csv(tmp, index=False)
+        os.replace(tmp, _PRED_LOG)
 
 
 # Model drift — backfill actuals + rolling IC

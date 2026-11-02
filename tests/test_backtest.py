@@ -171,3 +171,27 @@ class TestFactorStrategies:
     def test_registry_lists_every_rule(self):
         from strategies import FACTOR_STRATEGIES
         assert set(FACTOR_STRATEGIES) == {"trend_sma200", "tsmom_12m", "rsi_mean_reversion"}
+
+
+class TestBadData:
+    def test_bad_open_delays_the_fill_instead_of_crashing(self):
+        bars = _bars((100, 100), (np.nan, 101), (0, 102), (103, 104))
+        daily, trades = simulate(bars, [1, np.nan, np.nan, np.nan], 10_000, 0.0)
+        assert trades[0]["date"] == "2026-01-08" and trades[0]["price"] == 103
+
+    def test_bad_close_carries_the_last_mark(self):
+        bars = _bars((100, 100), (100, 110), (111, np.nan), (112, 112))
+        daily, _ = simulate(bars, [1, np.nan, np.nan, np.nan], 10_000, 0.0)
+        assert daily["equity"][2] == daily["equity"][1]
+
+    def test_fractional_shares_trade_a_stock_priced_above_the_account(self):
+        bars = _bars((700_000, 700_000), (700_000, 770_000), (770_000, 770_000))
+        whole, _ = simulate(bars, [1, np.nan, np.nan], 100_000, 0.0)
+        frac, _ = simulate(bars, [1, np.nan, np.nan], 100_000, 0.0, fractional=True)
+        assert whole["shares"].iloc[-1] == 0
+        assert frac["equity"].iloc[-1] == pytest.approx(110_000)
+
+    def test_fractional_long_to_short(self):
+        bars = _bars((100, 100), (100, 100), (100, 100), (100, 100))
+        daily, trades = simulate(bars, [1, -1, np.nan, np.nan], 1_000, 0.0, fractional=True)
+        assert daily["shares"].iloc[-1] == pytest.approx(-10) and len(trades) == 2

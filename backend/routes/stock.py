@@ -261,8 +261,8 @@ def scenario_analysis(symbol):
     rationale text from the cached LLM analyst brief when available."""
     try:
         import scenario_engine
-        timeframe = request.args.get('timeframe', '1M')
-        sc = scenario_engine.compute_scenarios(symbol, timeframe)
+        sc = scenario_engine.compute_scenarios(symbol, request.args.get('timeframe', '1M'))
+        timeframe = sc['timeframe']               # unknown values fall back to 1M
 
         # LLM narrative is additive: use the cached brief if present; a miss
         # falls back to honest generated-from-numbers text (no LLM call here —
@@ -274,7 +274,10 @@ def scenario_analysis(symbol):
             with llm_analyst._lock:
                 brief = llm_analyst._brief_cache.get(symbol.upper())
             if brief:
-                rationale = brief.get('scenario_rationale') or rationale
+                # the brief is written against the 1-month targets; its prose
+                # quotes those numbers, so it only fits the 1M cards
+                if timeframe == '1M':
+                    rationale = brief.get('scenario_rationale') or rationale
                 factors = {'bull': brief.get('bull_factors') or [],
                            'bear': brief.get('bear_factors') or []}
         except Exception:
@@ -312,6 +315,7 @@ def scenario_analysis(symbol):
             'probability_method': sc['probability_method'],
             'prediction_date': sc.get('prediction_date'),
             'model_backed': sc['model_backed'],
+            'model_note': sc.get('model_note'),
             'annualized_vol': sc['annualized_vol'],
             'p_up': sc['p_up'],
             'p_loss_10': sc['p_loss_10'],

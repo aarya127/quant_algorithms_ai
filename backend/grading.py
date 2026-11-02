@@ -47,6 +47,11 @@ _INPUTS = {
     ],
 }
 
+# Inputs that mean nothing when shareholders' equity is negative, even if the
+# value itself is positive (a loss over negative equity gives a "positive" ROE).
+_NEEDS_POSITIVE_EQUITY = {'roeTTM'}
+_EQUITY_SIGNS = ('bookValuePerShareQuarterly', 'pbQuarterly', 'totalDebt/totalEquityQuarterly')
+
 # A market-scale grade scores at the middle of the matching percentile band.
 _BAND_MID = {'A': 90, 'B': 70, 'C': 50, 'D': 30, 'F': 10}
 
@@ -70,6 +75,11 @@ def _market_grade(x, cuts, higher_is_better):
     else:
         idx = sum(x >= c for c in cuts)          # below every cut → A
     return 'ABCDF'[idx]
+
+
+def negative_equity(metric):
+    """True when any equity-based field reports negative shareholders' equity."""
+    return any((v := _num(metric, k)) is not None and v < 0 for k in _EQUITY_SIGNS)
 
 
 def peer_percentile(value, peer_values, higher_is_better):
@@ -105,7 +115,15 @@ def _category(name, metric, peer_metrics):
         value = _num(metric, key)
         if value is None:
             continue
-        peer_values = [v for v in (_num(m, key) for m in peer_metrics) if v is not None]
+        peers_ok = peer_metrics
+        if key in _NEEDS_POSITIVE_EQUITY:
+            if negative_equity(metric):
+                inputs[label] = {'value': value, 'percentile': None, 'grade': None,
+                                 'note': 'not meaningful: negative equity'}
+                meaningless.append(f'{label} not meaningful: negative equity')
+                continue
+            peers_ok = [m for m in peer_metrics if not negative_equity(m)]
+        peer_values = [v for v in (_num(m, key) for m in peers_ok) if v is not None]
         rec, score = _grade_input(value, peer_values, hib, cuts, negative_means)
         inputs[label] = rec
         if score is not None:

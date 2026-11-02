@@ -146,5 +146,21 @@ def graded_fundamentals(symbol):
         peers = [p for p in (f_peers.result() or []) if p != symbol][:MAX_PEERS]
     with ThreadPoolExecutor(max_workers=MAX_PEERS) as ex:
         fins = ex.map(lambda p: _safe(_cached_get_basic_financials, p), peers)
-        peer_metrics = {p: f['metric'] for p, f in zip(peers, fins) if f and f.get('metric')}
-    return grade_fundamentals(metric, list(peer_metrics.values()), industry), industry, list(peer_metrics)
+        fetched = {p: f['metric'] for p, f in zip(peers, fins) if f and f.get('metric')}
+    # another share class of the same company (GOOG for GOOGL) isn't a peer
+    peer_metrics = {p: m for p, m in fetched.items() if not same_company(metric, m)}
+    grades = grade_fundamentals(metric, list(peer_metrics.values()), industry)
+    # peers whose fetch failed (often a Finnhub 429) — grades can shift on a retry
+    grades['peers_unavailable'] = [p for p in peers if p not in fetched]
+    return grades, industry, list(peer_metrics)
+
+
+_SAME_COMPANY_KEYS = ('revenueGrowthTTMYoy', 'grossMarginTTM', 'netProfitMarginTTM',
+                      'operatingMarginTTM', 'roeTTM')
+
+
+def same_company(a, b):
+    """True when two Finnhub metric dicts agree on every company-level fundamental
+    both report (at least three) — what two share classes of one company look like."""
+    shared = [k for k in _SAME_COMPANY_KEYS if a.get(k) is not None and b.get(k) is not None]
+    return len(shared) >= 3 and all(a[k] == b[k] for k in shared)

@@ -20,12 +20,17 @@ TRADING_DAYS = 252
 
 
 def simulate(bars: pd.DataFrame, targets, start_cash: float = 100_000.0,
-             slippage: float = 0.0005):
+             slippage: float = 0.0005, fractional: bool = False):
     """Run one strategy over daily bars.
 
-    bars    : DataFrame with Date, Open, Close, one row per session, ascending
-    targets : per-row target sign decided at that row's close (+1/-1/0);
-              NaN = no decision (keep the current position)
+    bars       : DataFrame with Date, Open, Close, one row per session, ascending
+    targets    : per-row target sign decided at that row's close (+1/-1/0);
+                 NaN = no decision (keep the current position)
+    fractional : size in fractional shares (whole shares, like the paper
+                 account, can't buy a stock priced above the account)
+
+    A row with a missing or non-positive price doesn't fill: the order waits for
+    the next good open, and the equity mark carries over.
 
     Returns (daily, trades):
       daily  — DataFrame: Date, Close, shares, cash, equity (marked at the close)
@@ -39,31 +44,36 @@ def simulate(bars: pd.DataFrame, targets, start_cash: float = 100_000.0,
         raise ValueError(f"targets has {len(targets)} rows, bars has {len(bars)}")
 
     cash, shares, pending = float(start_cash), 0, None
+    mark = next((c for c in closes if math.isfinite(c) and c > 0), 0.0)
     rows, trades = [], []
     for i in range(len(bars)):
         # 1. fill yesterday's decision at today's open
-        if pending is not None:
-            held = (shares > 0) - (shares < 0)
+        if pending is not None and math.isfinite(opens[i]) and opens[i] > 0:
+            held = int(shares > 0) - int(shares < 0)
             buy = pending > held
             px = opens[i] * (1 + slippage if buy else 1 - slippage)
             equity = cash + shares * px
-            new_shares = int(pending) * max(0, math.floor(equity / px))
+            size = equity / px if fractional else math.floor(equity / px)
+            new_shares = int(pending) * max(0, size)
             dq = new_shares - shares
             if dq:
                 cash -= dq * px
                 shares = new_shares
                 trades.append({"date": pd.Timestamp(dates[i]).date().isoformat(),
-                               "side": "buy" if dq > 0 else "sell", "qty": abs(dq),
+                               "side": "buy" if dq > 0 else "sell",
+                               "qty": abs(dq) if fractional else int(abs(dq)),
                                "price": round(px, 4), "target": int(pending)})
             pending = None
 
-        # 2. mark to the close
-        rows.append((dates[i], closes[i], shares, cash, cash + shares * closes[i]))
+        # 2. mark to the close (a bad close carries the last good mark)
+        if math.isfinite(closes[i]) and closes[i] > 0:
+            mark = closes[i]
+        rows.append((dates[i], closes[i], shares, cash, cash + shares * mark))
 
         # 3. today's decision → order for the next open
         t = targets[i]
         if not np.isnan(t):
-            held = (shares > 0) - (shares < 0)
+            held = int(shares > 0) - int(shares < 0)
             if int(np.sign(t)) != held:
                 pending = int(np.sign(t))
 
