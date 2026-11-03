@@ -269,12 +269,15 @@ function formatVolume(v) {
 // Load dashboard with market indices + 30-day charts
 async function loadDashboard() {
     try {
-        const [idxRes, histRes] = await Promise.all([
+        // Sparklines start on whichever range button is marked active (1D)
+        const activeBtn = document.querySelector('.period-btn.active');
+        const uiPeriod = activeBtn ? activeBtn.textContent.trim() : '1D';
+        const sparkSeq = ++_sparkSeq;
+        const [idxRes, histData] = await Promise.all([
             fetch('/api/indices'),
-            fetch('/api/indices/history')
+            fetchSparklineHistory(uiPeriod)
         ]);
         const idxData  = await idxRes.json();
-        const histData = await histRes.json();
 
         const container = document.getElementById('marketIndices');
 
@@ -313,8 +316,8 @@ async function loadDashboard() {
             container.innerHTML = '<p class="text-muted">Indices unavailable.</p>';
         }
 
-        // Draw sparklines inside index cards
-        if (histData.history) {
+        // Draw sparklines inside index cards (unless a range click superseded us)
+        if (histData && histData.history && sparkSeq === _sparkSeq) {
             setTimeout(() => drawSparklines(histData.history), 0);
         }
 
@@ -333,17 +336,36 @@ function setPeriod(btn, period) {
     loadSparklines(period);
 }
 
-// Reload sparklines for a given UI period
-async function loadSparklines(uiPeriod) {
-    const periodMap = { '1D': '5d', '1W': '5d', '1M': '1mo' };
-    const intervalMap = { '1D': '5m', '1W': '30m', '1M': '1d' };
-    const p = periodMap[uiPeriod] || '1mo';
-    const i = intervalMap[uiPeriod] || '1d';
+// Sparkline history per UI range, cached client-side for 2 minutes (matches
+// the server TTL) so flipping between ranges redraws instantly.
+const SPARK_RANGES = { '1D': ['1d', '5m'], '1W': ['5d', '30m'], '1M': ['1mo', '1d'] };
+const _sparkCache = {};
+const SPARK_TTL_MS = 120000;
+let _sparkSeq = 0;  // drops responses for a range the user already left
+
+async function fetchSparklineHistory(uiPeriod) {
+    const [p, i] = SPARK_RANGES[uiPeriod] || SPARK_RANGES['1M'];
+    const hit = _sparkCache[uiPeriod];
+    if (hit && Date.now() - hit.at < SPARK_TTL_MS) return hit.data;
     try {
         const res = await fetch(`/api/indices/history?period=${p}&interval=${i}`);
-        const histData = await res.json();
-        if (histData.history) drawSparklines(histData.history);
-    } catch (e) { console.error('Sparkline reload error', e); }
+        const data = await res.json();
+        if (data.history && Object.keys(data.history).length) {
+            _sparkCache[uiPeriod] = { at: Date.now(), data };
+        }
+        return data;
+    } catch (e) {
+        console.error('Sparkline reload error', e);
+        return null;
+    }
+}
+
+// Reload sparklines for a given UI period
+async function loadSparklines(uiPeriod) {
+    const seq = ++_sparkSeq;
+    const histData = await fetchSparklineHistory(uiPeriod);
+    if (seq !== _sparkSeq) return;
+    if (histData && histData.history) drawSparklines(histData.history);
 }
 
 // Draw sparkline charts into index-card canvas elements
@@ -2917,7 +2939,7 @@ async function loadCompanyStatistics(symbol) {
             container.innerHTML = `
                 <div class="alert alert-warning">
                     <i class="fas fa-exclamation-triangle"></i>
-                    Unable to load statistics for ${esc(symbol)}. Please try again later.
+                    Unable to load statistics for ${esc(symbol)}. ${esc(data.error || 'Please try again later.')}
                 </div>
             `;
             return;
@@ -2926,7 +2948,10 @@ async function loadCompanyStatistics(symbol) {
         const stats = data.statistics;
         
         // Build statistics HTML
-        let html = '<div class="row">';
+        let html = data.warning
+            ? `<div class="alert alert-info py-2"><i class="fas fa-info-circle"></i> ${esc(data.warning)}</div>`
+            : '';
+        html += '<div class="row">';
         
         // Profile Section
         if (stats.profile && Object.keys(stats.profile).length > 0) {

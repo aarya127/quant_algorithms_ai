@@ -38,7 +38,7 @@ jobs:
           pip install --prefer-binary \
             numpy pandas scipy \
             scikit-learn xgboost lightgbm joblib \
-            flask cachetools requests yfinance \
+            flask cachetools requests "yfinance>=1.0,<2" \
             pytest pytest-cov pyflakes
 
       - name: Static check — no undefined names in backend

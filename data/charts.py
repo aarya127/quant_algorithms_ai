@@ -11,24 +11,59 @@ import numpy as np
 from datetime import datetime, timedelta
 from cachetools import TTLCache
 
-# Short TTL cache over yfinance history: the chart and indicator endpoints
-# request the same (symbol, period, interval) window back-to-back, and
-# timeframe switches often revisit a window within a couple of minutes.
+# TTL caches over yfinance history. Intraday windows go stale fast (2 min);
+# daily ranges (1M/3M/6M/1Y) are all sliced from one 2-year daily series per
+# symbol, so switching between them is a cache hit instead of a Yahoo call.
 _HIST_CACHE = TTLCache(maxsize=256, ttl=120)
+_DAILY_CACHE = TTLCache(maxsize=128, ttl=900)
 _HIST_LOCK = threading.Lock()
+_KEY_LOCKS = {}  # one in-flight fetch per key: chart + indicators requests race
+
+_DAILY_BASE = ('2y', '1d')
+_DAILY_SLICE_MONTHS = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12}
+
+
+def _fetch_cached(cache, key, fetch):
+    with _HIST_LOCK:
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        lock = _KEY_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        with _HIST_LOCK:
+            cached = cache.get(key)
+        if cached is not None:
+            return cached
+        hist = fetch()
+        with _HIST_LOCK:
+            if not hist.empty:  # don't pin an empty (throttled) response
+                cache[key] = hist
+            _KEY_LOCKS.pop(key, None)
+        return hist
+
+
+def _daily_base(symbol: str) -> pd.DataFrame:
+    """Two years of daily bars, the shared source for every daily range."""
+    period, interval = _DAILY_BASE
+    return _fetch_cached(_DAILY_CACHE, symbol,
+                         lambda: yf.Ticker(symbol).history(period=period, interval=interval))
+
+
+def _slice_start(hist: pd.DataFrame, period: str) -> int:
+    """Index of the first bar inside a trailing `period` window of `hist`."""
+    if hist.empty:
+        return 0
+    cutoff = hist.index[-1] - pd.DateOffset(months=_DAILY_SLICE_MONTHS[period])
+    return int(np.searchsorted(hist.index, cutoff, side='right'))
 
 
 def _get_history(symbol: str, period: str, interval: str) -> pd.DataFrame:
-    """Fetch price history via yfinance with a 2-minute TTL cache."""
-    key = (symbol, period, interval)
-    with _HIST_LOCK:
-        cached = _HIST_CACHE.get(key)
-    if cached is not None:
-        return cached
-    hist = yf.Ticker(symbol).history(period=period, interval=interval)
-    with _HIST_LOCK:
-        _HIST_CACHE[key] = hist
-    return hist
+    """Fetch price history via yfinance through the TTL caches."""
+    if interval == '1d' and period in _DAILY_SLICE_MONTHS:
+        base = _daily_base(symbol)
+        return base.iloc[_slice_start(base, period):]
+    return _fetch_cached(_HIST_CACHE, (symbol, period, interval),
+                         lambda: yf.Ticker(symbol).history(period=period, interval=interval))
 
 
 def get_chart_data(symbol: str, period: str = "1y", interval: str = "1d") -> dict:
@@ -249,9 +284,15 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
         # Minimum data points needed for indicators
         MIN_POINTS_NEEDED = 50  # Need at least 50 points for reliable indicators (26 for MACD + buffer)
         
-        # Get base chart data (TTL-cached — the plain chart endpoint fetches
-        # the same window, so one of the two requests is a cache hit)
-        hist = _get_history(symbol, period, interval)
+        # Daily ranges compute indicators over the full 2-year base series
+        # (enough lookback for SMA-200) and then trim to the requested window,
+        # so 1M shows one month with valid indicators and costs no extra fetch.
+        start = 0
+        if interval == '1d' and period in _DAILY_SLICE_MONTHS:
+            hist = _daily_base(symbol)
+            start = _slice_start(hist, period)
+        else:
+            hist = _get_history(symbol, period, interval)
 
         if hist.empty:
             return {
@@ -260,7 +301,7 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
             }
         
         # Check if we have enough data points
-        if len(hist) < MIN_POINTS_NEEDED:
+        if start == 0 and len(hist) < MIN_POINTS_NEEDED:
             # Retry with a longer window — but fallbacks must respect yfinance's
             # intraday limits (1m ≈ last 7 days; 2m–90m ≈ last 60 days). Extending
             # the period while keeping an intraday interval returns EMPTY data,
@@ -294,7 +335,6 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
                 }
         
         close_prices = hist['Close']
-        dates = hist.index.strftime('%Y-%m-%d %H:%M:%S').tolist()
         
         # Calculate indicators
         sma_20 = calculate_sma(close_prices, 20)
@@ -305,6 +345,14 @@ def get_technical_indicators(symbol: str, period: str = "1y", interval: str = "1
         rsi = calculate_rsi(close_prices, 14)
         macd_data = calculate_macd(close_prices)
         bollinger = calculate_bollinger_bands(close_prices, 20, 2)
+
+        if start:
+            hist = hist.iloc[start:]
+            sma_20, sma_50, sma_200, ema_12, ema_26, rsi = (
+                x.iloc[start:] for x in (sma_20, sma_50, sma_200, ema_12, ema_26, rsi))
+            macd_data = {k: v.iloc[start:] for k, v in macd_data.items()}
+            bollinger = {k: v.iloc[start:] for k, v in bollinger.items()}
+        dates = hist.index.strftime('%Y-%m-%d %H:%M:%S').tolist()
         
         result = {
             "success": True,

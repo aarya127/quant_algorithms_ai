@@ -14,7 +14,7 @@ from rate_limit import limiter, bypass_ok, LLM_LIMIT, AV_LIMIT
 from services import (
     yf, av, get_company_overview_llm,
     get_company_profile, get_stock_quote, get_basic_financials, get_company_news,
-    get_company_statistics, format_statistics_for_display,
+    get_company_statistics, format_statistics_for_display, has_any_statistic,
     _cached_get_stock_quote, _cached_get_company_profile, _cached_get_company_peers,
     _cached_get_basic_financials, _cached_get_company_news, _cached_yf_info,
     _safe, graded_fundamentals,
@@ -41,7 +41,7 @@ def stock_details(symbol):
 
             # Fetch yfinance info + history in parallel with news
             def _fetch_yf():
-                info = _cached_yf_info(tsx_symbol)
+                info = _safe(_cached_yf_info, tsx_symbol) or {}
                 hist = yf.Ticker(tsx_symbol).history(period='5d')
                 return info, hist
 
@@ -101,7 +101,7 @@ def stock_details(symbol):
             # US stocks: fire all 4 independent calls in parallel
             def _fetch_profile():  return _cached_get_company_profile(symbol_upper)
             def _fetch_quote():    return _cached_get_stock_quote(symbol_upper)
-            def _fetch_yf_info():  return _cached_yf_info(symbol_upper)
+            def _fetch_yf_info():  return _safe(_cached_yf_info, symbol_upper) or {}
             def _fetch_news():     return _cached_get_company_news(symbol_upper, from_date, to_date)
             def _fetch_fins():     return _cached_get_basic_financials(symbol_upper)
 
@@ -214,8 +214,17 @@ def get_statistics(symbol):
             info = f_info.result()
             fins = f_fins.result()
 
-        # Get raw statistics
-        stats = get_company_statistics(symbol_upper, info=info, financials=fins)
+        # Get raw statistics ({} = Yahoo already failed; don't refetch uncached)
+        stats = get_company_statistics(symbol_upper, info=info or {}, financials=fins or {})
+
+        # Every upstream failed — say so instead of a grid of "—"
+        if not has_any_statistic(stats):
+            return jsonify({
+                'success': False,
+                'symbol': symbol_upper,
+                'error': 'Market data providers did not respond (likely rate-limited). Try again in a minute.',
+                'statistics': {}
+            }), 503
 
         # Format for display
         formatted_stats = format_statistics_for_display(stats)
@@ -224,7 +233,9 @@ def get_statistics(symbol):
             'success': True,
             'symbol': symbol.upper(),
             'statistics': formatted_stats,
-            'raw_statistics': stats  # Include raw data for calculations
+            'raw_statistics': stats,  # Include raw data for calculations
+            # Yahoo down but Finnhub answered: partial data, tell the user
+            'warning': None if info else 'Yahoo Finance did not respond — showing Finnhub metrics only.'
         })
         
     except Exception as e:

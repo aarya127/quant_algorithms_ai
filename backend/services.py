@@ -40,7 +40,7 @@ get_company_profile = get_company_peers = get_stock_quote = _unavailable
 get_company_overview_llm = _unavailable
 get_market_tweets = get_financial_news_feed = _unavailable
 get_recent_news = _unavailable
-get_company_statistics = format_statistics_for_display = _unavailable
+get_company_statistics = format_statistics_for_display = has_any_statistic = _unavailable
 
 
 try:
@@ -60,7 +60,7 @@ try:
     from ai_platform.nvidia_llm import get_company_overview_llm
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
     from data.alpaca_news import get_recent_news
-    from data.company_statistics import get_company_statistics, format_statistics_for_display
+    from data.company_statistics import get_company_statistics, format_statistics_for_display, has_any_statistic
     av = AlphaVantage()
     _DATA_MODULES_LOADED = True
     print("[STARTUP] All data modules loaded successfully.", flush=True)
@@ -75,18 +75,33 @@ except Exception:
 _cache_lock = threading.Lock()
 
 
-def _ttl_cached(cache):
-    """Cache decorator: one lock-guarded lookup/store around the wrapped getter."""
+def _ttl_cached(cache, valid=bool):
+    """Cache decorator: lock-guarded lookup/store around the wrapped getter.
+
+    Concurrent misses for one key share a single upstream call (the page fires
+    several endpoints that need the same data at once), and results failing
+    `valid` (None, {}, a throttled stub) are returned but never cached, so a
+    bad response isn't pinned for the whole TTL.
+    """
     def deco(fn):
+        key_locks = {}
+
         @wraps(fn)
         def wrapper(*args):
             key = args if len(args) > 1 else args[0]
             with _cache_lock:
                 if key in cache:
                     return cache[key]
-            result = fn(*args)
-            with _cache_lock:
-                cache[key] = result
+                lock = key_locks.setdefault(key, threading.Lock())
+            with lock:
+                with _cache_lock:
+                    if key in cache:
+                        return cache[key]
+                result = fn(*args)
+                with _cache_lock:
+                    if valid(result):
+                        cache[key] = result
+                    key_locks.pop(key, None)
             return result
         return wrapper
     return deco
@@ -117,7 +132,13 @@ def _cached_get_company_news(symbol, from_date, to_date):
     return get_company_news(symbol, from_date, to_date)
 
 
-@_ttl_cached(TTLCache(maxsize=256, ttl=300))
+def _is_real_yf_info(info):
+    """A throttled .info call can come back as a stub like {'trailingPegRatio': None}."""
+    return bool(info) and any(info.get(k) is not None
+                              for k in ('quoteType', 'marketCap', 'regularMarketPrice', 'longName'))
+
+
+@_ttl_cached(TTLCache(maxsize=256, ttl=300), valid=_is_real_yf_info)
 def _cached_yf_info(ticker_symbol):
     return yf.Ticker(ticker_symbol).info
 

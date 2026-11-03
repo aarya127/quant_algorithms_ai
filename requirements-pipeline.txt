@@ -10,7 +10,7 @@
 numpy>=1.26.0
 pandas==2.1.4
 scipy>=1.11.0
-yfinance>=0.2.52
+yfinance>=1.0,<2       # tested on 1.0; a new major can change .info/.calendar shapes
 requests==2.31.0
 
 # ── Machine learning ──────────────────────────────────────────────────────────

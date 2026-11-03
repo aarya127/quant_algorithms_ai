@@ -10,7 +10,8 @@ from flask import Blueprint, jsonify, request
 
 from concurrent.futures import ThreadPoolExecutor
 from common import DEFAULT_STOCKS, MARKET_INDICES, get_ticker_for_charts, is_canadian_stock
-from services import yf, get_company_news
+from cachetools import TTLCache
+from services import yf, get_company_news, _ttl_cached, _cached_yf_info, _safe
 
 bp = Blueprint('market', __name__)
 
@@ -69,12 +70,19 @@ def indices_history():
     period = request.args.get('period', '1mo')
     interval = request.args.get('interval', '1d')
     # Safety: only allow known yfinance period/interval values
-    allowed_periods = {'5d', '1mo', '3mo', '6mo', '1y'}
+    allowed_periods = {'1d', '5d', '1mo', '3mo', '6mo', '1y'}
     allowed_intervals = {'5m', '15m', '30m', '1h', '1d', '1wk'}
     if period not in allowed_periods:
         period = '1mo'
     if interval not in allowed_intervals:
         interval = '1d'
+    return jsonify({'success': True, 'history': _indices_history(period, interval)})
+
+
+# Range switches on the home page revisit the same few windows; 10 Yahoo
+# history calls per click made every switch take seconds.
+@_ttl_cached(TTLCache(maxsize=32, ttl=120))
+def _indices_history(period, interval):
     def _hist(entry):
         symbol, _name = entry
         try:
@@ -89,8 +97,7 @@ def indices_history():
         return symbol, None
 
     with ThreadPoolExecutor(max_workers=10) as ex:
-        result = {sym: hist for sym, hist in ex.map(_hist, MARKET_INDICES) if hist}
-    return jsonify({'success': True, 'history': result})
+        return {sym: hist for sym, hist in ex.map(_hist, MARKET_INDICES) if hist}
 
 @bp.route('/api/dashboard')
 def dashboard_data():
@@ -129,6 +136,81 @@ def dashboard_data():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+def _symbol_calendar_events(symbol, from_date, to_date):
+    """Earnings + ex-dividend events for one watchlist symbol (yfinance)."""
+    events = []
+    try:
+        # Determine correct ticker symbol
+        ticker_symbol = get_ticker_for_charts(symbol) if is_canadian_stock(symbol) else symbol
+        stock = yf.Ticker(ticker_symbol)
+        
+        # Get calendar which includes earnings and dividend dates
+        calendar = stock.calendar
+        
+        if calendar:
+            # Earnings date
+            earnings_dates = calendar.get('Earnings Date', [])
+            if earnings_dates:
+                # Handle both list and single date
+                if not isinstance(earnings_dates, list):
+                    earnings_dates = [earnings_dates]
+                
+                for earnings_date in earnings_dates:
+                    if earnings_date and isinstance(earnings_date, datetime.date):
+                        if from_date <= earnings_date <= to_date:
+                            # Get earnings estimates
+                            earnings_avg = calendar.get('Earnings Average', 0)
+                            earnings_low = calendar.get('Earnings Low', 0)
+                            earnings_high = calendar.get('Earnings High', 0)
+                            
+                            estimate_text = ''
+                            if earnings_avg:
+                                estimate_text = f' (Est: ${earnings_avg:.2f}, Range: ${earnings_low:.2f}-${earnings_high:.2f})'
+                            
+                            events.append({
+                                'symbol': symbol,
+                                'date': earnings_date.strftime('%Y-%m-%d'),
+                                'type': 'Earnings',
+                                'description': f'{symbol} Earnings Report{estimate_text}',
+                                'importance': 'high'
+                            })
+            
+            # Dividend ex-date
+            ex_dividend_date = calendar.get('Ex-Dividend Date')
+            if ex_dividend_date and isinstance(ex_dividend_date, datetime.date):
+                if from_date <= ex_dividend_date <= to_date:
+                    # Get dividend info (shared 5-min cache with the stock pages)
+                    dividend_date = calendar.get('Dividend Date')
+                    info = _safe(_cached_yf_info, ticker_symbol) or {}
+                    dividend_rate = info.get('dividendRate', info.get('lastDividendValue', 0))
+                    
+                    div_text = f'${dividend_rate:.2f}/share' if dividend_rate else ''
+                    pay_text = f' (Pay: {dividend_date.strftime("%Y-%m-%d")})' if dividend_date else ''
+                    
+                    events.append({
+                        'symbol': symbol,
+                        'date': ex_dividend_date.strftime('%Y-%m-%d'),
+                        'type': 'Dividend',
+                        'description': f'{symbol} Ex-Dividend Date {div_text}{pay_text}',
+                        'importance': 'medium'
+                    })
+                
+    except Exception as e:
+        print(f"Error getting calendar data for {symbol}: {e}")
+    return events
+
+
+# Earnings/dividend dates move rarely; one parallel sweep per 30 min instead
+# of ~15-20 serial Yahoo calls on every calendar load (which also burned the
+# rate limit the stock pages need).
+@_ttl_cached(TTLCache(maxsize=4, ttl=1800))
+def _watchlist_calendar_events(from_date, to_date):
+    with ThreadPoolExecutor(max_workers=len(DEFAULT_STOCKS)) as ex:
+        per_symbol = ex.map(lambda sym: _symbol_calendar_events(sym, from_date, to_date),
+                            DEFAULT_STOCKS)
+        return [event for events in per_symbol for event in events]
+
+
 @bp.route('/api/calendar')
 def earnings_calendar():
     """Get comprehensive calendar with earnings, dividends, and macro events"""
@@ -137,69 +219,8 @@ def earnings_calendar():
         from_date = today
         to_date = today + datetime.timedelta(days=365)
         
-        events = []
-        
-        # 1. Get earnings and dividend dates from yfinance for watchlist stocks
-        for symbol in DEFAULT_STOCKS:
-            try:
-                # Determine correct ticker symbol
-                ticker_symbol = get_ticker_for_charts(symbol) if is_canadian_stock(symbol) else symbol
-                stock = yf.Ticker(ticker_symbol)
-                
-                # Get calendar which includes earnings and dividend dates
-                calendar = stock.calendar
-                
-                if calendar:
-                    # Earnings date
-                    earnings_dates = calendar.get('Earnings Date', [])
-                    if earnings_dates:
-                        # Handle both list and single date
-                        if not isinstance(earnings_dates, list):
-                            earnings_dates = [earnings_dates]
-                        
-                        for earnings_date in earnings_dates:
-                            if earnings_date and isinstance(earnings_date, datetime.date):
-                                if from_date <= earnings_date <= to_date:
-                                    # Get earnings estimates
-                                    earnings_avg = calendar.get('Earnings Average', 0)
-                                    earnings_low = calendar.get('Earnings Low', 0)
-                                    earnings_high = calendar.get('Earnings High', 0)
-                                    
-                                    estimate_text = ''
-                                    if earnings_avg:
-                                        estimate_text = f' (Est: ${earnings_avg:.2f}, Range: ${earnings_low:.2f}-${earnings_high:.2f})'
-                                    
-                                    events.append({
-                                        'symbol': symbol,
-                                        'date': earnings_date.strftime('%Y-%m-%d'),
-                                        'type': 'Earnings',
-                                        'description': f'{symbol} Earnings Report{estimate_text}',
-                                        'importance': 'high'
-                                    })
-                    
-                    # Dividend ex-date
-                    ex_dividend_date = calendar.get('Ex-Dividend Date')
-                    if ex_dividend_date and isinstance(ex_dividend_date, datetime.date):
-                        if from_date <= ex_dividend_date <= to_date:
-                            # Get dividend info
-                            dividend_date = calendar.get('Dividend Date')
-                            info = stock.info
-                            dividend_rate = info.get('dividendRate', info.get('lastDividendValue', 0))
-                            
-                            div_text = f'${dividend_rate:.2f}/share' if dividend_rate else ''
-                            pay_text = f' (Pay: {dividend_date.strftime("%Y-%m-%d")})' if dividend_date else ''
-                            
-                            events.append({
-                                'symbol': symbol,
-                                'date': ex_dividend_date.strftime('%Y-%m-%d'),
-                                'type': 'Dividend',
-                                'description': f'{symbol} Ex-Dividend Date {div_text}{pay_text}',
-                                'importance': 'medium'
-                            })
-                        
-            except Exception as e:
-                print(f"Error getting calendar data for {symbol}: {e}")
-                continue
+        # 1. Earnings and dividend dates from yfinance for watchlist stocks
+        events = list(_watchlist_calendar_events(from_date, to_date))
         
         # 2. Load macro economic events from JSON file
         try:

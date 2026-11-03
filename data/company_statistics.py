@@ -6,9 +6,18 @@ Aggregates comprehensive company statistics from multiple sources:
 - Finnhub (additional metrics)
 """
 
+import datetime
+
 import yfinance as yf
 from data.alphavantage import AlphaVantage
 from data.finnhub import get_basic_financials
+
+
+def _epoch_to_date(value):
+    """yfinance gives exDividendDate as a Unix timestamp; show it as YYYY-MM-DD."""
+    if isinstance(value, (int, float)):
+        return datetime.datetime.fromtimestamp(value, datetime.timezone.utc).strftime('%Y-%m-%d')
+    return value
 
 
 def get_company_statistics(symbol: str, info: dict = None, financials: dict = None) -> dict:
@@ -42,11 +51,19 @@ def get_company_statistics(symbol: str, info: dict = None, financials: dict = No
         'dividends': {}
     }
     
-    try:
-        # Primary source: yfinance (most comprehensive and free)
-        if info is None:
+    # Primary source: yfinance (most comprehensive and free). An empty dict
+    # means the caller already tried and Yahoo failed — don't fetch again.
+    if info is None:
+        try:
             info = yf.Ticker(symbol).info
-        
+        except Exception as e:
+            print(f"⚠️  yfinance info failed for {symbol}: {e}")
+    info = info or {}
+
+    # Unit convention: every percent-type stat is stored as a FRACTION
+    # (0.25 = 25%). yfinance mostly returns fractions; Finnhub returns
+    # percentages, so its values are divided by 100 where they are filled in.
+    try:
         # ===== PROFILE =====
         stats['profile'] = {
             'market_cap': info.get('marketCap'),
@@ -61,7 +78,7 @@ def get_company_statistics(symbol: str, info: dict = None, financials: dict = No
             'gross_margin': info.get('grossMargins'),
             'ebitda_margin': info.get('ebitdaMargins'),
             'operating_margin': info.get('operatingMargins'),
-            'pretax_margin': info.get('profitMargins'),  # Actually profit margin
+            'pretax_margin': None,  # yfinance has none; filled from Finnhub below
             'net_margin': info.get('profitMargins'),
             'fcf_margin': None  # Calculate if needed
         }
@@ -121,7 +138,7 @@ def get_company_statistics(symbol: str, info: dict = None, financials: dict = No
         
         # ===== GROWTH =====
         stats['growth'] = {
-            'revenue_growth_3y': info.get('revenueGrowth'),  # This is typically YoY
+            'revenue_growth_3y': None,  # yfinance revenueGrowth is quarterly YoY, not 3Y
             'revenue_growth_5y': None,  # Would need historical data
             'revenue_growth_10y': None,
             'eps_growth_3y': None,
@@ -130,15 +147,17 @@ def get_company_statistics(symbol: str, info: dict = None, financials: dict = No
             'revenue_growth_fwd_2y': None,
             'ebitda_growth_fwd_2y': None,
             'eps_growth_fwd_2y': None,
-            'eps_lt_growth_est': info.get('earningsGrowth')
+            'eps_lt_growth_est': None,  # yfinance earningsGrowth is quarterly YoY, not LT
         }
         
         # ===== DIVIDENDS =====
         stats['dividends'] = {
-            'dividend_yield': info.get('dividendYield'),
+            # yfinance reports dividendYield in percent (0.49 = 0.49%)
+            'dividend_yield': (info['dividendYield'] / 100
+                               if info.get('dividendYield') is not None else None),
             'payout_ratio': info.get('payoutRatio'),
             'dividend_per_share': info.get('dividendRate'),
-            'ex_dividend_date': info.get('exDividendDate'),
+            'ex_dividend_date': _epoch_to_date(info.get('exDividendDate')),
             'dps_growth_3y': None,  # Would need historical data
             'dps_growth_5y': None,
             'dps_growth_10y': None,
@@ -150,20 +169,38 @@ def get_company_statistics(symbol: str, info: dict = None, financials: dict = No
             finnhub_data = financials if financials is not None else get_basic_financials(symbol)
             if finnhub_data and 'metric' in finnhub_data:
                 metrics = finnhub_data['metric']
-                
-                # Fill in missing returns
-                if not stats['returns']['roic']:
-                    stats['returns']['roic'] = metrics.get('roicTTM')
-                if not stats['returns']['roce']:
-                    stats['returns']['roce'] = metrics.get('roceTTM')
-                
-                # Additional valuation metrics
-                if not stats['valuation_ttm']['ev_to_ebitda']:
-                    stats['valuation_ttm']['ev_to_ebitda'] = metrics.get('evToEbitdaTTM')
-                
-                # Additional margins
-                if not stats['margins']['ebitda_margin']:
-                    stats['margins']['ebitda_margin'] = metrics.get('ebitdaMarginTTM')
+
+                def fill(section, field, metric_key, percent=True):
+                    """Fill a missing stat from Finnhub (percent values -> fraction)."""
+                    if stats[section].get(field) is None and metrics.get(metric_key) is not None:
+                        value = metrics[metric_key]
+                        stats[section][field] = value / 100 if percent else value
+
+                # Returns / margins — also the fallback when yfinance is down
+                fill('returns', 'roa', 'roaTTM')
+                fill('returns', 'roe', 'roeTTM')
+                fill('returns', 'roic', 'roiTTM')
+                fill('margins', 'gross_margin', 'grossMarginTTM')
+                fill('margins', 'operating_margin', 'operatingMarginTTM')
+                fill('margins', 'pretax_margin', 'pretaxMarginTTM')
+                fill('margins', 'net_margin', 'netProfitMarginTTM')
+
+                # Valuation / health ratios (plain multiples, no unit change)
+                fill('valuation_ttm', 'pe_ratio', 'peTTM', percent=False)
+                fill('valuation_ttm', 'pb_ratio', 'pb', percent=False)
+                fill('valuation_ttm', 'ps_ratio', 'psTTM', percent=False)
+                fill('valuation_ttm', 'ev_to_sales', 'evRevenueTTM', percent=False)
+                fill('valuation_ttm', 'ev_to_ebitda', 'evEbitdaTTM', percent=False)
+                fill('financial_health', 'current_ratio', 'currentRatioQuarterly', percent=False)
+                fill('financial_health', 'quick_ratio', 'quickRatioQuarterly', percent=False)
+                fill('financial_health', 'ebit_to_interest', 'netInterestCoverageTTM', percent=False)
+
+                # Multi-year growth (yfinance only has quarterly YoY)
+                fill('growth', 'revenue_growth_3y', 'revenueGrowth3Y')
+                fill('growth', 'revenue_growth_5y', 'revenueGrowth5Y')
+                fill('growth', 'eps_growth_3y', 'epsGrowth3Y')
+                fill('growth', 'eps_growth_5y', 'epsGrowth5Y')
+                fill('dividends', 'dps_growth_5y', 'dividendGrowthRate5Y')
                 
         except Exception as e:
             print(f"⚠️  Could not fetch Finnhub data: {e}")
@@ -186,9 +223,14 @@ def get_company_statistics(symbol: str, info: dict = None, financials: dict = No
         #     print(f"⚠️  Could not fetch Alpha Vantage data: {e}")
         
     except Exception as e:
-        print(f"❌ Error fetching statistics for {symbol}: {e}")
+        print(f"❌ Error building statistics for {symbol}: {e}")
     
     return stats
+
+
+def has_any_statistic(stats: dict) -> bool:
+    """True when at least one stat was populated (False = every upstream failed)."""
+    return any(v is not None for section in stats.values() for v in section.values())
 
 
 def format_statistics_for_display(stats: dict) -> dict:
@@ -215,7 +257,7 @@ def format_statistics_for_display(stats: dict) -> dict:
                     return f"${value/1e6:.2f}M"
                 elif abs(value) >= 1e3:
                     return f"${value/1e3:.2f}K"
-            return f"${value:,.0f}"
+            return f"${value:,.2f}"
         except:
             return "—"
     
@@ -236,12 +278,11 @@ def format_statistics_for_display(stats: dict) -> dict:
             return "—"
     
     def format_percent(value, decimals=1):
-        """Format as percentage"""
+        """Format a fraction as a percentage (0.25 -> "25.0%"; 1.17 -> "117.0%")"""
         if value is None:
             return "—"
         try:
-            value = float(value) * 100 if value < 1 else float(value)
-            return f"{value:.{decimals}f}%"
+            return f"{float(value) * 100:.{decimals}f}%"
         except:
             return "—"
     
