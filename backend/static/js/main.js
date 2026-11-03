@@ -2723,10 +2723,10 @@ function displaySearchResults(results) {
                     </div>
                 </div>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-primary view-stock-btn" data-symbol="${esc(stock.symbol)}">
+                    <button type="button" class="btn btn-sm btn-primary view-stock-btn" data-symbol="${esc(stock.symbol)}">
                         <i class="fas fa-eye"></i>
                     </button>
-                    <button class="btn btn-sm btn-success add-to-watchlist-btn" data-symbol="${esc(stock.symbol)}" data-name="${esc(stock.name)}">
+                    <button type="button" class="btn btn-sm btn-success add-to-watchlist-btn" data-symbol="${esc(stock.symbol)}" data-name="${esc(stock.name)}">
                         <i class="fas fa-plus"></i>
                     </button>
                 </div>
