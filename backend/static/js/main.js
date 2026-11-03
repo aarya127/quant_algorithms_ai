@@ -1200,7 +1200,11 @@ async function loadEarningsCalendar() {
     const container = document.getElementById('earningsCalendar');
     
     try {
-        const response = await fetch('/api/calendar');
+        // The watchlist lives in localStorage, so send it — the server adds
+        // top-company earnings and macro events on top.
+        const symbols = (userWatchlist || []).map(item => item.symbol).filter(Boolean);
+        const qs = symbols.length ? `?symbols=${encodeURIComponent(symbols.join(','))}` : '';
+        const response = await fetch(`/api/calendar${qs}`);
         const data = await response.json();
         
         if (data.events && data.events.length > 0) {
@@ -1247,8 +1251,8 @@ async function loadEarningsCalendar() {
                     <div class="row g-3">
                         <div class="col-md-12">
                             <div class="alert alert-primary">
-                                <h5 class="mb-3"><i class="fas fa-calendar-alt"></i> 2026 Financial Calendar</h5>
-                                <p class="mb-2">Tracking ${data.events.length} important dates for your watchlist</p>
+                                <h5 class="mb-3"><i class="fas fa-calendar-alt"></i> Financial Calendar</h5>
+                                <p class="mb-2">Tracking ${data.events.length} dates: your watchlist, top-company earnings and macro events</p>
                                 <div class="d-flex flex-wrap gap-3 mt-3">
                                     <span class="badge bg-primary"><i class="fas fa-chart-line"></i> ${eventCounts['Earnings']} Earnings</span>
                                     <span class="badge bg-success"><i class="fas fa-dollar-sign"></i> ${eventCounts['Dividend']} Dividends</span>
@@ -1263,7 +1267,7 @@ async function loadEarningsCalendar() {
                     
                     <!-- Filter Controls -->
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label"><i class="fas fa-filter"></i> Filter by Type:</label>
                             <select class="form-select" id="calendarTypeFilter" onchange="filterCalendarEvents()">
                                 <option value="all">All Events</option>
@@ -1275,12 +1279,20 @@ async function loadEarningsCalendar() {
                                 <option value="Holiday">Holidays</option>
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label"><i class="fas fa-fire"></i> Filter by Importance:</label>
                             <select class="form-select" id="calendarImportanceFilter" onchange="filterCalendarEvents()">
                                 <option value="all">All Levels</option>
                                 <option value="high">High Priority Only</option>
                                 <option value="medium">Medium & High</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label"><i class="fas fa-star"></i> Companies:</label>
+                            <select class="form-select" id="calendarGroupFilter" onchange="filterCalendarEvents()">
+                                <option value="all">Watchlist + Top Companies</option>
+                                <option value="Watchlist">My Watchlist Only</option>
+                                <option value="Top company">Top Companies Only</option>
                             </select>
                         </div>
                     </div>
@@ -1353,7 +1365,7 @@ async function loadEarningsCalendar() {
                                               event.importance === 'medium' ? '⚡' : '📌';
                         
                         calendarHTML += `
-                            <div class="list-group-item calendar-event-item" data-type="${esc(event.type)}" data-importance="${esc(event.importance)}">
+                            <div class="list-group-item calendar-event-item" data-type="${esc(event.type)}" data-importance="${esc(event.importance)}" data-group="${esc(event.group || '')}">
                                 <div class="d-flex justify-content-between align-items-start">
                                     <div class="flex-grow-1">
                                         <div class="mb-1">
@@ -1361,6 +1373,8 @@ async function loadEarningsCalendar() {
                                                 <i class="fas ${icon}"></i> ${esc(event.type)}
                                             </span>
                                             ${event.symbol ? `<span class="badge bg-dark me-2">${esc(event.symbol)}</span>` : ''}
+                                            ${event.group === 'Watchlist' ? '<span class="badge bg-warning text-dark me-2"><i class="fas fa-star"></i> Watchlist</span>' : ''}
+                                            ${event.group === 'Top company' ? '<span class="badge bg-light text-dark me-2">Top company</span>' : ''}
                                             <span class="importance-badge">${importanceIcon}</span>
                                         </div>
                                         <div class="event-description">
@@ -2507,6 +2521,7 @@ function renderPriceChart(data) {
 function filterCalendarEvents() {
     const typeFilter = document.getElementById('calendarTypeFilter').value;
     const importanceFilter = document.getElementById('calendarImportanceFilter').value;
+    const groupFilter = document.getElementById('calendarGroupFilter').value;
     
     // Get all event items
     const eventItems = document.querySelectorAll('.calendar-event-item');
@@ -2516,11 +2531,17 @@ function filterCalendarEvents() {
     eventItems.forEach(item => {
         const itemType = item.getAttribute('data-type');
         const itemImportance = item.getAttribute('data-importance');
+        const itemGroup = item.getAttribute('data-group');
         
         let showItem = true;
         
         // Filter by type
         if (typeFilter !== 'all' && itemType !== typeFilter) {
+            showItem = false;
+        }
+        
+        // Filter by company group (macro events have no group and always show)
+        if (groupFilter !== 'all' && itemGroup && itemGroup !== groupFilter) {
             showItem = false;
         }
         

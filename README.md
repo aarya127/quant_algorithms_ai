@@ -204,7 +204,7 @@ Single-page application served from `backend/templates/index.html`.
 | `/api/paper/model` | GET | The ML model's paper-trading account |
 | `/api/backtest` | POST | Options-volatility strategy backtest (`backend/backtest_runner.py`) |
 | `/api/backtest/strategies` | GET | List the options-volatility strategies |
-| `/api/calendar` | GET | Economic events calendar |
+| `/api/calendar` | GET | Earnings (watchlist + top companies), dividends, macro events; `?symbols=` |
 | `/api/charts/<symbol>` | GET | OHLCV chart data + indicators |
 | `/api/charts/<symbol>/all-timeframes` | GET | 1D / 5D / 1M / 3M / 6M / 1Y / 5Y / MAX |
 | `/api/charts/compare` | GET | Multi-ticker chart comparison |
@@ -681,14 +681,20 @@ Concurrent risk enforcement layer exposed over **gRPC**.
 
 ## 15. Economic Calendar
 
-`backend/economic_events.json` — 40+ events for 2026.
+`/api/calendar?symbols=NVDA,TD,...` merges four sources over the next year:
 
-**Categories:**
-- **Market Holidays** — NYSE closures (New Year, MLK Day, Presidents' Day, Good Friday, Memorial Day, Independence Day, Labor Day, Thanksgiving, Christmas)
-- **Economic Data** — Non-Farm Payrolls, CPI, PPI, GDP, Retail Sales, Durable Goods, Unemployment Claims
-- **FOMC Meetings** — Federal Reserve rate decisions (Jan 29, Mar 18, May 6, Jun 17, Jul 29, Sep 16, Oct 28, Dec 9)
+- **Earnings** — Finnhub's full US earnings calendar (next 120 days, swept in
+  weekly windows, cached 30 min per window), kept for the user's watchlist
+  (sent from the browser) and the 50 "top companies" (`TOP_COMPANIES` in
+  `backend/common.py`, = the research `large50` universe). Names Finnhub lacks
+  (OTC / TSX-only listings) fall back to Yahoo's next earnings date.
+- **Dividends** — Yahoo ex-dividend dates for watchlist symbols.
+- **Market holidays** — generated from NYSE rules in `backend/market_calendar.py`, so they never run out.
+- **FOMC / CPI / PPI / jobs / GDP** — `backend/economic_events.json`, from the
+  Fed, BLS and BEA schedules (sources and valid-through date in the file).
+  **Refresh it each autumn** when the next year's schedules are published.
 
-Served via `/api/calendar` and rendered in the Calendar tab with importance badges and type filters.
+The Calendar tab tags each earnings event *Watchlist* or *Top company* and can filter by either.
 
 ---
 
@@ -769,7 +775,7 @@ quant_algorithms_ai/
 │   ├── common.py                           shared config (indices, tickers) + helpers
 │   ├── predictor.py                        prediction serving + drift monitoring
 │   ├── model_sync.py                       pulls the `models` branch on Render
-│   ├── economic_events.json                40+ calendar events 2026
+│   ├── economic_events.json                FOMC/BLS/BEA dates (refresh yearly)
 │   ├── templates/index.html                SPA (Bootstrap 5, Chart.js)
 │   ├── static/css|js|research/
 │   ├── pipeline_store.py                   SQLite retrain-job store (bounded, shared)

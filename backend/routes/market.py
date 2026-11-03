@@ -9,9 +9,10 @@ import datetime
 from flask import Blueprint, jsonify, request
 
 from concurrent.futures import ThreadPoolExecutor
-from common import DEFAULT_STOCKS, MARKET_INDICES, get_ticker_for_charts, is_canadian_stock
+from common import DEFAULT_STOCKS, MARKET_INDICES, TOP_COMPANIES, get_ticker_for_charts, is_canadian_stock
+from market_calendar import chunk_ranges, earnings_event, nyse_holidays, parse_symbols
 from cachetools import TTLCache
-from services import yf, get_company_news, _ttl_cached, _cached_yf_info, _safe
+from services import yf, get_company_news, get_earnings_calendar, _ttl_cached, _cached_yf_info, _safe
 
 bp = Blueprint('market', __name__)
 
@@ -136,6 +137,9 @@ def dashboard_data():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+# Earnings/dividend dates move rarely: cache each symbol's Yahoo lookup for
+# 30 min so watchlists that share tickers share the calls.
+@_ttl_cached(TTLCache(maxsize=512, ttl=1800), valid=lambda r: r is not None)
 def _symbol_calendar_events(symbol, from_date, to_date):
     """Earnings + ex-dividend events for one watchlist symbol (yfinance)."""
     events = []
@@ -197,48 +201,134 @@ def _symbol_calendar_events(symbol, from_date, to_date):
                 
     except Exception as e:
         print(f"Error getting calendar data for {symbol}: {e}")
+        return None
+    for event in events:
+        event['group'] = 'Watchlist'
     return events
 
 
-# Earnings/dividend dates move rarely; one parallel sweep per 30 min instead
-# of ~15-20 serial Yahoo calls on every calendar load (which also burned the
-# rate limit the stock pages need).
-@_ttl_cached(TTLCache(maxsize=4, ttl=1800))
-def _watchlist_calendar_events(from_date, to_date):
-    with ThreadPoolExecutor(max_workers=len(DEFAULT_STOCKS)) as ex:
-        per_symbol = ex.map(lambda sym: _symbol_calendar_events(sym, from_date, to_date),
-                            DEFAULT_STOCKS)
-        return [event for events in per_symbol for event in events]
+EARNINGS_HORIZON_DAYS = 120   # one full reporting cycle: every company appears once
+FINNHUB_CHUNK_DAYS = 7
+FINNHUB_ROW_CAP = 1500        # Finnhub truncates earnings_calendar at this many rows
+
+
+# Finnhub lists some companies under another share class; its EPS estimate is
+# then per that class's share, so it is dropped when the row is re-labelled.
+_FINNHUB_ALIASES = {'BRK.A': 'BRK-B'}
+
+
+def _symbol_key(symbol):
+    """Finnhub writes class shares as BRK.B, Yahoo/our lists as BRK-B."""
+    return symbol.upper().replace('.', '-')
+
+
+def _finnhub_earnings_rows(start, end):
+    rows = (get_earnings_calendar(start.isoformat(), end.isoformat()) or {}).get('earningsCalendar') or []
+    if len(rows) >= FINNHUB_ROW_CAP and start < end:
+        # Truncated (peak season) — split the window until each half fits
+        mid = start + (end - start) // 2
+        return (_finnhub_earnings_rows(start, mid)
+                + _finnhub_earnings_rows(mid + datetime.timedelta(days=1), end))
+    return rows
+
+
+_LAST_GOOD_WINDOWS = {}  # (start, end) -> rows; served while Finnhub throttles (429)
+
+
+@_ttl_cached(TTLCache(maxsize=128, ttl=1800), valid=lambda r: r is not None)
+def _finnhub_earnings_window(start, end):
+    """One weekly window, cached 30 min on its own. A failure raises, so it is
+    not cached and only that window is retried on the next load."""
+    rows = _finnhub_earnings_rows(start, end)
+    _LAST_GOOD_WINDOWS[(start, end)] = rows
+    return rows
+
+
+def _finnhub_earnings(from_date, to_date):
+    """Every US earnings date in the range, swept in Monday-aligned weekly
+    windows (stable cache keys from one day to the next)."""
+    week_start = from_date - datetime.timedelta(days=from_date.weekday())
+    for w in [w for w in _LAST_GOOD_WINDOWS if w[1] < week_start]:
+        _LAST_GOOD_WINDOWS.pop(w, None)
+
+    def window(w):
+        try:
+            return _finnhub_earnings_window(*w)
+        except Exception as e:
+            print(f"Finnhub earnings {w[0]}..{w[1]} failed: {e}")
+            return _LAST_GOOD_WINDOWS.get(w, [])
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        return [row for rows in ex.map(window, chunk_ranges(week_start, to_date, FINNHUB_CHUNK_DAYS))
+                for row in rows if row.get('date', '') >= from_date.isoformat()]
+
+
+def _macro_events(from_date, to_date):
+    """FOMC / economic data / elections from JSON, plus rule-generated holidays."""
+    events = []
+    try:
+        with open(os.path.join(_BACKEND, 'economic_events.json'), 'r') as f:
+            for event in json.load(f).get('events', []):
+                events.append({**event, 'date': datetime.date.fromisoformat(event['date'])})
+    except Exception as e:
+        print(f"Error loading economic events: {e}")
+    for year in range(from_date.year, to_date.year + 1):
+        events.extend(nyse_holidays(year))
+    return [{'symbol': None, 'date': e['date'].isoformat(), 'type': e['type'],
+             'description': e['description'], 'importance': e['importance']}
+            for e in events if from_date <= e['date'] <= to_date]
 
 
 @bp.route('/api/calendar')
 def earnings_calendar():
-    """Get comprehensive calendar with earnings, dividends, and macro events"""
+    """Calendar: watchlist + top-company earnings, watchlist dividends, macro events.
+
+    ?symbols=NVDA,TD,... is the user's watchlist (it lives in the browser);
+    without it the default watchlist is used.
+    """
     try:
         today = datetime.date.today()
         from_date = today
         to_date = today + datetime.timedelta(days=365)
-        
-        # 1. Earnings and dividend dates from yfinance for watchlist stocks
-        events = list(_watchlist_calendar_events(from_date, to_date))
-        
-        # 2. Load macro economic events from JSON file
-        try:
-            economic_events_path = os.path.join(_BACKEND, 'economic_events.json')
-            with open(economic_events_path, 'r') as f:
-                economic_data = json.load(f)
-                for event in economic_data.get('events', []):
-                    event_date = datetime.datetime.strptime(event['date'], '%Y-%m-%d').date()
-                    if from_date <= event_date <= to_date:
-                        events.append({
-                            'symbol': None,
-                            'date': event['date'],
-                            'type': event['type'],
-                            'description': event['description'],
-                            'importance': event['importance']
-                        })
-        except Exception as e:
-            print(f"Error loading economic events: {e}")
+        watchlist = parse_symbols(request.args.get('symbols')) or list(DEFAULT_STOCKS)
+        watch_keys = {_symbol_key(s) for s in watchlist}
+        top_keys = {_symbol_key(s) for s in TOP_COMPANIES}
+
+        # 1. Earnings for watchlist + top companies from Finnhub's full calendar
+        events = []
+        rows = _finnhub_earnings(from_date, from_date + datetime.timedelta(days=EARNINGS_HORIZON_DAYS))
+        with_finnhub_earnings = set()
+        for row in rows:
+            if row.get('symbol') in _FINNHUB_ALIASES:
+                row = {**row, 'symbol': _FINNHUB_ALIASES[row['symbol']], 'epsEstimate': None}
+            key = _symbol_key(row.get('symbol') or '')
+            if not row.get('date') or not (key in watch_keys or key in top_keys):
+                continue
+            group = 'Watchlist' if key in watch_keys else 'Top company'
+            events.append(earnings_event(row, group))
+            with_finnhub_earnings.add(key)
+
+        # 2. From Yahoo, per symbol, in parallel: watchlist dividends, plus the
+        #    next earnings date of any name Finnhub has nothing for (OTC /
+        #    TSX-only listings, or a top company not scheduled there yet)
+        top_missing = [s for s in TOP_COMPANIES
+                       if _symbol_key(s) not in with_finnhub_earnings and _symbol_key(s) not in watch_keys]
+        yahoo_symbols = watchlist + top_missing
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            per_symbol = list(ex.map(lambda sym: _symbol_calendar_events(sym, from_date, to_date),
+                                     yahoo_symbols))
+        for sym, sym_events in zip(yahoo_symbols, per_symbol):
+            is_watch = _symbol_key(sym) in watch_keys
+            for event in sym_events or []:
+                if event['type'] == 'Earnings' and _symbol_key(sym) in with_finnhub_earnings:
+                    continue
+                if not is_watch:
+                    if event['type'] != 'Earnings':
+                        continue  # dividends only for the watchlist
+                    event = {**event, 'group': 'Top company', 'importance': 'medium'}
+                events.append(event)
+
+        # 3. Macro events
+        events.extend(_macro_events(from_date, to_date))
         
         # Sort events by date
         events.sort(key=lambda x: x['date'])

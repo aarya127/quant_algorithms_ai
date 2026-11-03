@@ -33,6 +33,16 @@ def keys_txt_value(header_substring):
 # Configuration
 DEFAULT_STOCKS = ["NVDA", "TD", "ACDVF", "MSFT", "ENB", "RCI", "CVE", "HUBS", "MU", "CNSWF", "AMD"]
 
+# "Top companies" whose earnings always appear on the calendar — the research
+# large50 universe (data_pipelines/universe.py; tests keep the two in sync).
+TOP_COMPANIES = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "BRK-B", "JPM",
+    "V", "MA", "UNH", "XOM", "JNJ", "PG", "HD", "COST", "ABBV", "MRK",
+    "PEP", "KO", "WMT", "BAC", "CVX", "LLY", "ORCL", "CSCO", "ADBE", "CRM",
+    "AMD", "INTC", "QCOM", "TXN", "NFLX", "DIS", "MCD", "NKE", "PFE", "TMO",
+    "ABT", "CAT", "GE", "HON", "UPS", "IBM", "AMGN", "GS", "MS", "LIN",
+]
+
 TIMEFRAMES = {
     '1W': {'days': 7, 'label': '1 Week'},
     '1M': {'days': 30, 'label': '1 Month'},

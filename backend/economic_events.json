@@ -1,287 +1,12 @@
 {
+  "_sources": {
+    "fomc": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+    "bls": "https://www.bls.gov/schedule/2027/home.htm",
+    "bea": "https://www.bea.gov/news/schedule"
+  },
+  "_valid_through": "2027-12-31",
+  "_note": "Holidays are generated in backend/market_calendar.py. Refresh this file each autumn when the Fed/BLS/BEA publish the next year (BEA 2027 GDP dates were not yet published on 2026-11-03).",
   "events": [
-    {
-      "date": "2026-01-01",
-      "type": "Holiday",
-      "description": "New Year's Day - Markets Closed",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-01-09",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-01-13",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-01-14",
-      "type": "Economic Data",
-      "description": "PPI (Producer Price Index) Report",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-01-19",
-      "type": "Holiday",
-      "description": "Martin Luther King Jr. Day - Markets Closed",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-01-28",
-      "type": "Economic Data",
-      "description": "GDP (Gross Domestic Product) Q4 Advance Estimate",
-      "importance": "high"
-    },
-    {
-      "date": "2026-01-29",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
-      "importance": "high"
-    },
-    {
-      "date": "2026-02-06",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-02-13",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-02-16",
-      "type": "Holiday",
-      "description": "Presidents' Day - Markets Closed",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-02-18",
-      "type": "Economic Data",
-      "description": "PPI (Producer Price Index) Report",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-02-26",
-      "type": "Economic Data",
-      "description": "GDP Q4 Second Estimate",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-03-06",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-03-13",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-03-18",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
-      "importance": "high"
-    },
-    {
-      "date": "2026-03-26",
-      "type": "Economic Data",
-      "description": "GDP Q4 Final Estimate",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-04-03",
-      "type": "Holiday",
-      "description": "Good Friday - Markets Closed",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-04-03",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-04-14",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-04-15",
-      "type": "Economic Data",
-      "description": "Tax Day - Filing Deadline",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-04-15",
-      "type": "Economic Data",
-      "description": "Retail Sales Report",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-04-29",
-      "type": "Economic Data",
-      "description": "GDP Q1 Advance Estimate",
-      "importance": "high"
-    },
-    {
-      "date": "2026-05-01",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-05-06",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
-      "importance": "high"
-    },
-    {
-      "date": "2026-05-12",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-05-25",
-      "type": "Holiday",
-      "description": "Memorial Day - Markets Closed",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-05-28",
-      "type": "Economic Data",
-      "description": "GDP Q1 Second Estimate",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-06-05",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-06-11",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-06-17",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
-      "importance": "high"
-    },
-    {
-      "date": "2026-06-25",
-      "type": "Economic Data",
-      "description": "GDP Q1 Final Estimate",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-07-03",
-      "type": "Holiday",
-      "description": "Independence Day (Observed) - Markets Closed",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-07-02",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-07-14",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-07-29",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
-      "importance": "high"
-    },
-    {
-      "date": "2026-07-30",
-      "type": "Economic Data",
-      "description": "GDP Q2 Advance Estimate",
-      "importance": "high"
-    },
-    {
-      "date": "2026-08-07",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-08-13",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-08-27",
-      "type": "Economic Data",
-      "description": "GDP Q2 Second Estimate",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-09-04",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-09-07",
-      "type": "Holiday",
-      "description": "Labor Day - Markets Closed",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-09-16",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
-      "importance": "high"
-    },
-    {
-      "date": "2026-09-16",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-09-24",
-      "type": "Economic Data",
-      "description": "GDP Q2 Final Estimate",
-      "importance": "medium"
-    },
-    {
-      "date": "2026-10-02",
-      "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-10-15",
-      "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-10-29",
-      "type": "Economic Data",
-      "description": "GDP Q3 Advance Estimate",
-      "importance": "high"
-    },
     {
       "date": "2026-11-03",
       "type": "Election",
@@ -289,63 +14,321 @@
       "importance": "high"
     },
     {
-      "date": "2026-11-04",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
+      "date": "2026-11-06",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
       "importance": "high"
     },
     {
-      "date": "2026-11-06",
+      "date": "2026-11-10",
       "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
+      "description": "CPI (Consumer Price Index) Report",
       "importance": "high"
     },
     {
       "date": "2026-11-13",
       "type": "Economic Data",
-      "description": "CPI (Consumer Price Index) Report",
-      "importance": "high"
-    },
-    {
-      "date": "2026-11-26",
-      "type": "Holiday",
-      "description": "Thanksgiving Day - Markets Closed",
+      "description": "PPI (Producer Price Index) Report",
       "importance": "medium"
     },
     {
-      "date": "2026-11-27",
-      "type": "Holiday",
-      "description": "Black Friday - Early Market Close (1pm ET)",
-      "importance": "low"
+      "date": "2026-11-25",
+      "type": "Economic Data",
+      "description": "GDP Q3 2026 Second Estimate",
+      "importance": "medium"
     },
     {
       "date": "2026-12-04",
       "type": "Economic Data",
-      "description": "Non-Farm Payrolls Report",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
       "importance": "high"
     },
     {
-      "date": "2026-12-11",
+      "date": "2026-12-09",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision + Economic Projections",
+      "importance": "high"
+    },
+    {
+      "date": "2026-12-10",
       "type": "Economic Data",
       "description": "CPI (Consumer Price Index) Report",
       "importance": "high"
     },
     {
-      "date": "2026-12-16",
-      "type": "FOMC Meeting",
-      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision",
-      "importance": "high"
-    },
-    {
-      "date": "2026-12-22",
+      "date": "2026-12-15",
       "type": "Economic Data",
-      "description": "GDP Q3 Final Estimate",
+      "description": "PPI (Producer Price Index) Report",
       "importance": "medium"
     },
     {
-      "date": "2026-12-25",
-      "type": "Holiday",
-      "description": "Christmas Day - Markets Closed",
+      "date": "2026-12-23",
+      "type": "Economic Data",
+      "description": "GDP Q3 2026 Third Estimate",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-01-08",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-01-13",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-01-14",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-01-27",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-02-05",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-02-11",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-02-12",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-03-05",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-03-10",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-03-12",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-03-17",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision + Economic Projections (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-04-02",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-04-13",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-04-14",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-04-28",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-05-07",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-05-12",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-05-13",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-06-04",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-06-09",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision + Economic Projections (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-06-10",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-06-11",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-07-02",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-07-14",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-07-15",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-07-28",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-08-06",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-08-10",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-08-11",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-09-03",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-09-10",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-09-14",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-09-15",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision + Economic Projections (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-10-08",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-10-14",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-10-15",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-10-27",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-11-05",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-11-10",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-11-12",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
+      "importance": "medium"
+    },
+    {
+      "date": "2027-12-03",
+      "type": "Economic Data",
+      "description": "Non-Farm Payrolls Report (Employment Situation)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-12-08",
+      "type": "FOMC Meeting",
+      "description": "Federal Reserve FOMC Meeting - Interest Rate Decision + Economic Projections (tentative)",
+      "importance": "high"
+    },
+    {
+      "date": "2027-12-10",
+      "type": "Economic Data",
+      "description": "CPI (Consumer Price Index) Report",
+      "importance": "high"
+    },
+    {
+      "date": "2027-12-15",
+      "type": "Economic Data",
+      "description": "PPI (Producer Price Index) Report",
       "importance": "medium"
     }
   ]
