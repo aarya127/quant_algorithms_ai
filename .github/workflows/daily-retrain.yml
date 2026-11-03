@@ -8,7 +8,8 @@
 # Every run is a full rebuild (a fresh checkout has no feature CSVs to append to);
 # only the model registry, MLflow history and the model's paper-trading ledger carry
 # over from the previous run (the backtest summary is regenerated each run), so the promotion gate compares against the models
-# currently being served.
+# currently being served. Alpha Vantage news responses also carry over, through
+# the Actions cache, to spare that key's 25/day quota.
 #
 # Data-provider keys come from repo secrets (Settings → Secrets and variables →
 # Actions); a missing key just skips that source.
@@ -77,6 +78,17 @@ jobs:
           path: ~/.cache/huggingface
           key: finbert-ProsusAI
 
+      # Alpha Vantage allows 25 calls/day on a key shared with the web app's
+      # Sentiment tab. Carrying the per-window cache over means a run only fetches
+      # the still-open 30-day window, not the whole history. Caches are immutable,
+      # so each run saves a new one (even if a later step fails) and the next
+      # restores the latest by prefix.
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.PIPES }}/.pipeline_cache/av_news_*.pkl
+          key: av-news-${{ github.run_id }}
+          restore-keys: av-news-
+
       - name: Restore registry and MLflow history from the models branch
         run: |
           PUBLISHED="$RUNNER_TEMP/published"
@@ -92,6 +104,12 @@ jobs:
 
       - name: Run pipeline
         run: python algorithms/machine_learning_algorithms/orchestrator.py "$TICKER"
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ${{ env.PIPES }}/.pipeline_cache/av_news_*.pkl
+          key: av-news-${{ github.run_id }}
 
       # Fills yesterday's order, marks to market, places the next one from today's signal
       - name: Trade the model's paper account

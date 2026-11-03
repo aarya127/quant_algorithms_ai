@@ -137,6 +137,13 @@ class TestFetching:
         assert len(av.calls) == sf.AV_DAILY_BUDGET
         assert any("budget" in n for n in sf.get_feed("ZZZ", 30, av, lambda *a: [], today=TODAY)["notes"])
 
+    def test_degraded_answer_is_not_cached_so_a_retry_can_score(self):
+        av = FakeAV({"Information": "limit"})
+        a = sf.get_feed("NVDA", 30, av, lambda *a: [_fh("x")], today=TODAY)
+        av.reply = {"feed": [_av()]}
+        b = sf.get_feed("NVDA", 30, av, lambda *a: [_fh("x")], today=TODAY)
+        assert a["scored_total"] == 0 and b["scored_total"] == 1 and len(av.calls) == 2
+
     def test_finnhub_failure_still_returns_scored_news(self):
         def boom(*a):
             raise RuntimeError("finnhub down")

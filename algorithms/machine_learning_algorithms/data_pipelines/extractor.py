@@ -179,6 +179,24 @@ def _fiscal_ai_company_id(symbol: str) -> Optional[str]:
     return _FISCAL_AI_COMPANIES.get(symbol.upper())
 
 
+def _fixed_windows(start: str, end: str, days: int = 30) -> list[tuple[str, str]]:
+    """[start, end] cut into `days`-long windows on fixed calendar boundaries.
+
+    Boundaries are multiples of `days` from date ordinal 0, not offsets from
+    `start`, so a window that has closed keeps the same (from, to) and therefore
+    the same cache file from one daily run to the next; only the last, still-open
+    window is new each day. The first window may begin before `start`.
+    """
+    s, e = datetime.date.fromisoformat(start), datetime.date.fromisoformat(end)
+    cur = datetime.date.fromordinal(max(1, s.toordinal() // days * days))
+    out = []
+    while cur <= e:
+        nxt = datetime.date.fromordinal((cur.toordinal() // days + 1) * days)
+        out.append((cur.isoformat(), min(nxt - datetime.timedelta(days=1), e).isoformat()))
+        cur = nxt
+    return out
+
+
 def _session_date(ts) -> pd.Timestamp:
     """Trading session whose feature row may use a news item published at `ts`.
 
@@ -1045,35 +1063,28 @@ class DataExtractor:
             poly_frames.append(poly)
             logger.info("Polygon news sentiment: %d articles for %s", len(poly), symbol)
 
-        # AV caps results at 1000 per call. For windows > 90 days, batch by
-        # 90-day chunks so high-volume tickers (NVDA: ~10 articles/day) stay
-        # under the 1000-article cap and get full per-batch coverage.
-        # Stop early if rate-limited so we don't waste quota on subsequent batches.
-        _av_start_dt = datetime.date.fromisoformat(start)
-        _av_end_dt   = datetime.date.fromisoformat(end)
-        _av_window   = 30  # days per batch — keeps NVDA (≈11 articles/day) under AV's 1000-article cap
-        _av_cursor   = _av_start_dt
+        # AV caps results at 1000 per call; 30-day batches keep NVDA (≈11
+        # articles/day) under it. Stop early if rate-limited so we don't waste
+        # quota on subsequent batches. Fixed boundaries mean closed batches hit the disk cache (persisted across
+        # GitHub Actions runs), so a warm run spends ~1 call of the key's 25/day —
+        # the same key serves the web app's Sentiment tab.
         _av_total    = 0
         _av_batches  = 0
-        _av_rl_hit   = False
-        while _av_cursor < _av_end_dt:
-            _b_end   = min(_av_cursor + datetime.timedelta(days=_av_window - 1), _av_end_dt)
+        for _b_start, _b_end in _fixed_windows(start, end):
             _av_batches += 1
             # Pass allow_stale=True so a rate-limited call still returns cached data
-            av_batch = self._av_news_sentiment(symbol, _av_cursor.isoformat(), _b_end.isoformat(),
-                                               allow_stale=True)
+            av_batch = self._av_news_sentiment(symbol, _b_start, _b_end, allow_stale=True)
             if av_batch is not None and not av_batch.empty:
+                av_batch = av_batch[av_batch["date"] >= pd.Timestamp(start)]
                 av_frames.append(av_batch)
                 _av_total += len(av_batch)
                 logger.info("  AV batch %d (%s → %s): %d articles",
-                            _av_batches, _av_cursor, _b_end, len(av_batch))
-            elif av_batch is None and not _av_rl_hit:
+                            _av_batches, _b_start, _b_end, len(av_batch))
+            elif av_batch is None:
                 # None with no cache available → live rate-limit, no fallback
-                _av_rl_hit = True
                 logger.warning("AlphaVantage rate-limit reached after %d batches, no cache available — skipping the rest",
                                _av_batches)
                 break
-            _av_cursor = _b_end + datetime.timedelta(days=1)
         if _av_total:
             logger.info("AlphaVantage news sentiment: %d articles for %s (%d batches)",
                         _av_total, symbol, _av_batches)

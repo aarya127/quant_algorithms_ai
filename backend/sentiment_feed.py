@@ -194,6 +194,9 @@ def get_feed(symbol, days, av, company_news, today=None):
         fh_items = []
     payload = build_payload(symbol, days, start, av_feed, av_status, fh_items)
     payload["as_of"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-    with _lock:
-        _cache[key] = payload
+    # Only cache a scored answer: a degraded one would pin "unscored" for the
+    # whole TTL after Alpha Vantage recovers. Retries stay bounded by the budget.
+    if av_status == "ok":
+        with _lock:
+            _cache[key] = payload
     return payload
