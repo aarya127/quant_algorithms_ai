@@ -445,13 +445,14 @@ option { background: var(--bg-card); }
 .empty-state p { color: var(--text-2); font-size: 0.9rem; margin-bottom: 20px; }
 
 .backtest-container { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
-.backtest-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+.backtest-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
 .backtest-card h4 { font-size: 16px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
 .backtest-card h4 i { color: var(--accent); margin-right: 6px; }
 .backtest-form .form-label { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
 .backtest-form .form-control, .backtest-form .form-select { border-radius: 7px; border: 1px solid var(--border); padding: 8px 10px; font-size: 13px; }
 .backtest-form .form-control:focus, .backtest-form .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 0.2rem var(--accent-dim); }
-.backtest-info { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px; position: sticky; top: 100px; }
+.backtest-info { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+.backtest-placeholder { display: flex; align-items: center; justify-content: center; min-height: 280px; }
 .backtest-info h5 { font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .metric-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .metric-item:last-child { border-bottom: none; }

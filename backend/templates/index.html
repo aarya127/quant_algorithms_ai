@@ -1355,10 +1355,10 @@
                         <!-- Backtesting Tab -->
                         <div class="tab-pane fade" id="backtesting" role="tabpanel">
                             <div class="backtest-container">
-                                <!-- Row 1: Form + Chart side by side -->
-                                <div class="row mb-3">
-                                    <div class="col-md-5">
-                                        <div class="backtest-card h-100">
+                                <div class="row g-3">
+                                    <!-- Left: form, then headline metrics right underneath -->
+                                    <div class="col-lg-5 d-flex flex-column gap-3">
+                                        <div class="backtest-card">
                                             <h4><i class="fas fa-flask"></i> Strategy Backtester</h4>
                                             <p class="text-muted">Test your trading strategies against historical data</p>
                                             <div class="backtest-form">
@@ -1396,19 +1396,6 @@
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="col-md-7">
-                                        <div class="backtest-card h-100" id="backtestChart" style="display:none;">
-                                            <canvas id="backtestChartCanvas"></canvas>
-                                        </div>
-                                        <div class="backtest-info h-100 d-flex align-items-center justify-content-center" id="backtestChartPlaceholder">
-                                            <p class="text-muted text-center"><i class="fas fa-chart-line fa-2x mb-2 d-block"></i>Equity curve will appear here</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- Row 2: Performance Metrics + PnL Attribution side by side -->
-                                <div class="row">
-                                    <div class="col-md-6">
                                         <div class="backtest-info">
                                             <h5>Performance Metrics</h5>
                                             <div id="backtestResults">
@@ -1416,7 +1403,14 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="col-md-6">
+                                    <!-- Right: equity curve, then PnL attribution -->
+                                    <div class="col-lg-7 d-flex flex-column gap-3">
+                                        <div class="backtest-card" id="backtestChart" style="display:none;">
+                                            <canvas id="backtestChartCanvas"></canvas>
+                                        </div>
+                                        <div class="backtest-info backtest-placeholder" id="backtestChartPlaceholder">
+                                            <p class="text-muted text-center"><i class="fas fa-chart-line fa-2x mb-2 d-block"></i>Equity curve will appear here</p>
+                                        </div>
                                         <div class="backtest-info" id="backtestAttributionPanel" style="display:none;">
                                             <h5>PnL Attribution</h5>
                                             <div id="backtestAttribution"></div>
