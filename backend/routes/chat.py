@@ -211,9 +211,12 @@ def chat():
 
     def generate():
         try:
+            # Per model, and nothing reaches the client until the first token:
+            # a hung model at 60 s left the bubble on "Thinking…" for 2 min.
+            # Healthy models answer in ~1 s, so fail over fast instead.
             for delta in stream_completion(
                 messages, system=system, provider=provider,
-                max_tokens=700, temperature=0.3, timeout=60,
+                max_tokens=700, temperature=0.3, timeout=20,
             ):
                 # the router never raises — it yields '[LLM ...]' sentinels
                 if delta.startswith('[LLM'):

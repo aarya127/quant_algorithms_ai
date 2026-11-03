@@ -76,11 +76,13 @@ _PROVIDERS = {
         "base_url":     "https://integrate.api.nvidia.com/v1",
         "env_var":      "NVIDIA_API_KEY",
         "keys_section": "nvidia llms",
-        # Two vendors, so one family being pulled from the free catalog (as
-        # meta/llama-3.1-70b-instruct was) doesn't take the chat down.
+        # Models get pulled from the free catalog (llama-3.1-70b, then
+        # nemotron-3-super 404'd; gpt-oss-20b started timing out), so keep a
+        # fallback. Both answered the chat prompt in ~1 s on 2026-11-03.
         "models": os.environ.get(
             "NVIDIA_MODELS",
-            "nvidia/nemotron-3-super-120b-a12b,openai/gpt-oss-20b",
+            "nvidia/nemotron-3.5-super-vl-120b-a12b,"
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
         ).split(","),
         # With reasoning on, both spent the whole 900-token brief budget
         # thinking and returned no text; off/low they answer in ~5–15 s.

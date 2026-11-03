@@ -71,7 +71,7 @@ ML Pipeline + MLOps  (orchestrator → MLflow → model registry → drift alert
 | Web framework | Flask 3.0 + Gunicorn |
 | Frontend | Bootstrap 5, Chart.js, vanilla JS |
 | Primary data | yfinance, Finnhub, Polygon, Alpaca SDK, Fiscal.ai |
-| AI / NLP | FinBERT (ProsusAI, pipeline features), NVIDIA Mistral Large 3 (overviews), Nemotron 3 Super → gpt-oss-20b (chat/briefs), multi-provider LLM router |
+| AI / NLP | FinBERT (ProsusAI, pipeline features), NVIDIA Mistral Large 3 (overviews), Nemotron 3.5 Super → Nemotron 3.5 Lightning (chat/briefs), multi-provider LLM router |
 | Quant | QuantLib, scipy, numpy, pandas |
 | ML / MLOps | scikit-learn, XGBoost, LightGBM, MLflow, local model registry |
 | High-perf | C++ (pybind11), Go (gRPC) |
@@ -456,7 +456,7 @@ Served over HTTP by `backend/routes/ml.py`: `GET /api/predict/<ticker>`, `/api/d
 
 ### LLM layer (`ai_platform/`)
 
-- `llm_router.py` — unified multi-provider client (OpenAI → Anthropic → NVIDIA priority; override with `LLM_PROVIDER`). The NVIDIA chain is Nemotron 3 Super then gpt-oss-20b, thinking off (`NVIDIA_MODELS` overrides)
+- `llm_router.py` — unified multi-provider client (OpenAI → Anthropic → NVIDIA priority; override with `LLM_PROVIDER`). The NVIDIA chain is Nemotron 3.5 Super then Nemotron 3.5 Lightning, thinking off (`NVIDIA_MODELS` overrides)
 - `llm_judge.py` — `run_judge(ticker)` runs at the end of the orchestrator, asks an LLM for a promotion verdict, and writes it to `supervised/output/monitoring/`
 
 ---
