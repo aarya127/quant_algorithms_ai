@@ -790,7 +790,7 @@ async function loadSentiment(symbol, days = 30) {
 
         if (srcEl && data.source_counts) {
             srcEl.innerHTML = Object.entries(data.source_counts)
-                .map(([src, n]) => `<div><span class="badge bg-light text-dark me-1">${esc(src)}</span>${esc(n)} articles</div>`)
+                .map(([src, n]) => `<div><span class="badge bg-secondary me-1">${esc(src)}</span>${esc(n)} articles</div>`)
                 .join('');
         }
 
@@ -868,22 +868,18 @@ async function loadSentiment(symbol, days = 30) {
             const sc     = a.score;
             const lbl    = a.label;
             const cls    = lbl === 'positive' ? 'success' : lbl === 'negative' ? 'danger' : 'secondary';
-            const bar    = sc != null ? `<div class="progress mt-1" style="height:4px">
-                <div class="progress-bar bg-${cls}" style="width:${Math.abs(sc)*100}%"></div>
-            </div>` : '';
-            const scoreStr = sc != null ? (sc >= 0 ? '+' : '') + sc.toFixed(3) : '—';
             const urlStr   = a.url
                 ? `<a href="${safeUrl(a.url)}" target="_blank" rel="noopener" class="stretched-link text-decoration-none">${esc(a.headline)}</a>`
                 : esc(a.headline);
             return `
             <tr>
                 <td class="text-muted small">${esc(a.date)}</td>
-                <td class="position-relative small">${urlStr}${bar}</td>
+                <td class="position-relative small">${urlStr}</td>
                 <td class="small text-muted">${esc(a.source)}</td>
                 <td class="text-center">
                     ${sc != null
-                        ? `<span class="badge bg-${cls}" title="${scoreStr}">${esc(lbl.toUpperCase())}</span>`
-                        : `<span class="badge bg-light text-muted">—</span>`}
+                        ? `<span class="badge bg-${cls}" title="${esc(a.reason || '')}">${esc(lbl.toUpperCase())}</span>`
+                        : `<span class="text-muted" title="Not scored">—</span>`}
                 </td>
             </tr>`;
         }).join('');
@@ -891,12 +887,12 @@ async function loadSentiment(symbol, days = 30) {
         container.innerHTML = notes + `
             <div class="small text-muted mb-2">
                 Showing the ${data.articles.length} most recent of ${data.articles_total} articles ·
-                scores are Alpha Vantage ticker sentiment ∈ [−1, +1] (neutral within ±0.15); the overall score
-                weights each by its relevance · Finnhub headlines are unscored
+                labels are Polygon's sentiment toward ${esc(symbol)} (hover one for its reason); the score
+                averages positive +1, neutral 0, negative −1 (neutral within ±0.15)${data.source_counts?.finnhub ? ' · Finnhub headlines are unscored' : ''}
             </div>
             <div class="table-responsive" style="max-height:480px;overflow-y:auto">
                 <table class="table table-sm table-hover align-middle">
-                    <thead class="sticky-top bg-white">
+                    <thead class="sticky-top">
                         <tr>
                             <th style="width:90px">Date</th>
                             <th>Headline</th>
@@ -1694,7 +1690,7 @@ async function loadMLSignals() {
                     ${d.drift_flags && d.drift_flags.length > 0 ? `
                     <div class="table-responsive" style="max-height:220px;overflow-y:auto">
                         <table class="table table-sm mb-0">
-                            <thead class="sticky-top bg-white">
+                            <thead class="sticky-top">
                                 <tr>
                                     <th class="small">Feature</th>
                                     <th class="small text-end">Latest</th>
@@ -1740,7 +1736,7 @@ async function loadMLSignals() {
                 ${createdAt ? `<div class="px-3 pt-2 text-muted small">Registry built: ${createdAt.slice(0,10)}</div>` : ''}
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">
-                        <thead class="sticky-top bg-white">
+                        <thead class="sticky-top">
                             <tr>
                                 <th class="small">Target</th>
                                 <th class="small">Model</th>

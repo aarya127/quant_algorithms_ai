@@ -271,6 +271,13 @@ option { background: var(--bg-card); }
 .alert-primary { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-1); border-radius: 12px; }
 .alert-primary h5 { color: var(--text-1); }
 .alert-primary p { color: var(--text-2); }
+/* Status alerts as tints on navy — Bootstrap's pastel fills glare on the dark theme */
+.alert-warning { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.35); color: #fbbf24; }
+.alert-danger { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.3); color: var(--neg); }
+.alert-secondary { background: rgba(100,116,139,0.15); border-color: var(--border); color: var(--text-2); }
+/* Sticky table headers and light badges on the card colour, not Bootstrap's white */
+.table thead.sticky-top th { background: var(--bg-card); color: var(--text-2); border-bottom-color: var(--border); }
+.badge.bg-light { background: #334155 !important; color: var(--text-1) !important; }
 
 /* RESEARCH SECTION PLACEHOLDER */
 .research-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 50vh; text-align: center; color: var(--text-3); }
@@ -322,12 +329,8 @@ option { background: var(--bg-card); }
 #sectionQuant .card-body { color: var(--text-1) !important; }
 #sectionQuant .table { color: var(--text-1) !important; --bs-table-color: var(--text-1); }
 #sectionQuant .table th, #sectionQuant .table td { border-color: var(--border) !important; color: var(--text-1) !important; }
-#sectionQuant .table thead.sticky-top { background: var(--bg-card) !important; }
 #sectionQuant .text-muted { color: #8892a4 !important; }
-#sectionQuant .alert-warning { background: rgba(245,158,11,0.15) !important; border-color: rgba(245,158,11,0.35) !important; color: #fbbf24 !important; }
-#sectionQuant .alert-secondary { background: rgba(100,116,139,0.15) !important; border-color: var(--border) !important; color: var(--text-2) !important; }
 #sectionQuant .alert-info { background: rgba(0,201,167,0.1) !important; border-color: rgba(0,201,167,0.3) !important; color: var(--accent) !important; }
-#sectionQuant .alert-danger { background: rgba(248,113,113,0.15) !important; border-color: rgba(248,113,113,0.3) !important; color: #f87171 !important; }
 #sectionQuant .metric-item { color: var(--text-1); border-bottom: 1px solid var(--border); padding: 6px 0; }
 
 /* SCENARIO ANALYSIS */

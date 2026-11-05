@@ -10,9 +10,9 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, jsonify, request
 
 from common import get_ticker_for_charts, is_canadian_stock, _int_arg
-from rate_limit import limiter, bypass_ok, LLM_LIMIT, AV_LIMIT
+from rate_limit import limiter, bypass_ok, LLM_LIMIT, NEWS_LIMIT
 from services import (
-    yf, av, get_company_overview_llm,
+    yf, get_company_overview_llm,
     get_company_profile, get_stock_quote, get_basic_financials, get_company_news,
     get_company_statistics, format_statistics_for_display, has_any_statistic,
     _cached_get_stock_quote, _cached_get_company_profile, _cached_get_company_peers,
@@ -247,18 +247,18 @@ def get_statistics(symbol):
         })
 
 @bp.route('/api/sentiment/news/<symbol>')
-@limiter.limit(AV_LIMIT, exempt_when=bypass_ok)
+@limiter.limit(NEWS_LIMIT, exempt_when=bypass_ok)
 def sentiment_news(symbol):
-    """Sentiment tab: Alpha Vantage-scored articles + Finnhub headlines, a
-    relevance-weighted overall score and a daily trend (sentiment_feed.py).
+    """Sentiment tab: Polygon-scored articles (Finnhub headlines as a fallback),
+    a mean overall score and a daily trend (sentiment_feed.py).
 
     Query: days — lookback in calendar days (default 30, max 365).
-    At most one Alpha Vantage and one Finnhub call per symbol/window per 30 min.
+    One Polygon call per symbol/window per 30 min; Finnhub only when Polygon has nothing.
     """
     try:
         import sentiment_feed
         days = _int_arg('days', 30, 365)
-        payload = sentiment_feed.get_feed(symbol.upper(), days, av, _cached_get_company_news)
+        payload = sentiment_feed.get_feed(symbol.upper(), days, _cached_get_company_news)
         return jsonify({'success': True, **payload})
     except Exception as e:
         print(f"[SENTIMENT] {symbol}: {e!r}", flush=True)

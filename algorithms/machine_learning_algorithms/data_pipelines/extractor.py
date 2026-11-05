@@ -1466,8 +1466,9 @@ class DataExtractor:
             data = resp.json()
 
             if "Information" in data or "Note" in data:
-                # Rate-limit hit — return stale cache if available, else None
-                logger.warning("AlphaVantage rate-limited for %s news sentiment: %s",
+                # Refused: the daily limit, or "premium endpoint" (this key, since
+                # Nov 2026) — AV's own text says which. Stale cache if any, else None
+                logger.warning("AlphaVantage refused %s news sentiment: %s",
                                symbol, data.get("Information") or data.get("Note"))
                 if allow_stale and _cache_path.exists():
                     try:

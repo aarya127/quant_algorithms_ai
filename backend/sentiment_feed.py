@@ -1,32 +1,47 @@
 """
 sentiment_feed.py — data for the Sentiment tab.
 
-One Alpha Vantage NEWS_SENTIMENT call (ticker-scored, newest first) plus Finnhub
-company news (unscored headlines), cached per symbol and window. At most two
-upstream calls and no sleeps, so a click can't outlast the single worker's
-timeout. The ML pipeline's multi-source daily history
+One Polygon /v2/reference/news call (newest first): each article carries a
+per-ticker sentiment — positive, neutral or negative — and a one-line reason.
+When Polygon fails or has no articles, Finnhub company news fills the table as
+unscored headlines. At most two upstream calls and no sleeps, so a click can't
+outlast the single worker's timeout; scored answers are cached per symbol and
+window. The ML pipeline's multi-source daily history
 (extractor.news_sentiment_history) is a separate, offline path.
 
-Scores are Alpha Vantage's ticker_sentiment_score in [-1, 1], averaged with its
-relevance_score as the weight; labels use Alpha Vantage's own neutral band.
-Windows with no scored article report no score rather than a neutral 0.
+Alpha Vantage NEWS_SENTIMENT used to score this tab; it became a premium
+endpoint for this key in Nov 2026.
+
+Scores: positive +1, neutral 0, negative −1. The overall and daily scores are
+their mean — the net share of positive over negative articles — in [−1, 1],
+labelled with a ±0.15 neutral band. Windows with no scored article report no
+score rather than a neutral 0.
 """
 import datetime
-import math
+import os
 import threading
 
+import requests
 from cachetools import TTLCache
 
-LABEL_BAND = 0.15        # Alpha Vantage: |score| < 0.15 is Neutral
-MIN_RELEVANCE = 0.1      # floor on the weight, as in the pipeline
-AV_LIMIT = 1000          # Alpha Vantage's per-call article cap
+from common import keys_txt_value
+
+LABEL_BAND = 0.15        # |mean| < 0.15 is neutral
+POLYGON_URL = "https://api.polygon.io/v2/reference/news"
+POLYGON_LIMIT = 1000     # Polygon's per-call article cap
 MAX_ARTICLES = 100       # rows sent to the browser (stats use every scored article)
-AV_DAILY_BUDGET = 10     # of the key's 25/day; the daily retrain uses the same key
 CACHE_TTL = 1800         # seconds
+SCORES = {"positive": 1.0, "neutral": 0.0, "negative": -1.0}
 
 _cache = TTLCache(maxsize=128, ttl=CACHE_TTL)
 _lock = threading.Lock()
-_av_used = {"day": None, "calls": 0}
+
+NOTES = {
+    "no_key": "No Polygon key is configured (POLYGON_API_KEY) — headlines are shown unscored.",
+    "auth": "Polygon rejected the API key — headlines are shown unscored.",
+    "rate_limited": "Polygon allows 5 calls a minute — try again shortly; headlines are shown unscored.",
+    "error": "Polygon didn't respond — headlines are shown unscored.",
+}
 
 
 def label_for(score):
@@ -39,31 +54,31 @@ def _headline_key(text):
     return " ".join(str(text).lower().split())
 
 
-def parse_av_feed(feed, symbol):
-    """Alpha Vantage `feed` items → scored article dicts for `symbol` (newest first)."""
+def _utc(iso):
+    return datetime.datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone(datetime.timezone.utc)
+
+
+def parse_polygon(results, symbol):
+    """Polygon news `results` → article dicts for `symbol` (newest first).
+
+    An article without an insight for `symbol` itself (only for other tickers it
+    mentions) is kept unscored rather than borrowing another ticker's view.
+    """
     out = []
-    for art in feed or []:
+    for art in results or []:
         try:
-            dt = datetime.datetime.strptime(str(art.get("time_published", "")), "%Y%m%dT%H%M%S")
-        except ValueError:
-            continue
-        ts = next((t for t in art.get("ticker_sentiment") or []
-                   if str(t.get("ticker", "")).upper() == symbol), None)
-        if ts is None:
-            continue
-        try:
-            score = float(ts.get("ticker_sentiment_score"))
-            rel = float(ts.get("relevance_score"))
+            dt = _utc(art.get("published_utc"))
         except (TypeError, ValueError):
             continue
-        if not (math.isfinite(score) and math.isfinite(rel)):
-            continue
-        out.append({"date": dt.date().isoformat(), "published": dt.isoformat(),
+        ins = next((i for i in art.get("insights") or []
+                    if str(i.get("ticker", "")).upper() == symbol), None)
+        score = SCORES.get(str((ins or {}).get("sentiment", "")).lower())
+        out.append({"date": dt.date().isoformat(), "published": dt.replace(tzinfo=None).isoformat(),
                     "headline": str(art.get("title") or ""),
-                    "source": str(art.get("source") or "Alpha Vantage"),
-                    "url": str(art.get("url") or ""), "provider": "alphavantage",
-                    "score": round(score, 4), "relevance": round(max(rel, MIN_RELEVANCE), 4),
-                    "label": label_for(score)})
+                    "source": str((art.get("publisher") or {}).get("name") or "Polygon"),
+                    "url": str(art.get("article_url") or ""), "provider": "polygon",
+                    "score": score, "label": label_for(score),
+                    "reason": str((ins or {}).get("sentiment_reasoning") or "") if score is not None else ""})
     return sorted(out, key=lambda a: a["published"], reverse=True)
 
 
@@ -81,58 +96,51 @@ def parse_finnhub(items, start):
                     "headline": str(it.get("headline") or ""),
                     "source": str(it.get("source") or "Finnhub"),
                     "url": str(it.get("url") or ""), "provider": "finnhub",
-                    "score": None, "relevance": None, "label": "unscored"})
+                    "score": None, "label": "unscored", "reason": ""})
     return out
 
 
 def merge(scored, unscored):
-    """Scored articles plus unscored ones whose headline isn't already scored, newest first."""
+    """Scored articles plus unscored ones whose headline isn't already present, newest first."""
     seen = {_headline_key(a["headline"]) for a in scored}
     rest = [a for a in unscored if a["headline"] and _headline_key(a["headline"]) not in seen]
     return sorted(scored + rest, key=lambda a: a["published"], reverse=True)
 
 
 def summarize(articles):
-    """Relevance-weighted mean score and label counts; score None when nothing is scored."""
+    """Mean score and label counts; score None when nothing is scored."""
     scored = [a for a in articles if a["score"] is not None]
     counts = {k: sum(a["label"] == k for a in scored) for k in ("positive", "neutral", "negative")}
     if not scored:
         return {"overall_score": None, "overall_label": "no_data", "scored_total": 0,
                 "unscored_total": len(articles), **{f"{k}_count": 0 for k in counts}}
-    w = sum(a["relevance"] for a in scored)
-    mean = sum(a["score"] * a["relevance"] for a in scored) / w
+    mean = sum(a["score"] for a in scored) / len(scored)
     return {"overall_score": round(mean, 3), "overall_label": label_for(mean),
             "scored_total": len(scored), "unscored_total": len(articles) - len(scored),
             **{f"{k}_count": v for k, v in counts.items()}}
 
 
 def daily_series(articles):
-    """Per-day relevance-weighted score (None on days with no scored article) and article count."""
+    """Per-day mean score (None on days with no scored article) and article count."""
     days = {}
     for a in articles:
-        d = days.setdefault(a["date"], {"num": 0.0, "w": 0.0, "count": 0})
+        d = days.setdefault(a["date"], {"sum": 0.0, "n": 0, "count": 0})
         d["count"] += 1
         if a["score"] is not None:
-            d["num"] += a["score"] * a["relevance"]
-            d["w"] += a["relevance"]
-    return [{"date": k, "score": round(v["num"] / v["w"], 3) if v["w"] else None, "count": v["count"]}
+            d["sum"] += a["score"]
+            d["n"] += 1
+    return [{"date": k, "score": round(v["sum"] / v["n"], 3) if v["n"] else None, "count": v["count"]}
             for k, v in sorted(days.items())]
 
 
-def build_payload(symbol, days, start, av_feed, av_status, fh_items):
+def build_payload(symbol, days, start, poly_results, poly_status, fh_items):
     """Assemble the tab's JSON from raw upstream results (pure; no network)."""
-    scored = parse_av_feed(av_feed, symbol)
+    scored = parse_polygon(poly_results, symbol)
     articles = merge(scored, parse_finnhub(fh_items, start))
-    notes = []
-    if av_status == "rate_limited":
-        notes.append("Alpha Vantage's daily limit is used up — headlines are shown unscored.")
-    elif av_status == "budget":
-        notes.append("This server's Alpha Vantage budget for today is used up — headlines are shown unscored.")
-    elif av_status == "error":
-        notes.append("Alpha Vantage didn't respond — headlines are shown unscored.")
+    notes = [NOTES[poly_status]] if poly_status in NOTES else []
     coverage_start = scored[-1]["date"] if scored else None
-    if len(av_feed or []) >= AV_LIMIT and coverage_start and coverage_start > start:
-        notes.append(f"Alpha Vantage returns at most {AV_LIMIT} articles, so scores cover "
+    if len(poly_results or []) >= POLYGON_LIMIT and coverage_start and coverage_start > start:
+        notes.append(f"Polygon returns at most {POLYGON_LIMIT} articles, so scores cover "
                      f"{coverage_start} onward.")
     sources = {}
     for a in articles:
@@ -144,41 +152,40 @@ def build_payload(symbol, days, start, av_feed, av_status, fh_items):
             "notes": notes}
 
 
-def _take_av_budget(today):
-    with _lock:
-        if _av_used["day"] != today:
-            _av_used.update(day=today, calls=0)
-        if _av_used["calls"] >= AV_DAILY_BUDGET:
-            return False
-        _av_used["calls"] += 1
-        return True
+def polygon_key():
+    return os.environ.get("POLYGON_API_KEY") or keys_txt_value("massive secret")
 
 
-def _fetch_av(av, symbol, start, end, today):
-    if av is None or not getattr(av, "api_key", None):
-        return [], "error"
-    if not _take_av_budget(today):
-        return [], "budget"
+def polygon_news(symbol, start, key=None):
+    """One Polygon news call → (results, status). Status: ok | no_key | auth | rate_limited | error."""
+    key = key if key is not None else polygon_key()
+    if not key:
+        return [], "no_key"
     try:
-        data = av.get_market_news_sentiment(
-            tickers=symbol, time_from=start.replace("-", "") + "T0000",
-            time_to=end.replace("-", "") + "T2359", sort="LATEST", limit=AV_LIMIT)
-    except Exception:
+        resp = requests.get(POLYGON_URL, timeout=15,
+                            params={"ticker": symbol, "published_utc.gte": start,
+                                    "order": "desc", "sort": "published_utc", "limit": POLYGON_LIMIT},
+                            headers={"Authorization": f"Bearer {key}"})
+    except requests.RequestException:
         return [], "error"
-    if not isinstance(data, dict):
-        return [], "error"
-    if "feed" in data:
-        return data["feed"], "ok"
-    if "Information" in data or "Note" in data:
+    if resp.status_code in (401, 403):
+        return [], "auth"
+    if resp.status_code == 429:
         return [], "rate_limited"
-    return [], "ok"          # e.g. "Error Message" for a ticker AV doesn't cover: no news
+    try:
+        data = resp.json()
+    except ValueError:
+        return [], "error"
+    if resp.status_code != 200 or not isinstance(data, dict):
+        return [], "error"
+    return data.get("results") or [], "ok"
 
 
-def get_feed(symbol, days, av, company_news, today=None):
+def get_feed(symbol, days, company_news, news=polygon_news, today=None):
     """Cached payload for `symbol` over the last `days` calendar days.
 
-    av           — data.alphavantage.AlphaVantage instance (or None)
     company_news — callable(symbol, from, to) → Finnhub company-news list
+    news         — callable(symbol, from) → (Polygon results, status)
     """
     today = today or datetime.date.today()
     start = (today - datetime.timedelta(days=days)).isoformat()
@@ -187,16 +194,18 @@ def get_feed(symbol, days, av, company_news, today=None):
     with _lock:
         if key in _cache:
             return _cache[key]
-    av_feed, av_status = _fetch_av(av, symbol, start, end, end)
-    try:
-        fh_items = company_news(symbol, start, end) or []
-    except Exception:
-        fh_items = []
-    payload = build_payload(symbol, days, start, av_feed, av_status, fh_items)
+    results, status = news(symbol, start)
+    fh_items = []
+    if not results:                     # Polygon down or silent: show Finnhub headlines instead
+        try:
+            fh_items = company_news(symbol, start, end) or []
+        except Exception:
+            fh_items = []
+    payload = build_payload(symbol, days, start, results, status, fh_items)
     payload["as_of"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-    # Only cache a scored answer: a degraded one would pin "unscored" for the
-    # whole TTL after Alpha Vantage recovers. Retries stay bounded by the budget.
-    if av_status == "ok":
+    # Only cache Polygon's real answer: a degraded one would pin "unscored" for
+    # the whole TTL after Polygon recovers.
+    if status == "ok":
         with _lock:
             _cache[key] = payload
     return payload

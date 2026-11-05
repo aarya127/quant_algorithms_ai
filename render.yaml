@@ -52,6 +52,8 @@ services:
         sync: false
       - key: ALPHAVANTAGE_API_KEY
         sync: false
+      - key: POLYGON_API_KEY      # Sentiment tab (the "massive secret" in keys.txt)
+        sync: false
       - key: ALPACA_API_KEY
         sync: false
       - key: ALPACA_SECRET_KEY

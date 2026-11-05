@@ -163,7 +163,7 @@ Single-page application served from `backend/templates/index.html`.
 | **Overview** | Company profile, real-time price, recent news |
 | **Statistics** | P/E, P/B, margins, debt ratios, growth rates, 52-week range |
 | **Charts** | Candlestick + Volume + RSI + MACD — timeframes 1D → MAX |
-| **Sentiment** | Alpha Vantage ticker sentiment per article (relevance-weighted overall score, ±0.15 neutral band) + Finnhub headlines, daily trend over 7 days – 1 year; says "no scored news" instead of a neutral 0 when Alpha Vantage is out |
+| **Sentiment** | Polygon's per-ticker sentiment per article (with its one-line reason), mean overall score with a ±0.15 neutral band, daily trend over 7 days – 1 year; Finnhub headlines fill in unscored when Polygon is out, and the tab says "no scored news" instead of a neutral 0 |
 | **Scenarios** | Bull / base / bear = 80th / 50th / 20th percentiles of a filtered historical simulation at 1W – 1Y; the ML 5-day forecast drives week one when fresh and plausible; a history check of the band on non-overlapping past windows |
 | **Metrics & Grades** | Finnhub fundamentals graded A–F by percentile among up to 8 industry peers (market-wide scale as fallback); negative-earnings/equity inputs marked not meaningful; balance-sheet health skipped for financials; ETFs not graded |
 | **Recommendations** | Buy / Hold / Sell per horizon from weighted votes — price trend (200-day average + 12-month momentum), the served ML model (1W/1M, if fresh), quality grade (3M+) — with each price rule backtested on the ticker against buy-and-hold |
@@ -187,7 +187,7 @@ Single-page application served from `backend/templates/index.html`.
 | `/api/stock/<symbol>` | GET | Price + profile + news bundle |
 | `/api/ai-overview/<symbol>` | GET | NVIDIA Mistral Large 3 company overview |
 | `/api/statistics/<symbol>` | GET | Ratios, margins, growth metrics |
-| `/api/sentiment/news/<symbol>` | GET | Sentiment tab: Alpha Vantage-scored articles + Finnhub headlines, overall score, daily trend (`?days=`, ≤ 365) |
+| `/api/sentiment/news/<symbol>` | GET | Sentiment tab: Polygon-scored articles (Finnhub fallback), overall score, daily trend (`?days=`, ≤ 365) |
 | `/api/scenarios/<symbol>` | GET | Bull/base/bear percentiles, risk stats and a history check (`?timeframe=1W…1Y`) |
 | `/api/metrics/<symbol>` | GET | Fundamental grades vs industry peers |
 | `/api/recommendations/<symbol>` | GET | Per-horizon Buy/Hold/Sell votes + backtested evidence |
@@ -309,14 +309,17 @@ The broader LLM layer lives in `ai_platform/` — see [§9](#9-scheduled-retrain
 ## 7. Sentiment Analysis
 
 **Sentiment tab** — `backend/sentiment_feed.py` behind `/api/sentiment/news/<symbol>`:
-1. One Alpha Vantage `NEWS_SENTIMENT` call (newest first, up to 1,000 articles) for the window,
-   plus Finnhub company news — at most two upstream calls, no sleeps, cached 30 min per
-   symbol/window, and a per-process Alpha Vantage budget of 10/day (the daily retrain shares the key)
-2. Each article's score is Alpha Vantage's ticker-specific sentiment ∈ [−1, 1]; labels use its
-   ±0.15 neutral band; Finnhub headlines are shown unscored
-3. The overall score and the daily trend are the same relevance-weighted average. With no scored
-   article (quota used up, a ticker Alpha Vantage doesn't cover) the tab says so instead of
-   showing a neutral 0, and notes when the 1,000-article cap shortens the covered window
+1. One Polygon `/v2/reference/news` call (newest first, up to 1,000 articles) for the window —
+   no sleeps, cached 30 min per symbol/window (scored answers only). Finnhub company news is
+   fetched only when Polygon fails or has nothing, and its headlines are shown unscored
+2. Each article's label is Polygon's sentiment toward that ticker (positive +1, neutral 0,
+   negative −1), with Polygon's one-line reason on hover; an article with no insight for the
+   ticker itself stays unscored
+3. The overall score and the daily trend are the mean of those values (±0.15 neutral band).
+   With no scored article the tab says why (no key, rejected key, 5/min limit, outage) instead of
+   showing a neutral 0, and notes when the 1,000-article cap shortens the covered window.
+   Alpha Vantage `NEWS_SENTIMENT` scored this tab until it became premium-only for this key
+   (Nov 2026)
 
 **FinBERT** — `sentiment/finbert.py` (US) and `finbert_canadian.py` score raw headlines with
 **ProsusAI/finbert** for the ML pipeline's news-sentiment features

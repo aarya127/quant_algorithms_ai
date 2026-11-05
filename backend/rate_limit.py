@@ -16,7 +16,7 @@ Personal bypass on the deployed URL:
 
 Tiers:
     LLM_LIMIT      — endpoints that trigger a paid/queued LLM round-trip
-    AV_LIMIT       — endpoints backed by Alpha Vantage (25 calls/day upstream)
+    NEWS_LIMIT     — the Sentiment tab, backed by Polygon (5 calls/minute upstream)
     DEFAULT_LIMIT  — everything else, applied app-wide per IP
 
 Storage is in-process memory — correct for the single-worker gthread model
@@ -82,7 +82,7 @@ def _default_exempt() -> bool:
 # ---------------------------------------------------------------------------
 
 LLM_LIMIT = '10 per minute; 100 per day'
-AV_LIMIT = '4 per minute; 20 per day'
+NEWS_LIMIT = '4 per minute'
 DEFAULT_LIMIT = '120 per minute'
 
 
