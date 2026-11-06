@@ -13,6 +13,7 @@ Owns two things that used to live at the top of the app.py monolith:
    decorator (the monolith repeated the same lock/lookup/store pattern five times).
 
 Quotes: 30s | Profiles: 1h | Peers: 24h | Financials/news: 10min | yf info: 5min
+SEC cash-flow summary: 24h
 """
 import os
 import sys
@@ -41,6 +42,7 @@ get_company_overview_llm = _unavailable
 get_market_tweets = get_financial_news_feed = _unavailable
 get_recent_news = _unavailable
 get_company_statistics = format_statistics_for_display = has_any_statistic = _unavailable
+get_cash_flow_summary = _unavailable
 
 
 try:
@@ -61,6 +63,7 @@ try:
     from data.twitter_feed import get_market_tweets, get_financial_news_feed
     from data.alpaca_news import get_recent_news
     from data.company_statistics import get_company_statistics, format_statistics_for_display, has_any_statistic
+    from data.financial_statements import get_cash_flow_summary
     av = AlphaVantage()
     _DATA_MODULES_LOADED = True
     print("[STARTUP] All data modules loaded successfully.", flush=True)
@@ -130,6 +133,14 @@ def _cached_get_basic_financials(symbol):
 @_ttl_cached(TTLCache(maxsize=256, ttl=600))
 def _cached_get_company_news(symbol, from_date, to_date):
     return get_company_news(symbol, from_date, to_date)
+
+
+# Filings change quarterly; only the parsed summary is kept (the raw as-reported
+# payload is ~1 MB). {} (no SEC filings, e.g. a TSX-only listing) is cached too,
+# so it isn't refetched on every view; a raised error (429) is not.
+@_ttl_cached(TTLCache(maxsize=256, ttl=86400), valid=lambda r: r is not None)
+def _cached_cash_flow_summary(symbol):
+    return get_cash_flow_summary(symbol)
 
 
 def _is_real_yf_info(info):

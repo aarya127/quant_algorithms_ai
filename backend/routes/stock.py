@@ -17,6 +17,7 @@ from services import (
     get_company_statistics, format_statistics_for_display, has_any_statistic,
     _cached_get_stock_quote, _cached_get_company_profile, _cached_get_company_peers,
     _cached_get_basic_financials, _cached_get_company_news, _cached_yf_info,
+    _cached_cash_flow_summary,
     _safe, graded_fundamentals,
 )
 
@@ -205,17 +206,24 @@ def get_statistics(symbol):
         symbol_upper = symbol.upper()
         print(f"📊 Fetching statistics for {symbol_upper}...")
 
-        # Fetch both upstreams in parallel through the shared TTL caches
-        # (yf info: 5 min, Finnhub financials: 10 min) — the Overview tab
-        # usually warmed these already, making this a cache hit.
-        with ThreadPoolExecutor(max_workers=2) as ex:
+        # Fetch the upstreams in parallel through the shared TTL caches
+        # (yf info: 5 min, Finnhub financials: 10 min, profile: 1 h, SEC
+        # cash-flow summary: 24 h) — the Overview tab usually warmed the first
+        # three already, making them cache hits. SEC filings are US-only.
+        with ThreadPoolExecutor(max_workers=4) as ex:
             f_info = ex.submit(_safe, _cached_yf_info, symbol_upper)
             f_fins = ex.submit(_safe, _cached_get_basic_financials, symbol_upper)
+            f_prof = ex.submit(_safe, _cached_get_company_profile, symbol_upper)
+            f_cf = (None if is_canadian_stock(symbol_upper)
+                    else ex.submit(_safe, _cached_cash_flow_summary, symbol_upper))
             info = f_info.result()
             fins = f_fins.result()
+            profile = f_prof.result()
+            cash_flow = f_cf.result() if f_cf else None
 
         # Get raw statistics ({} = Yahoo already failed; don't refetch uncached)
-        stats = get_company_statistics(symbol_upper, info=info or {}, financials=fins or {})
+        stats = get_company_statistics(symbol_upper, info=info or {}, financials=fins or {},
+                                       profile=profile or {}, cash_flow=cash_flow or {})
 
         # Every upstream failed — say so instead of a grid of "—"
         if not has_any_statistic(stats):
@@ -235,7 +243,7 @@ def get_statistics(symbol):
             'statistics': formatted_stats,
             'raw_statistics': stats,  # Include raw data for calculations
             # Yahoo down but Finnhub answered: partial data, tell the user
-            'warning': None if info else 'Yahoo Finance did not respond — showing Finnhub metrics only.'
+            'warning': None if info else 'Yahoo Finance did not respond — showing Finnhub and SEC-filing data only.'
         })
         
     except Exception as e:

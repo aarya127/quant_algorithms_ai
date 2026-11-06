@@ -50,6 +50,11 @@ def get_basic_financials(symbol, metric='all'):
     """Get basic financials for a symbol"""
     return _client.company_basic_financials(symbol, metric)
 
+def get_financials_reported(symbol, freq='quarterly'):
+    """SEC filings as reported (US filers only): list of 10-Q or 10-K reports,
+    each with 'ic'/'bs'/'cf' line items. Full history — ~0.5 MB per call."""
+    return (_client.financials_reported(symbol=symbol.replace('-', '.'), freq=freq) or {}).get('data', [])
+
 def get_insider_transactions(symbol, from_date=None, to_date=None):
     """Get insider transactions for a symbol"""
     return _client.stock_insider_transactions(symbol, from_date, to_date)

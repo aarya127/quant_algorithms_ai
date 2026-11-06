@@ -3021,7 +3021,7 @@ async function loadCompanyStatistics(symbol) {
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-info text-white">
-                            <h6 class="mb-0"><i class="fas fa-chart-line"></i> Returns (5Y Avg)</h6>
+                            <h6 class="mb-0"><i class="fas fa-chart-line"></i> Returns (TTM)</h6>
                         </div>
                         <div class="card-body">
                             <table class="table table-sm mb-0">
@@ -3151,6 +3151,34 @@ async function loadCompanyStatistics(symbol) {
                                 ${formatStatRow('Ex-Dividend Date', stats.dividends['Ex-Dividend Date'])}
                                 ${formatStatRow('DPS Growth (3Y)', stats.dividends['DPS Growth 3Yr'])}
                                 ${formatStatRow('DPS Growth (5Y)', stats.dividends['DPS Growth 5Yr'])}
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Cash Flow Section (SEC filings — US filers only; no Period = no filings)
+        const cf = stats.cash_flow;
+        if (cf && cf['Period']) {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header" style="background-color: #20c997; color: white;">
+                            <h6 class="mb-0"><i class="fas fa-money-bill-wave"></i> Cash Flow
+                                <small class="fw-normal ms-1">(${esc(cf['Period'])} · SEC filings)</small></h6>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm mb-0">
+                                ${formatStatRow('Operating Cash Flow', cf['Operating Cash Flow'])}
+                                ${formatStatRow('Capital Expenditures', cf['CapEx'])}
+                                ${formatStatRow('Free Cash Flow', cf['Free Cash Flow'])}
+                                ${formatStatRow('CapEx / Revenue', cf['CapEx / Revenue'])}
+                                ${formatStatRow('Stock-Based Comp', cf['Stock-Based Comp'])}
+                                ${formatStatRow('FCF after SBC', cf['FCF after SBC'])}
+                                ${formatStatRow('Depreciation & Amortization', cf['D&A'])}
+                                ${formatStatRow('Share Buybacks', cf['Share Buybacks'])}
+                                ${formatStatRow('Dividends Paid', cf['Dividends Paid'])}
                             </table>
                         </div>
                     </div>
