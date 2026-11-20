@@ -1,0 +1,30 @@
+{
+  "ticker": "NVDA",
+  "created_at": "2026-11-20T09:53:02.171103Z",
+  "targets": {
+    "target_5d": {
+      "path": "/home/runner/work/quant_algorithms_ai/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_5d",
+      "model_type": "rf",
+      "metric_value": 0.08640528132726759,
+      "created_at": "2026-11-17T10:25:27.583547Z"
+    },
+    "target_vol_5d": {
+      "path": "/home/runner/work/quant_algorithms_ai/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_vol_5d",
+      "model_type": "huber",
+      "metric_value": 0.1962790305061206,
+      "created_at": "2026-10-15T07:15:04.470239Z"
+    },
+    "target_dir_1d": {
+      "path": "/home/runner/work/quant_algorithms_ai/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_dir_1d",
+      "model_type": "xgb",
+      "metric_value": 0.41063539565611107,
+      "created_at": "2026-10-19T07:34:13.463698Z"
+    },
+    "target_regime": {
+      "path": "/home/runner/work/quant_algorithms_ai/quant_algorithms_ai/algorithms/machine_learning_algorithms/supervised/model_registry/NVDA/target_regime",
+      "model_type": "rf",
+      "metric_value": 0.46578050091230777,
+      "created_at": "2026-10-21T07:19:12.826607Z"
+    }
+  }
+}
